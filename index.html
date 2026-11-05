@@ -151,9 +151,10 @@ const hexRgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
 const lum=c=>{const[r,g,b]=c.map(x=>{x/=255;return x<=.03928?x/12.92:((x+.055)/1.055)**2.4});return .2126*r+.7152*g+.0722*b};
 const TEAM_VIEWS=new Set(['dash','scrims','schedule','player','roster','analyst','strats','cover','tset']);
 function applyAccent(){
- // pink unless a team is attached: an opponent's page, and a game opened from it, take that opponent's color; the selected team's own pages take its color
- const seen=view==='sc'&&sco?(sco.page==='opp'?sco.oppId:sco.page==='match'&&sco.mBack?.page==='opp'?sco.mBack.oppId:null):null,opp=seen&&sco.teams?.find(t=>t.id===seen);
- const st=document.documentElement.style,h=!me?null:view==='sc'?normHex(opp?.color||''):cur&&TEAM_VIEWS.has(view)?normHex(cur.color):null;
+ // pink only for someone with no team. A scouted team's page, and what's opened from it, take that team's color. Pages for a team take its color. Anything else takes the person's own team's color.
+ const from=view==='sc'&&sco?(sco.page==='match'?sco.mBack:sco):null,seen=from?(from.page==='opp'?from.oppId:from.page==='gaps'?(from.gapTeam||sco.gapTeam):null):null,opp=seen&&sco.teams?.find(t=>t.id===seen);
+ const mine=teams.find(t=>t.id===cur?.id&&mem[t.id])||teams.find(t=>mem[t.id]),team=opp||((view==='sc'||TEAM_VIEWS.has(view))&&cur)||mine;
+ const st=document.documentElement.style,h=!me||!team?null:normHex(team.color||'');
  if(!h){['--pk','--pk-rgb','--pk-lt'].forEach(v=>st.removeProperty(v));return}
  let c=hexRgb(h);const bg=lum(hexRgb('#131118'));
  for(let i=0;i<12&&(lum(c)+.05)/(bg+.05)<4.5;i++)c=c.map(x=>Math.round(x+(255-x)*.12));
