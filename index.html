@@ -495,7 +495,7 @@ const anTile=(l,v)=>`<div class="stat"><span class="mu">${l}</span><b>${esc(v)}<
 const resWord={W:'Win',L:'Loss',D:'Draw'};
 async function openAnalyst(page){
  view='analyst';
- if(!an||an.tid!==cur.id)an={tid:cur.id,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,rc:{},rex:{},rp:null,rerr:'',rteams:null};
+ if(!an||an.tid!==cur.id)an={tid:cur.id,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,rc:{},rex:{},rpick:{},rp:null,rerr:'',rteams:null,rroster:[]};
  Object.assign(an,{page,list:null,err:''});
  if(page==='import')scr={tid:cur.id,st:'form',list:[],err:'',id:null,people:null,notes:{},dErr:''};
  render();
@@ -592,7 +592,7 @@ const fmtSize=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?
 const REC_TIMEOUT=12e4,TRADE_SECS=5,squash=s=>norm(s).replace(/[^a-z0-9]/g,'');
 const repMap=n=>{const s=squash(n),p=MAP_POOL.find(m=>squash(m[0])===s);return p?p[0]:String(n||'').replace(/([a-z])([A-Z0-9])/g,'$1 $2')};
 const repOp=n=>{const s=squash(opKey(n)),o=OPS.find(x=>squash(opKey(x[0]))===s);return o?o[0]:String(n||'')};
-const repErr=e=>/schema cache|does not exist|column/i.test(e.message)?'The replay database tables are not set up yet. Paste stage12.sql into the Supabase SQL Editor and run it.':scErr(e);
+const repErr=e=>/schema cache|does not exist|column/i.test(e.message)?'The replay database tables are not set up yet. Paste stage12.sql and stage13.sql into the Supabase SQL Editor and run them.':scErr(e);
 // A round counts for KOST with a kill, an objective, by surviving, or if the player's killer is killed soon after
 function repKost(r,p){
  if(p.kills||!p.deaths||(r.objectives||[]).some(o=>o.player===p.username))return true;
@@ -624,15 +624,51 @@ function recSummary(g){
  s.players=[...pl.values()];
  return s;
 }
-const recRc=k=>an.rc[k]||(an.rc[k]={our:'',opp:'',side:''});
-// One name per team on the saved game. The scouted opponent's name is used so the game shows on their page.
+const recRc=k=>an.rc[k]||(an.rc[k]={names:{}});
+const ROSTER_MATCH=3,ownKeys=()=>new Set([norm(cur.name),...(cur.aliases||[]).map(norm)].filter(Boolean));
+// "Packer.4FUN" and "Packer" are the same player
+const plKeys=n=>{const k=norm(n),i=k.lastIndexOf('.');return i>0?[k,k.slice(0,i)]:[k]};
+const plBare=n=>{const t=String(n).trim(),i=t.lastIndexOf('.');return i>0?t.slice(0,i):t};
+// Works out each side: our team, a scouted team, a new team, or a question for the analyst
+function recSides(s,c){
+ if(!an.rteams)return null;
+ const raw=s.rounds[0].teams.map(t=>(t?.name||'').trim()),dup=raw[0]&&norm(raw[0])===norm(raw[1]);
+ const out=[0,1].map(i=>{
+  const typed=dup||!raw[i],name=(typed?c.names[i]||'':raw[i]).trim(),k=norm(name);
+  if(!name)return{kind:'noname',i};
+  if(ownKeys().has(k))return{kind:'own',i,name:cur.name,raw:name,typed};
+  const t=an.rteams.find(x=>scKeys(x).has(k));
+  return t?{kind:'scout',i,name:t.name,raw:name,team:t,typed}:{i,name,raw:name,k,typed};
+ });
+ const taken=id=>out.some(o=>id==='own'?o.kind==='own':o.team?.id===id);
+ out.filter(o=>!o.kind&&o.k).forEach(o=>{
+  const pick=an.rpick[o.k];
+  if(pick==='new')return Object.assign(o,{kind:'new',picked:true});
+  if(pick==='own')return Object.assign(o,{kind:'own',name:cur.name,picked:true});
+  if(pick){const t=an.rteams.find(x=>x.id===pick);if(t)return Object.assign(o,{kind:'scout',name:t.name,team:t,picked:true})}
+  const mine=new Set(s.players.filter(p=>p.team===o.i).flatMap(p=>plKeys(p.name))),hits=l=>[...new Set((l||[]).map(n=>plKeys(n).find(k=>mine.has(k))).filter(Boolean))].length;
+  const cands=[...(taken('own')?[]:[{id:'own',name:cur.name,n:hits(an.rroster)}]),...an.rteams.filter(t=>!taken(t.id)).map(t=>({id:t.id,name:t.name,n:hits(t.players)}))].filter(x=>x.n>=ROSTER_MATCH).sort((a,b)=>b.n-a.n).slice(0,3);
+  Object.assign(o,cands.length?{kind:'ask',cands}:{kind:'new'});
+ });
+ const a=out[0],b=out[1];out.same=a.kind==='own'&&b.kind==='own'||(a.team&&a.team.id===b.team?.id);
+ return out;
+}
+const recReady=sides=>!!sides&&!sides.same&&sides.every(x=>['own','scout','new'].includes(x.kind));
 function recPlan(s,c,ex){
  if(ex)return{t1:ex.replay_t1_index??0,our:ex.our_team_index};
- const our=c.our==='none'?null:+c.our,scout=c.opp&&c.opp!=='none'?(an.rteams||[]).find(t=>t.id===c.opp):null,scoutIdx=!scout?null:our!==null?our^1:+c.side,t1=our!==null?our:scoutIdx!==null?scoutIdx:0,names=[...s.names];
- if(scout)names[scoutIdx]=scout.name;
- return{t1,our,scout,names};
+ const sides=recSides(s,c),own=sides.find(x=>x.kind==='own'),t1=own?own.i:0;
+ return{t1,our:own?own.i:null,scout:sides[t1^1].team||null,names:sides.map(x=>x.name)};
 }
-const recReady=c=>c.our!==''&&c.opp!==''&&(c.our!=='none'||c.opp==='none'||c.side!=='');
+// Name as saved in the library, so "SR" and "Shopify Rebellion" count as the same game
+const recCanon=n=>{const k=norm(n);if(ownKeys().has(k))return norm(cur.name);const t=(an.rteams||[]).find(x=>scKeys(x).has(k));return t?norm(t.name):k};
+function recTeamLine(x,g){
+ const btn='class="no" style="height:28px;padding:0 10px;font-size:12px"',change=x.typed?` <button ${btn} data-a="recname" data-k="${esc(g.key)}" data-i="${x.i}">Change</button>`:x.picked?` <button ${btn} data-a="recteam" data-n="${esc(x.k)}" data-v="">Change</button>`:'';
+ if(x.kind==='noname')return `<div><label for="rcn${x.i}${esc(g.key.replace(/[^a-z0-9]/gi,''))}">Team ${x.i+1} has no name in this replay. Enter its name</label><input id="rcn${x.i}${esc(g.key.replace(/[^a-z0-9]/gi,''))}" class="fi" maxlength="120" data-c="rcname" data-k="${esc(g.key)}" data-i="${x.i}"></div>`;
+ if(x.kind==='own')return `<p><b style="font-weight:600">${esc(x.name)}</b> is your team.${x.picked?` "${esc(x.raw)}" will be saved as an alias.`:''}${change}</p>`;
+ if(x.kind==='scout')return `<p><b style="font-weight:600">${esc(x.name)}</b> is a team you already have.${x.picked?` "${esc(x.raw)}" will be saved as an alias.`:''}${change}</p>`;
+ if(x.kind==='new')return `<p><b style="font-weight:600">${esc(x.name)}</b> is a new team. It will be added when you save.${change}</p>`;
+ return `<div class="tr" style="display:flex;flex-direction:column;gap:10px"><p>We don't have a team called <b style="font-weight:600">${esc(x.name)}</b>, but its players match a roster. Is it one of these?</p><div class="row wrap" style="gap:8px">${x.cands.map(c=>`<button class="no" data-a="recteam" data-n="${esc(x.k)}" data-v="${esc(c.id)}">Yes, it's ${esc(c.name)} (${plural(c.n,'player')} match)</button>`).join('')}<button class="no" data-a="recteam" data-n="${esc(x.k)}" data-v="new">No, create ${esc(x.name)}</button></div></div>`;
+}
 function recCard(g){
  const s=recSummary(g),c=recRc(g.key),count=plural(g.files.length,'file');
  if(s.pending)return `<article class="cd" style="gap:6px"><b style="font-weight:600;overflow-wrap:anywhere">${esc(g.label)}</b><p class="mu">Reading ${count}…</p></article>`;
@@ -641,13 +677,11 @@ function recCard(g){
  const ex=an.rex?.[s.id],done=ex?new Set(ex.done):new Set(),fresh=s.rounds.filter(r=>!done.has(r.roundNumber)).length,row=ex?.row;
  const sb2=i=>{const l=s.players.filter(p=>p.team===i).sort((a,b)=>b.k-a.k||a.d-b.d);return `<div style="overflow-x:auto"><table class="tbl"><caption style="text-align:left;font-weight:600;padding-bottom:4px;overflow-wrap:anywhere">${esc(s.names[i])}</caption><thead><tr><th scope="col">Player</th><th scope="col">Operators</th><th scope="col" class="num">K</th><th scope="col" class="num">D</th><th scope="col" class="num">A</th><th scope="col" class="num">HS</th><th scope="col" class="num">Score</th></tr></thead><tbody>${l.map(p=>`<tr><td>${esc(p.name)}</td><td style="white-space:normal;min-width:120px">${esc(p.ops.join(', '))}</td><td class="num">${p.k}</td><td class="num">${p.d}</td><td class="num">${p.a}</td><td class="num">${p.h}</td><td class="num">${p.score}</td></tr>`).join('')}</tbody></table></div>`};
  const roundsH=`<details><summary style="cursor:pointer;font-weight:600">Who won each round</summary><div style="overflow-x:auto;margin-top:8px"><table class="tbl"><thead><tr><th scope="col" class="num">Round</th><th scope="col">Winner</th><th scope="col" class="num">Score</th><th scope="col">Site</th></tr></thead><tbody>${s.rounds.map(r=>`<tr><td class="num">${r.roundNumber}</td><td>${r.winningTeam===null?'Unknown':esc(s.names[r.winningTeam])}</td><td class="num">${r.teams[0].score}-${r.teams[1].score}</td><td>${esc(r.site||'Not found')}</td></tr>`).join('')}</tbody></table></div></details>`;
- const opt=(v,l,cur)=>`<option value="${esc(v)}"${cur===v?' selected':''}>${esc(l)}</option>`,id=g.key.replace(/[^a-z0-9]/gi,'')+g.files.length;
- const pick=s.mixed?'':ex?`<p>${fresh?`Already in the library as ${esc(row.team)} vs ${esc(row.opponent)}. ${plural(fresh,'new round')} will be added.`:'Already imported. Nothing new to save.'}</p>`:`<div class="row wrap" style="gap:12px;align-items:flex-end"><div style="flex:1 1 200px;min-width:0"><label for="rco${id}">Our team in this match</label><select id="rco${id}" class="fi" data-c="rcsel" data-f="our" data-k="${esc(g.key)}"><option value="">Choose</option>${opt('0',s.names[0],c.our)}${opt('1',s.names[1],c.our)}${opt('none','Neither, we are scouting',c.our)}</select></div>
-  <div style="flex:1 1 200px;min-width:0"><label for="rcp${id}">Scouted opponent</label><select id="rcp${id}" class="fi" data-c="rcsel" data-f="opp" data-k="${esc(g.key)}"><option value="">Choose</option>${(an.rteams||[]).map(t=>opt(t.id,t.name,c.opp)).join('')}${opt('none','Not a scouted team',c.opp)}</select></div>
-  ${c.our==='none'&&c.opp&&c.opp!=='none'?`<div style="flex:1 1 200px;min-width:0"><label for="rcs${id}">Which side is that opponent?</label><select id="rcs${id}" class="fi" data-c="rcsel" data-f="side" data-k="${esc(g.key)}"><option value="">Choose</option>${opt('0',s.names[0],c.side)}${opt('1',s.names[1],c.side)}</select></div>`:''}</div>`;
- const can=!s.mixed&&fresh>0&&(ex||recReady(c));
+ const sides=ex||s.mixed?null:recSides(s,c);
+ const pick=s.mixed?'':ex?`<p>${fresh?`Already in the library as ${esc(row.team)} vs ${esc(row.opponent)}. ${plural(fresh,'new round')} will be added.`:'Already imported. Nothing new to save.'}</p>`:!sides?'<p class="mu">Checking teams…</p>':`<div style="display:flex;flex-direction:column;gap:8px">${sides.map(x=>recTeamLine(x,g)).join('')}${sides.same?`<p role="alert">Both sides match ${esc(sides[0].name)}. Check that team's aliases in its settings.</p>`:''}</div>`;
+ const can=!s.mixed&&fresh>0&&(ex||recReady(sides));
  return `<article class="cd" style="gap:12px"><div class="row wrap" style="gap:8px 14px"><div style="flex:1 1 220px;min-width:0"><h3 style="font-size:17px;font-weight:600;overflow-wrap:anywhere">${esc(s.map)}: ${esc(s.names[0])} vs ${esc(s.names[1])}</h3><p class="mu" style="overflow-wrap:anywhere">${esc(fmtD(s.date))} · ${plural(s.rounds.length,'round')} · ${esc(g.label)}</p></div><span class="badge" style="font-variant-numeric:tabular-nums">${s.score[0]}-${s.score[1]}</span></div>
-  ${sb2(0)}${sb2(1)}${roundsH}${warnH}${pick}${s.mixed||(ex&&!fresh)?'':`<div class="row wrap" style="justify-content:flex-end;gap:10px">${can?'':'<span class="mu">Choose the teams above to save.</span>'}<button class="go" data-a="recsave" data-k="${esc(g.key)}"${can?'':' disabled'}>Save ${plural(fresh,'round')}</button></div>`}</article>`;
+  ${sb2(0)}${sb2(1)}${roundsH}${warnH}${pick}${s.mixed||(ex&&!fresh)?'':`<div class="row wrap" style="justify-content:flex-end;gap:10px">${can?'':'<span class="mu">Answer the question above to save.</span>'}<button class="go" data-a="recsave" data-k="${esc(g.key)}"${can?'':' disabled'}>Save ${plural(fresh,'round')}</button></div>`}</article>`;
 }
 function recList(){
  const r=an.recs,total=r.reduce((a,x)=>a+x.size,0),done=r.filter(x=>x.res).length,pct=r.length?Math.round(done/r.length*100):0,cur=r.find(x=>!x.res),busy=an.rp&&cur;
@@ -684,12 +718,10 @@ async function recCheck(a,onlyKey){
  if(an!==a)return;
  const gs=recGroups().filter(g=>(!onlyKey||g.key===onlyKey)&&g.files.every(x=>x.res)),ss=gs.map(recSummary).filter(s=>s.rounds.length);
  if(!ss.length)return;
- const tid=a.tid,ids=[...new Set(ss.map(s=>s.id))],[t,m,d]=await Promise.all([sb.from('scout_teams').select('id,name,short_name,source_ids').eq('owner_team_id',tid),sb.from('scout_matches').select('*').eq('owner_team_id',tid).in('replay_match_id',ids),sb.from('player_round_stats').select('match_id,round_number').eq('owner_team_id',tid).in('match_id',ids).limit(5000)]);
+ const tid=a.tid,ids=[...new Set(ss.map(s=>s.id))],[t,m,d,ro]=await Promise.all([sb.from('scout_teams').select('*').eq('owner_team_id',tid),sb.from('scout_matches').select('*').eq('owner_team_id',tid).in('replay_match_id',ids),sb.from('player_round_stats').select('match_id,round_number').eq('owner_team_id',tid).in('match_id',ids).limit(5000),sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid)]);
  const bad=t.error||m.error||d.error;a.rerr=bad?repErr(bad):'';if(bad){if(an===a)recPaint();return}
- a.rteams=(t.data||[]).sort((x,y)=>x.name.localeCompare(y.name));
+ a.rteams=(t.data||[]).sort((x,y)=>x.name.localeCompare(y.name));a.rroster=(ro.data||[]).map(x=>x.name);a.rlinks=(ro.data||[]).filter(x=>x.linked_user_id);
  ids.forEach(i=>{const row=m.data.find(x=>x.replay_match_id===i),done=[...new Set(d.data.filter(x=>x.match_id===i).map(x=>x.round_number))];if(row)a.rex[i]={row,done};else delete a.rex[i]});
- // Suggest the scouted opponent when a team name matches one
- ss.forEach(s=>{const c=a.rc[s.g.key]||(a.rc[s.g.key]={our:'',opp:'',side:''});if(c.opp)return;const hit=a.rteams.map(t=>({t,i:s.names.findIndex(n=>scKeys(t).has(norm(n)))})).filter(x=>x.i>=0);if(hit.length===1){c.opp=hit[0].t.id;c.side=String(hit[0].i)}});
  if(an===a)recPaint();
 }
 function recRows(s,c){
@@ -706,13 +738,13 @@ async function recGame(s,c,tid){
   const up={round_score:P.score,total_rounds:total,...(s.gaps?{t1_atk:null,t1_def:null,t1_ot_atk:null,t1_ot_def:null,t2_atk:null,t2_def:null,t2_ot_atk:null,t2_ot_def:null}:P.sides)};if(P.result)up.result=P.result;if(P.ot)up.ot_start=P.ot;
   const r=await sb.from('scout_matches').update(up).eq('id',P.ex.id).select().single();if(r.error)throw r.error;return r.data;
  }
- const n=P.plan.names,team=n[P.t1],opponent=n[P.t2],pair=[norm(team),norm(opponent)].sort().join('|'),meta={replay_match_id:s.id,scout_team_id:P.plan.scout?.id||null,our_team_index:P.plan.our};
+ const n=P.plan.names,team=n[P.t1],opponent=n[P.t2],pair=[recCanon(team),recCanon(opponent)].sort().join('|'),meta={replay_match_id:s.id,scout_team_id:P.plan.scout?.id||null,our_team_index:P.plan.our};
  const q=await sb.from('scout_matches').select('*').eq('owner_team_id',tid).eq('match_date',s.date);if(q.error)throw q.error;
- const same=q.data.filter(x=>[norm(x.team),norm(x.opponent)].sort().join('|')===pair&&mapCanon(x.map)===mapCanon(s.map));
+ const same=q.data.filter(x=>[recCanon(x.team),recCanon(x.opponent)].sort().join('|')===pair&&mapCanon(x.map)===mapCanon(s.map));
  // A game already in the library, from Liquipedia or a spreadsheet, gets linked. Its own values are kept and only its blanks are filled.
  const lib=same.find(x=>!x.replay_match_id);
  if(lib){
-  const swap=norm(lib.team)!==norm(team),t1=swap?P.t2:P.t1,fill={...meta,replay_t1_index:t1,replay_status:'imported'};
+  const swap=recCanon(lib.team)!==recCanon(team),t1=swap?P.t2:P.t1,fill={...meta,replay_t1_index:t1,replay_status:'imported'};
   if(!lib.round_score)fill.round_score=swap?`${s.score[P.t2]}-${s.score[P.t1]}`:P.score;
   if(lib.total_rounds==null)fill.total_rounds=s.score[0]+s.score[1];
   if(!swap){if(!lib.start_side)fill.start_side=P.start;if(!lib.result)fill.result=P.result}
@@ -728,20 +760,37 @@ async function recSave(key,b){
  const a=an,tid=a.tid,g=recGroups().find(x=>x.key===key);if(!g)return;
  const s=recSummary(g),c=recRc(key);b.disabled=true;b.textContent='Saving…';
  try{
+  const note=a.rex[s.id]?'':await recApplyTeams(s,c,a);
   const game=await recGame(s,c,tid),t1=game.replay_t1_index??0,t2=t1^1,our=game.our_team_index,mid=matchId(game),done=new Set(a.rex[s.id]?.done||[]),fresh=s.rounds.filter(r=>!done.has(r.roundNumber));
   const side=v=>v==='Attack'?'attack':v==='Defense'?'defense':'';
   const rounds=fresh.map(r=>{const ops=i=>r.players.filter(p=>p.teamIndex===i).map(p=>repOp(p.operator)),mine=ops(t1),row={owner_team_id:tid,match_id:mid,round_date:game.match_date,map:game.map,round_number:r.roundNumber,team:game.team,opponent:game.opponent,side:r.teams[t1]?.role||'',site:r.site||'',result:r.winningTeam===null?'':r.winningTeam===t1?'W':'L',opponent_operators:ops(t2).join(' ')};[0,1,2,3,4].forEach(i=>row['operator_'+(i+1)]=mine[i]||'');return row});
-  const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,operator:repOp(p.operator),operator_id:p.operatorId||'',side:side(p.role),kills:p.kills,deaths:p.deaths,assists:p.assists,headshots:Math.min(p.headshots,p.kills),match_score:p.score,kost_point:repKost(r,p)})));
+  const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:repOp(p.operator),operator_id:p.operatorId||'',side:side(p.role),kills:p.kills,deaths:p.deaths,assists:p.assists,headshots:Math.min(p.headshots,p.kills),match_score:p.score,kost_point:repKost(r,p)})));
   const w1=await sb.from('scout_rounds').upsert(rounds,{onConflict:'owner_team_id,round_number,dedupe_key',ignoreDuplicates:true});if(w1.error)throw w1.error;
   const w2=await sb.from('player_round_stats').upsert(stats,{onConflict:'owner_team_id,match_id,round_number,player_key',ignoreDuplicates:true});if(w2.error)throw w2.error;
   await recCheck(a);
-  if(sco&&sco.tid===tid){const[m,r]=await Promise.all([sb.from('scout_matches').select('*').eq('owner_team_id',tid),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',tid).order('id'))]);if(!m.error)sco.m=m.data;if(!r.error)sco.r=r.data}
-  if(an===a)recPaint();toast('Saved '+plural(fresh.length,'round'));
+  if(sco&&sco.tid===tid){const[m,r]=await Promise.all([sb.from('scout_matches').select('*').eq('owner_team_id',tid),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',tid).order('id'))]);if(!m.error)sco.m=m.data;if(!r.error)sco.r=r.data;if(a.rteams)sco.teams=a.rteams}
+  if(an===a)recPaint();toast('Saved '+plural(fresh.length,'round')+'.'+note);
  }catch(e){b.disabled=false;b.textContent='Save';toast(repErr(e))}
 }
-// A choice made for one map carries over to other maps with the same two teams
-function recShare(g,s,c){
- recGroups().filter(x=>x.key!==g.key&&x.files.every(f=>f.res)).forEach(o=>{const t=recSummary(o),d=recRc(o.key);if(!t.names)return;const same=norm(t.names[0])===norm(s.names[0])&&norm(t.names[1])===norm(s.names[1]),flip=norm(t.names[0])===norm(s.names[1])&&norm(t.names[1])===norm(s.names[0]);if(!same&&!flip)return;const f=v=>v===''||v==='none'||!flip?v:String(+v^1);if(d.our==='')d.our=f(c.our);if(d.opp==='')d.opp=c.opp;if(d.side==='')d.side=f(c.side)});
+// Adds new teams, saves answers as aliases, and fills in a roster that's empty. Safe to repeat.
+async function recApplyTeams(s,c,a){
+ const tid=a.tid,sides=recSides(s,c);let note='';
+ const roster=i=>[...new Set(s.players.filter(p=>p.team===i).map(p=>plBare(p.name)).filter(Boolean))];
+ for(const x of sides){
+  if(x.kind==='new'){
+   const r=await sb.from('scout_teams').insert({owner_team_id:tid,name:x.name,players:roster(x.i)}).select().single();
+   if(r.error&&r.error.code!=='23505')throw r.error;
+   if(r.data)a.rteams.push(r.data);else{const q=await sb.from('scout_teams').select('*').eq('owner_team_id',tid);if(q.error)throw q.error;a.rteams=q.data}
+  }else if(x.kind==='scout'){
+   const up={};if(x.picked)up.aliases=[...new Set([...(x.team.aliases||[]),x.raw])];if(!(x.team.players||[]).length)up.players=roster(x.i);
+   if(Object.keys(up).length){const r=await sb.from('scout_teams').update(up).eq('id',x.team.id).select().single();if(r.error)throw r.error;Object.assign(x.team,r.data)}
+  }else if(x.kind==='own'&&x.picked){
+   // Only coaches and the owner can change the team itself, so this can be refused. The import still goes ahead.
+   const al=[...new Set([...(cur.aliases||[]),x.raw])],r=await sb.from('teams').update({aliases:al}).eq('id',tid).select();
+   if(!r.error&&r.data?.length)cur.aliases=al;else note=` A coach needs to add "${x.raw}" as an alias in Team Settings.`;
+  }
+ }
+ return note;
 }
 function addRecs(files){
  files.forEach(f=>{if(!/\.rec$/i.test(f.name)){an.skipped++;return}if(!an.recs.some(x=>x.path===f.path&&x.size===f.size))an.recs.push(f)});
@@ -1037,11 +1086,13 @@ async function openSc(page,kind,oppId){
  if(sco!==s)return;
  const bad=t.error||m.error||v.error||r.error;
  Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
- if(!an||an.tid!==tid)an={tid,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,rc:{},rex:{},rp:null,rerr:'',rteams:null,page:'over'};
+ if(!an||an.tid!==tid)an={tid,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,rc:{},rex:{},rpick:{},rp:null,rerr:'',rteams:null,rroster:[],page:'over'};
  an.list=c.data||[];an.res=x.data||[];s.st=(st.data||[])[0]||null;
  if(view==='sc')render();
 }
-const scKeys=t=>new Set([norm(t.name),norm(t.short_name),norm(t.source_ids?.liquipedia||'')].filter(Boolean));
+const scKeys=t=>new Set([norm(t.name),norm(t.short_name),norm(t.source_ids?.liquipedia||''),...(t.aliases||[]).map(norm)].filter(Boolean));
+const aliasList=v=>[...new Set(String(v||'').split(',').map(x=>x.trim()).filter(Boolean))];
+const aliasField=(id,l)=>`<div><label for="${id}">Aliases</label><input id="${id}" class="fi" maxlength="300" value="${esc((l||[]).join(', '))}" placeholder="SR, Shopify"><p class="mu" style="font-size:12.5px;margin-top:4px">Other names this team goes by in replay files, separated by commas.</p></div>`;
 const scCount=t=>{const k=scKeys(t);return sco.m.filter(r=>k.has(norm(r.team))||k.has(norm(r.opponent))).length};
 function scoutV(){
  if(!cur||!sco||sco.tid!==cur.id)return `<div class="cd"><p>Open Scouting from a team's dashboard.</p><div>${backDash}</div></div>`;
@@ -1081,6 +1132,7 @@ function soForm(){
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="sor">Region</label><select id="sor" class="fi">${regs.map(r=>`<option${(t?.region||REG[0])===r?' selected':''}>${esc(r)}</option>`).join('')}</select></div><div style="${half}"><label for="sol">League</label><input id="sol" class="fi" maxlength="80" value="${esc(t?.league||'')}"></div></div>
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:2;min-width:200px"><label for="sou">Logo (PNG or SVG, up to 2 MB)</label><div class="row wrap"><span id="sop2">${tile(t||{color:'#e07cc0',name:sco.form.name||'?'},56)}</span><input id="sou" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" data-c="sou" style="min-width:0;max-width:100%"></div>${logoOk(t?.logo_url)?'<label class="row" style="gap:8px;margin-top:8px;color:var(--tx)"><input id="sod" type="checkbox">Remove the current logo</label>':''}</div><div style="${half}"><label for="soc">Color (hex code)</label><input id="soc" class="fi" maxlength="7" value="${esc(t?.color||'#e07cc0')}"></div></div>
  <div><label for="solp">Liquipedia link</label><input id="solp" class="fi" inputmode="url" value="${esc(lpLinkOf(t?.source_ids?.liquipedia||''))}" placeholder="https://liquipedia.net/rainbowsix/Cloud9"><p class="mu" style="font-size:12.5px;margin-top:4px">Used by Pull everything, so this team's name here doesn't have to match Liquipedia.</p></div>
+ ${aliasField('soa',t?.aliases)}
  ${t?`<div><label for="sop">Players, one per line</label><textarea id="sop" class="fi ta">${esc((t.players||[]).join('\n'))}</textarea></div>`:''}
  <div class="row wrap" style="justify-content:space-between"><span>${t?'<button type="button" class="no" data-a="sodel">Stop tracking</button>':''}</span><span class="row"><button type="button" class="no" data-a="socancel">Cancel</button><button class="go">${t?'Save changes':'Add opponent'}</button></span></div></form>`;
 }
@@ -1093,6 +1145,7 @@ async function saveSo(form){
  if(lpRaw&&!lpName)return toast('Paste a Liquipedia Rainbow Six team link, like https://liquipedia.net/rainbowsix/Cloud9');
  const oldIds=id?sco.teams.find(x=>x.id===id)?.source_ids||{}:{};
  if(id||lpName){const{liquipedia:_,...keep}=oldIds;row.source_ids=lpName?{...keep,liquipedia:lpName}:keep}
+ row.aliases=aliasList($('#soa').value);const clash=row.aliases.find(x=>sco.teams.some(o=>o.id!==id&&scKeys(o).has(norm(x))));if(clash)return toast(`"${clash}" is already used by another team`);
  if(id)row.players=$('#sop').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
  else{row.name=$('#son').value.trim();row.short_name=$('#sos').value.trim();if(!row.name)return toast('Enter a name');if(sco.teams.some(t=>norm(t.name)===norm(row.name)))return toast('This opponent is already tracked');row.owner_team_id=sco.tid}
  btn.disabled=true;
@@ -1450,6 +1503,7 @@ function teamSetV(){
  return `<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px">Team Settings</h1><p class="mu" style="overflow-wrap:anywhere">${esc(cur.name)}</p></div>${backDash}</div>
  <form class="cd" data-s="tset" data-dirty style="max-width:720px">
  <div><label for="tsn">Team name</label><input id="tsn" class="fi" required maxlength="120" value="${esc(cur.name)}"></div>
+ ${aliasField('tsa',cur.aliases)}
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="tsr">Region</label><select id="tsr" class="fi">${[...new Set([...REG,...(cur.region?[cur.region]:[])])].map(r=>`<option${cur.region===r?' selected':''}>${esc(r)}</option>`).join('')}</select></div><div style="${half}"><label for="tsl">League</label><input id="tsl" class="fi" maxlength="80" value="${esc(cur.league||'')}"></div></div>
  <div><span class="lb">Team color</span><div class="row wrap" style="gap:10px">${COL.map(x=>`<button type="button" class="sw" data-a="tsw" data-c="${x}" style="background:${x}" aria-label="Color ${x}" aria-pressed="${x===c}"></button>`).join('')}</div><div style="margin-top:12px;max-width:220px"><label for="tsx">Or enter a hex code</label><input id="tsx" class="fi" data-c="tsx" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c)}"></div></div>
  <div><label for="tsf">Logo (PNG or SVG, up to 2 MB)</label><div class="row wrap"><span id="tsp">${tile(cur,56)}</span><input id="tsf" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" data-c="tsf" style="min-width:0;max-width:100%"></div>${cur.logo_url?'<label class="row" style="gap:8px;margin-top:8px;color:var(--tx)"><input id="tsd" type="checkbox">Remove the current logo</label>':''}</div>
@@ -1490,6 +1544,7 @@ async function saveTeamSet(form){
  btn.disabled=true;
  if(f){const path=crypto.randomUUID()+'.'+(f.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,''),up=await sb.storage.from('logos').upload(path,f,{contentType:f.type});if(up.error){btn.disabled=false;return toast(/row-level security/i.test(up.error.message)?'You do not have permission to upload a logo.':up.error.message)}row.logo_url=sb.storage.from('logos').getPublicUrl(path).data.publicUrl}
  else if($('#tsd')?.checked)row.logo_url=null;
+ row.aliases=aliasList($('#tsa').value);
  const r=await sb.from('teams').update(row).eq('id',cur.id).select().single();
  btn.disabled=false;
  if(r.error)return toast(r.error.code==='PGRST116'||/row-level security/i.test(r.error.message)?'You do not have permission to make that change. If you are a coach, paste stage8.sql into the Supabase SQL Editor and run it.':r.error.message);
@@ -1800,8 +1855,10 @@ const A={
  amode:d=>{an.mode=d.m;render()},
  aclear:()=>{Object.assign(an,{from:'',to:'',map:''});render()},
  recpick:d=>$('#'+d.t).click(),
- recclear:()=>{const p=an.rp;an.rp=null;p?.abort?.();p?.w?.terminate();Object.assign(an,{recs:[],skipped:0,rc:{},rex:{},rerr:''});recPaint()},
+ recclear:()=>{const p=an.rp;an.rp=null;p?.abort?.();p?.w?.terminate();Object.assign(an,{recs:[],skipped:0,rc:{},rex:{},rpick:{},rerr:''});recPaint()},
  recsave:(d,b)=>recSave(d.k,b),
+ recname:d=>{delete recRc(d.k).names[d.i];recPaint()},
+ recteam:d=>{if(d.v)an.rpick[d.n]=d.v;else delete an.rpick[d.n];recPaint()},
  phopen:d=>{pl={tid:cur.id,uid:d.id,names:{},players:[],fromRoster:true};if(d.p==='sch')return A.pmysch();openPlayer(d.p)},
  pmine:()=>{pl={tid:cur.id,uid:me.id,names:{},players:[]};openPlayer('journal')},
  gform:()=>{pl.form='new';render()},
@@ -1882,7 +1939,7 @@ document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='dkout'
  if(c==='sccsv'&&e.target.files[0]){const f=e.target.files[0],k=sco.kind;if(f.size>5242880){sco.imp={error:'This file is larger than 5 MB. Split it into smaller files.'};render();return}f.text().then(t=>{sco.imp={...csvPreview(k,t),file:f.name};render()},()=>{sco.imp={error:'This file could not be read.'};render()})}
  if(c==='stf'){stra[e.target.dataset.k]=e.target.value;const l=$('#stl');if(l)l.innerHTML=stratCards()}
  if(c==='afilter'){an[e.target.dataset.k]=e.target.value;const id=e.target.id;render();document.getElementById(id)?.focus()}
- if(c==='rcsel'){const r=recRc(e.target.dataset.k),f=e.target.dataset.f,id=e.target.id;r[f]=e.target.value;if(f==='opp')r.side='';const gr=recGroups().find(x=>x.key===e.target.dataset.k);if(gr)recShare(gr,recSummary(gr),r);recPaint();document.getElementById(id)?.focus()}
+ if(c==='rcname'){recRc(e.target.dataset.k).names[e.target.dataset.i]=e.target.value;recPaint()}
  if(c==='recs'){addRecs([...e.target.files].map(f=>({file:f,name:f.name,path:f.webkitRelativePath||f.name,size:f.size})));e.target.value=''}
  if(c==='schfor'){sch.forUser=e.target.value;render()}
  if(c==='plfor'){if(!leaveOk()){e.target.value=pl.uid;return}pl.uid=e.target.value;openPlayer(pl.page)}
