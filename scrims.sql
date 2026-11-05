@@ -32,11 +32,11 @@ create or replace function public.can_see_scrims(t uuid) returns boolean languag
 $$ select public.is_staff() or exists(select 1 from team_members tm join profiles p on p.id = tm.user_id
    where tm.team_id = t and tm.user_id = auth.uid() and not p.suspended
    and tm.roles && array['coach','assistant_coach','analyst']) $$;
--- coaches, analysts, the owner and admins can add, edit and delete them
+-- so can they add, edit and delete them
 create or replace function public.can_edit_scrims(t uuid) returns boolean language sql security definer stable set search_path = public as
 $$ select public.is_staff() or exists(select 1 from team_members tm join profiles p on p.id = tm.user_id
    where tm.team_id = t and tm.user_id = auth.uid() and not p.suspended
-   and tm.roles && array['coach','analyst']) $$;
+   and tm.roles && array['coach','assistant_coach','analyst']) $$;
 
 -- who can see and change what
 drop policy if exists scrims_read on public.scrims;
