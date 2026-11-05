@@ -642,7 +642,8 @@ function recGroups(){
  an.recs.forEach(x=>{const k=recKey(x);if(!g.has(k)){const p=x.path.split('/');g.set(k,{key:k,label:p.length>1?p[p.length-2]:k.split('|')[1]||x.name,files:[]})}g.get(k).files.push(x)});
  return[...g.values()];
 }
-function recSummary(g){
+const recSummary=g=>{const refs=g.files.map(x=>x.res),m=an.rsum||(an.rsum=new Map()),c=m.get(g.key);if(c&&c.refs.length===refs.length&&c.refs.every((x,i)=>x===refs[i]))return c.s;const v=recSummarize(g);m.set(g.key,{refs,s:v});return v};
+function recSummarize(g){
  const fails=g.files.filter(x=>x.res&&!x.res.ok),warn=fails.map(x=>`${x.name}: ${x.res.error}`),by=new Map();
  g.files.filter(x=>x.res?.ok).forEach(x=>{if(by.has(x.res.roundNumber))warn.push(`Round ${x.res.roundNumber} appears twice, so ${x.name} was ignored.`);else by.set(x.res.roundNumber,x.res)});
  const rounds=[...by.values()].sort((a,b)=>a.roundNumber-b.roundNumber),s={g,rounds,warn,fails,pending:g.files.some(x=>!x.res)};
@@ -661,6 +662,14 @@ function recSummary(g){
  return s;
 }
 const recRc=k=>an.rc[k]||(an.rc[k]={names:{}});
+// Falcons and Falcons Esports are the same team. Sharing another word is only a reason to ask.
+const TEAM_FILLER=new Set(['esports','esport','gaming','team','club','gg','the']);
+const nameWords=n=>norm(n).replace(/\be[\s-]sports?\b/g,'esports').replace(/[^a-z0-9]+/g,' ').trim().split(' ').filter(Boolean);
+const nameCore=n=>nameWords(n).filter(w=>!TEAM_FILLER.has(w)).join('')||squash(n);
+const sameName=(a,b)=>squash(a)===squash(b)||nameCore(a)===nameCore(b);
+const sharesWord=(a,b)=>{const w=new Set(nameWords(a).filter(x=>!TEAM_FILLER.has(x)&&x.length>1));return nameWords(b).some(x=>w.has(x))};
+const isOwnName=n=>!!cur&&[cur.name,...(cur.aliases||[])].some(x=>sameName(x,n));
+const scSame=(t,n)=>[...scKeys(t)].some(y=>sameName(y,n));
 const ROSTER_MATCH=3,ownKeys=()=>new Set(cur?teamKeys(cur):[]),scHas=(t,sq)=>[...scKeys(t)].some(y=>squash(y)===sq);
 // "Packer.4FUN" and "Packer" are the same player
 const plKeys=n=>{const k=norm(n),i=k.lastIndexOf('.');return i>0?[k,k.slice(0,i)]:[k]};
@@ -669,13 +678,13 @@ const plBare=n=>{const t=String(n).trim(),i=t.lastIndexOf('.');return i>0?t.slic
 function recSides(s,c){
  if(!an.rteams)return null;
  const raw=s.rounds[0].teams.map(t=>(t?.name||'').trim()),dup=raw[0]&&norm(raw[0])===norm(raw[1]);
- const others=teams.filter(x=>x.id!==cur.id&&!an.rteams.some(t=>t.site_team_id===x.id||teamKeys(x).some(k=>scHas(t,k))));
+ const others=teams.filter(x=>x.id!==cur.id&&!an.rteams.some(t=>t.site_team_id===x.id||scSame(t,x.name)));
  const out=[0,1].map(i=>{
   const typed=dup||!raw[i],name=(typed?c.names[i]||'':raw[i]).trim(),k=norm(name),sq=squash(name);
   if(!name)return{kind:'noname',i};
-  if(ownKeys().has(sq))return{kind:'own',i,name:cur.name,raw:name,typed};
-  const t=an.rteams.find(x=>scHas(x,sq));if(t)return{kind:'scout',i,name:t.name,raw:name,team:t,typed};
-  const st=others.find(x=>teamKeys(x).includes(sq));if(st)return{kind:'site',i,name:st.name,raw:name,site:st,typed};
+  if(isOwnName(name))return{kind:'own',i,name:cur.name,raw:name,typed};
+  const t=an.rteams.find(x=>scSame(x,name));if(t)return{kind:'scout',i,name:t.name,raw:name,team:t,typed};
+  const st=others.find(x=>[x.name,...(x.aliases||[])].some(y=>sameName(y,name)));if(st)return{kind:'site',i,name:st.name,raw:name,site:st,typed};
   return{i,name,raw:name,k,typed};
  });
  const taken=id=>out.some(o=>id==='own'?o.kind==='own':o.team?.id===id);
@@ -687,8 +696,8 @@ function recSides(s,c){
   if(pick){const t=an.rteams.find(x=>x.id===pick);if(t)return Object.assign(o,{kind:'scout',name:t.name,team:t,picked:true})}
   const mine=new Set(s.players.filter(p=>p.team===o.i).flatMap(p=>plKeys(p.name))),hits=l=>[...new Set((l||[]).map(n=>plKeys(n).find(y=>mine.has(y))).filter(Boolean))].length;
   const rosterOf=t=>[...(t.players||[]),...(Array.isArray(t.roster)?t.roster.flatMap(x=>[x.name,...(x.aka||[])]):[])];
-  const all=[...(taken('own')?[]:[{id:'own',name:cur.name+' (your team)',n:hits(an.rroster)}]),...an.rteams.filter(t=>!taken(t.id)&&!scOwn(t)).map(t=>({id:t.id,name:t.name,n:hits(rosterOf(t))})),...others.map(x=>({id:'site:'+x.id,name:x.name,n:0}))];
-  Object.assign(o,{kind:'ask',match:all.filter(x=>x.n>=ROSTER_MATCH).sort((a,b)=>b.n-a.n||a.name.localeCompare(b.name)),rest:all.filter(x=>x.n<ROSTER_MATCH).sort((a,b)=>a.name.localeCompare(b.name))});
+  const all=[...(taken('own')?[]:[{id:'own',name:cur.name+' (your team)',n:hits(an.rroster),word:[cur.name,...(cur.aliases||[])].some(y=>sharesWord(y,o.name))}]),...an.rteams.filter(t=>!taken(t.id)&&!scOwn(t)).map(t=>({id:t.id,name:t.name,n:hits(rosterOf(t)),word:[...scKeys(t)].some(y=>sharesWord(y,o.name))})),...others.map(x=>({id:'site:'+x.id,name:x.name,n:0,word:sharesWord(x.name,o.name)}))];
+  Object.assign(o,{kind:'ask',match:all.filter(x=>x.n>=ROSTER_MATCH||x.word).sort((a,b)=>b.n-a.n||a.name.localeCompare(b.name)),rest:all.filter(x=>x.n<ROSTER_MATCH&&!x.word).sort((a,b)=>a.name.localeCompare(b.name))});
  });
  const a=out[0],b=out[1];out.same=a.kind==='own'&&b.kind==='own'||(a.team&&a.team.id===b.team?.id);
  return out;
@@ -700,7 +709,7 @@ function recPlan(s,c,ex){
  return{t1,our:own?own.i:null,scout:sides[t1^1].team||null,names:sides.map(x=>x.name)};
 }
 // Name as saved in the library, so "SR" and "Shopify Rebellion" count as the same game
-const recCanon=n=>{const sq=squash(n);if(ownKeys().has(sq))return norm(cur.name);const t=(an.rteams||[]).find(x=>scHas(x,sq));return t?norm(t.name):norm(n)};
+const recCanon=n=>{if(isOwnName(n))return norm(cur.name);const t=(an.rteams||[]).find(x=>scSame(x,n));return t?norm(t.name):norm(n)};
 function recTeamLine(x,g){
  const btn='class="no" style="height:28px;padding:0 10px;font-size:12px"',change=x.typed?` <button ${btn} data-a="recname" data-k="${esc(g.key)}" data-i="${x.i}">Change</button>`:x.picked?` <button ${btn} data-a="recteam" data-n="${esc(x.k)}" data-v="">Change</button>`:'';
  if(x.kind==='noname')return `<div><label for="rcn${x.i}${esc(g.key.replace(/[^a-z0-9]/gi,''))}">Team ${x.i+1} has no name in this replay. Enter its name</label><input id="rcn${x.i}${esc(g.key.replace(/[^a-z0-9]/gi,''))}" class="fi" maxlength="120" data-c="rcname" data-k="${esc(g.key)}" data-i="${x.i}"></div>`;
@@ -709,7 +718,7 @@ function recTeamLine(x,g){
  if(x.kind==='new')return `<p><b style="font-weight:600">${esc(x.name)}</b> is a new team. It will be added when you save.${change}</p>`;
  if(x.kind==='site')return `<p><b style="font-weight:600">${esc(x.name)}</b> is a team on the site. It will be added to your scouting when you save.${change}</p>`;
  const id='rct'+x.i+g.key.replace(/[^a-z0-9]/gi,'');
- return `<div class="tr" style="gap:6px"><label for="${esc(id)}" style="margin:0;color:var(--tx)">We don't have a team called <b style="font-weight:600">${esc(x.name)}</b>. Which team is it?</label><select id="${esc(id)}" class="fi" data-c="rcteam" data-n="${esc(x.k)}"><option value="">Choose a team</option><option value="new">Create new team: ${esc(x.name)}</option>${x.match.length?`<optgroup label="Players match">${x.match.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} (${plural(c.n,'player')} match)</option>`).join('')}</optgroup>`:''}${x.rest.length?`<optgroup label="All teams">${x.rest.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</optgroup>`:''}</select>${x.match.length?`<p class="mu">${plural(x.match[0].n,'player')} in this replay ${x.match[0].n===1?'is':'are'} on ${esc(x.match[0].name)}'s roster.</p>`:''}</div>`;
+ return `<div class="tr" style="gap:6px"><label for="${esc(id)}" style="margin:0;color:var(--tx)">We don't have a team called <b style="font-weight:600">${esc(x.name)}</b>. Which team is it?</label><select id="${esc(id)}" class="fi" data-c="rcteam" data-n="${esc(x.k)}"><option value="">Choose a team</option><option value="new">Create new team: ${esc(x.name)}</option>${x.match.length?`<optgroup label="Could be the same team">${x.match.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} (${c.n>=ROSTER_MATCH?plural(c.n,'player')+' match':'similar name'})</option>`).join('')}</optgroup>`:''}${x.rest.length?`<optgroup label="All teams">${x.rest.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</optgroup>`:''}</select>${x.match.length?`<p class="mu">${x.match[0].n>=ROSTER_MATCH?`${plural(x.match[0].n,'player')} in this replay are on ${esc(x.match[0].name)}'s roster.`:`The name is similar to ${esc(x.match[0].name)}. Is it the same team?`}</p>`:''}</div>`;
 }
 function recCard(g){
  const s=recSummary(g),c=recRc(g.key),count=plural(g.files.length,'file');
@@ -723,14 +732,14 @@ function recCard(g){
  const pick=s.mixed?'':ex?`<p>${fresh?`Already in the library as ${esc(row.team)} vs ${esc(row.opponent)}. ${plural(fresh,'new round')} will be added.`:'Already imported. Nothing new to save.'}</p>`:!sides?'<p class="mu">Checking teams…</p>':`<div style="display:flex;flex-direction:column;gap:8px">${sides.map(x=>recTeamLine(x,g)).join('')}${sides.same?`<p role="alert">Both sides match ${esc(sides[0].name)}. Check that team's aliases in its settings.</p>`:''}</div>`;
  const can=!s.mixed&&fresh>0&&(ex||recReady(sides));
  return `<article class="cd" style="gap:12px"><div class="row wrap" style="gap:8px 14px"><div style="flex:1 1 220px;min-width:0"><h3 style="font-size:17px;font-weight:600;overflow-wrap:anywhere">${esc(s.map)}: ${esc(s.names[0])} vs ${esc(s.names[1])}</h3><p class="mu" style="overflow-wrap:anywhere">${esc(fmtD(s.date))} · ${plural(s.rounds.length,'round')} · ${esc(g.label)}</p></div><span class="badge" style="font-variant-numeric:tabular-nums">${s.score[0]}-${s.score[1]}</span></div>
-  ${sb2(0)}${sb2(1)}${roundsH}${warnH}${pick}${s.mixed||(ex&&!fresh)?'':`<div class="row wrap" style="justify-content:flex-end;gap:10px">${can?'':'<span class="mu">Choose the team above to save.</span>'}<button class="go" data-a="recsave" data-k="${esc(g.key)}"${can?'':' disabled'}>Save ${plural(fresh,'round')}</button></div>`}</article>`;
+  ${recGroups().length>3?`<details><summary style="cursor:pointer;font-weight:600">Scoreboard and rounds</summary><div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">${sb2(0)}${sb2(1)}${roundsH}</div></details>`:sb2(0)+sb2(1)+roundsH}${warnH}${pick}${!ex&&!s.mixed&&sides?recLibLine(s,sides):''}${s.mixed||(ex&&!fresh)?'':`<div class="row wrap" style="justify-content:flex-end;gap:10px">${can?'':'<span class="mu">Choose the team above to save.</span>'}<button class="go" data-a="recsave" data-k="${esc(g.key)}"${can?'':' disabled'}>Save ${plural(fresh,'round')}</button></div>`}</article>`;
 }
 function recList(){
  const r=an.recs,total=r.reduce((a,x)=>a+x.size,0),done=r.filter(x=>x.res).length,pct=r.length?Math.round(done/r.length*100):0,cur=r.find(x=>!x.res),busy=an.rp&&cur;
  const skip=an.skipped?`<p class="mu">Skipped ${plural(an.skipped,'file')} that ${an.skipped===1?'is':'are'} not .rec.</p>`:'';
  if(!r.length)return skip;
  const gs=recGroups();
- return `<div class="row wrap" style="justify-content:space-between"><b style="font-weight:600">${plural(r.length,'replay file')} · ${fmtSize(total)} · ${gs.length===1?'1 match':gs.length+' matches'}</b><button class="no" style="height:32px" data-a="recclear">${busy?'Stop and clear':'Clear list'}</button></div>
+ return `<div class="row wrap" style="justify-content:space-between"><b style="font-weight:600">${plural(r.length,'replay file')} · ${fmtSize(total)} · ${gs.length===1?'1 match':gs.length+' matches'}</b><span class="row wrap" style="gap:6px">${recSaveable().length>1?`<button class="go" style="height:32px" data-a="recsaveall">Save all ready (${recSaveable().length})</button>`:''}<button class="no" style="height:32px" data-a="recclear">${busy?'Stop and clear':'Clear list'}</button></span></div>
  ${busy?`<div><p style="overflow-wrap:anywhere">Reading ${esc(cur.name)}</p><div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Replay reading progress" style="margin:6px 0"><i style="width:${pct}%"></i></div><p class="mu">${done} of ${r.length} files</p></div>`:''}
  ${an.rerr?`<p role="alert">${esc(an.rerr)}</p>`:''}${skip}${gs.map(recCard).join('')}`;
 }
@@ -762,10 +771,25 @@ async function recCheck(a,onlyKey){
  const gs=recGroups().filter(g=>(!onlyKey||g.key===onlyKey)&&g.files.every(x=>x.res)),ss=gs.map(recSummary).filter(s=>s.rounds.length);
  if(!ss.length)return;
  const tid=a.tid,ids=[...new Set(ss.map(s=>s.id))],[t,m,d,ro]=await Promise.all([sb.from('scout_teams').select('*').eq('owner_team_id',tid),sb.from('scout_matches').select('*').eq('owner_team_id',tid).in('replay_match_id',ids),sb.from('player_round_stats').select('match_id,round_number').eq('owner_team_id',tid).in('match_id',ids).limit(5000),sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid)]);
+ if(!a.rlib){const lib=await allRows(()=>sb.from('scout_matches').select('id,team,opponent,map,match_date,round_score,phase,replay_match_id').eq('owner_team_id',tid).order('id'));if(!lib.error)a.rlib=lib.data}
  const bad=t.error||m.error||d.error;a.rerr=bad?repErr(bad):'';if(bad){if(an===a)recPaint();return}
  a.rteams=(t.data||[]).sort((x,y)=>x.name.localeCompare(y.name));a.rroster=(ro.data||[]).map(x=>x.name);a.rlinks=(ro.data||[]).filter(x=>x.linked_user_id);
  ids.forEach(i=>{const row=m.data.find(x=>x.replay_match_id===i),done=[...new Set(d.data.filter(x=>x.match_id===i).map(x=>x.round_number))];if(row)a.rex[i]={row,done};else delete a.rex[i]});
  if(an===a)recPaint();
+}
+const dayShift=(d,n)=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
+const scoreKey=v=>{const p=parseScore(v);return p?[p.a,p.b].sort((x,y)=>x-y).join('-'):''};
+// The library game a replay belongs to: same two teams and map, within a day either way, as the replay's clock and the league's can differ.
+function recBest(list,s,pair){
+ const want=scoreKey(s.score.join('-')),lo=dayShift(s.date,-1),hi=dayShift(s.date,1);
+ return list.filter(x=>!x.replay_match_id&&x.match_date>=lo&&x.match_date<=hi&&mapCanon(x.map)===mapCanon(s.map)&&[recCanon(x.team),recCanon(x.opponent)].sort().join('|')===pair).sort((a,b)=>(+(b.match_date===s.date)-+(a.match_date===s.date))||(+(scoreKey(b.round_score)===want)-+(scoreKey(a.round_score)===want)))[0]||null;
+}
+function recLibLine(s,sides){
+ if(!an.rlib||!recReady(sides))return '';
+ const pair=sides.map(x=>recCanon(x.name)).sort().join('|'),m=recBest(an.rlib,s,pair);
+ if(!m)return '<p class="mu">No matching game in your library, so a new one will be added.</p>';
+ const a=scoreKey(m.round_score),b=scoreKey(s.score.join('-')),diff=a&&a!==b;
+ return `<p>Attaches to your library game: <b style="font-weight:600">${esc(m.team)} vs ${esc(m.opponent)}, ${esc(m.map)}, ${esc(fmtD(m.match_date))}${m.round_score?', '+esc(m.round_score):''}</b>.${diff?` <span class="over">The library says ${esc(m.round_score)} but this replay says ${s.score.join('-')}. The library's score stays, so check it if these are all the rounds.</span>`:''}</p>`;
 }
 function recRows(s,c){
  const ex=an.rex[s.id]?.row||null,plan=recPlan(s,c,ex),t1=plan.t1,t2=t1^1,done=new Set(an.rex[s.id]?.done||[]);
@@ -782,10 +806,10 @@ async function recGame(s,c,tid){
   const r=await sb.from('scout_matches').update(up).eq('id',P.ex.id).select().single();if(r.error)throw r.error;return r.data;
  }
  const n=P.plan.names,team=n[P.t1],opponent=n[P.t2],pair=[recCanon(team),recCanon(opponent)].sort().join('|'),meta={replay_match_id:s.id,scout_team_id:P.plan.scout?.id||null,our_team_index:P.plan.our};
- const q=await sb.from('scout_matches').select('*').eq('owner_team_id',tid).eq('match_date',s.date);if(q.error)throw q.error;
- const same=q.data.filter(x=>[recCanon(x.team),recCanon(x.opponent)].sort().join('|')===pair&&mapCanon(x.map)===mapCanon(s.map));
+ const q=await sb.from('scout_matches').select('*').eq('owner_team_id',tid).gte('match_date',dayShift(s.date,-1)).lte('match_date',dayShift(s.date,1));if(q.error)throw q.error;
+ const same=q.data.filter(x=>x.match_date===s.date&&[recCanon(x.team),recCanon(x.opponent)].sort().join('|')===pair&&mapCanon(x.map)===mapCanon(s.map));
  // A game already in the library, from Liquipedia or a spreadsheet, gets linked. Its own values are kept and only its blanks are filled.
- const lib=same.find(x=>!x.replay_match_id);
+ const lib=recBest(q.data,s,pair);
  if(lib){
   const swap=recCanon(lib.team)!==recCanon(team),t1=swap?P.t2:P.t1,fill={...meta,replay_t1_index:t1,replay_status:'imported'};
   if(!lib.round_score)fill.round_score=swap?`${s.score[P.t2]}-${s.score[P.t1]}`:P.score;
@@ -799,7 +823,14 @@ async function recGame(s,c,tid){
  if(r.error){if(r.error.code==='23505'){const again=await sb.from('scout_matches').select('*').eq('owner_team_id',tid).eq('replay_match_id',s.id).maybeSingle();if(again.data)return again.data}throw r.error}
  return r.data;
 }
-async function recSave(key,b){
+const recSaveable=()=>recGroups().filter(g=>{if(g.files.some(x=>!x.res))return false;const s=recSummary(g);if(!s.rounds.length||s.mixed)return false;const ex=an.rex?.[s.id];if(ex)return s.rounds.some(r=>!ex.done.includes(r.roundNumber));return recReady(recSides(s,recRc(g.key)))});
+async function recSaveAll(){
+ const a=an,keys=recSaveable().map(g=>g.key);let stop=false,ok=0;const job=actStart('Saving replays',()=>{stop=true});
+ for(const k of keys){if(stop||an!==a)break;actSet(job,{detail:(ok+1)+' of '+keys.length,pct:Math.round(ok/keys.length*100)});await recSave(k,{},true);ok++}
+ const left=an===a?recGroups().filter(g=>g.files.every(x=>x.res)&&recSummary(g).rounds.length&&!an.rex?.[recSummary(g).id]).length:0;
+ actEnd(job,left?'warn':'ok',plural(ok,'match').replace('matchs','matches')+' saved'+(left?' · '+left+' still need a team chosen':''));
+}
+async function recSave(key,b,quiet){
  const a=an,tid=a.tid,g=recGroups().find(x=>x.key===key);if(!g)return;
  const s=recSummary(g),c=recRc(key);b.disabled=true;b.textContent='Saving…';
  try{
@@ -810,10 +841,10 @@ async function recSave(key,b){
   const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:repOp(p.operator),operator_id:p.operatorId||'',side:side(p.role),kills:p.kills,deaths:p.deaths,assists:p.assists,headshots:Math.min(p.headshots,p.kills),match_score:p.score,kost_point:repKost(r,p)})));
   const w1=await sb.from('scout_rounds').upsert(rounds,{onConflict:'owner_team_id,round_number,dedupe_key',ignoreDuplicates:true});if(w1.error)throw w1.error;
   const w2=await sb.from('player_round_stats').upsert(stats,{onConflict:'owner_team_id,match_id,round_number,player_key',ignoreDuplicates:true});if(w2.error)throw w2.error;
-  await recCheck(a);
-  if(sco&&sco.tid===tid){const[m,r]=await Promise.all([sb.from('scout_matches').select('*').eq('owner_team_id',tid),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',tid).order('id'))]);if(!m.error)sco.m=m.data;if(!r.error)sco.r=r.data;if(a.rteams)sco.teams=a.rteams}
-  if(an===a)recPaint();toast('Saved '+plural(fresh.length,'round')+'.'+note);
- }catch(e){b.disabled=false;b.textContent='Save';toast(repErr(e))}
+  a.rlib=null;await recCheck(a,key);
+  if(sco&&sco.tid===tid){const[m,r]=await Promise.all([allRows(()=>sb.from('scout_matches').select('*').eq('owner_team_id',tid).order('id')),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',tid).order('id'))]);if(!m.error)sco.m=m.data;if(!r.error)sco.r=r.data;if(a.rteams)sco.teams=a.rteams}
+  if(an===a)recPaint();if(!quiet||note)toast('Saved '+plural(fresh.length,'round')+'.'+note);
+ }catch(e){b.disabled=false;b.textContent='Save';toast(g.label+': '+repErr(e))}
 }
 // Adds new teams, saves answers as aliases, and fills in a roster that's empty. Safe to repeat.
 async function recApplyTeams(s,c,a){
@@ -847,7 +878,7 @@ function walkEntry(en,out){
  return next();
 }
 const replayBox=()=>`<section class="cd"><div><h2 style="font-size:15px;font-weight:600;margin-bottom:4px">Replays</h2><p class="mu">Files are read on this device and are never uploaded. Only the results are saved, after you check them.</p></div>
- <div id="dz" class="dz"><p style="font-weight:600">Drop .rec files or folders here</p><div class="row wrap" style="justify-content:center;gap:8px"><button class="no" data-a="recpick" data-t="recf">Choose files</button><button class="no" data-a="recpick" data-t="recd">Choose folder</button></div></div>
+ <div id="dz" class="dz"><p style="font-weight:600">Drop .rec files or folders here</p><p class="mu">A folder holding many match folders works too.</p><div class="row wrap" style="justify-content:center;gap:8px"><button class="no" data-a="recpick" data-t="recf">Choose files</button><button class="no" data-a="recpick" data-t="recd">Choose folder</button></div></div>
  <input id="recf" type="file" multiple accept=".rec" data-c="recs" hidden aria-label="Choose replay files"><input id="recd" type="file" webkitdirectory multiple data-c="recs" hidden aria-label="Choose a folder of replays">
  <div id="recl" style="display:flex;flex-direction:column;gap:10px">${recList()}</div></section>`;
 function importB(){
@@ -1050,7 +1081,7 @@ const LIB={
   cols:[['match_id','Match ID'],['map','Map'],['round_number','Round #'],['team','Team'],['opponent','Opponent Name'],['ban_1','Ban 1'],['ban_2','Ban 2'],['side','Side'],['site','Site'],['result','Result'],['operator_1','Operator 1'],['operator_2','Operator 2'],['operator_3','Operator 3'],['operator_4','Operator 4'],['operator_5','Operator 5'],['operators','Operators'],['opponent_operators','Opp. Operators']],
   extra:[['round_date','Date'],['league','League']],show:[],alias:{opponent:'opponent',round:'round_number',roundnumber:'round_number',oppoperators:'opponent_operators',opponentoperators:'opponent_operators'},key:r=>[r.round_number,norm(r.match_id),norm(r.team)].join('|')}
 };
-const opCanon=n=>{const k=opKey(n)==='snake'?'solid snake':opKey(n),o=OPS.find(x=>opKey(x[0])===k);return o?o[0]:String(n).trim()};
+const opCanonSeen=new Map(),opCanon=n=>{const v=opCanonSeen.get(n);if(v!==undefined)return v;const k=opKey(n)==='snake'?'solid snake':opKey(n),o=OPS.find(x=>opKey(x[0])===k),r=o?o[0]:String(n).trim();opCanonSeen.set(n,r);return r};
 // A cell can hold several operators, like "Ace Montagne Maverick"
 const opNames=v=>{const p=String(v||'').split(/[,;\s]+/).filter(Boolean),out=[];for(let i=0;i<p.length;i++){if(norm(p[i])==='solid'&&norm(p[i+1]||'')==='snake'){out.push('Solid Snake');i++}else if(norm(p[i])==='unknown'&&/^[(][0-9]+[)]$/.test(p[i+1]||'')){out.push(p[i]+' '+p[i+1]);i++}else out.push(opCanon(p[i]))}return out};
 const idSlug=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');
@@ -1125,7 +1156,7 @@ async function openSc(page,kind,oppId){
  Object.assign(sco,{page,kind:kind||sco.kind,form:null,imp:null,loaded:false,err:'',tab:'over'});if(oppId)sco.oppId=oppId;
  render();
  if(!canSc())return;
- const s=sco,tid=s.tid,q=t=>sb.from(t).select('*').eq('owner_team_id',tid),[t,m,v,r,c,x,st]=await Promise.all([q('scout_teams'),q('scout_matches'),q('scout_vetoes'),allRows(()=>q('scout_rounds').order('id')),sb.from('scrims').select('*').eq('team_id',tid),sb.from('scrim_map_results').select('*').eq('team_id',tid),q('scout_settings')]);
+ const s=sco,tid=s.tid,q=t=>sb.from(t).select('*').eq('owner_team_id',tid),[t,m,v,r,c,x,st]=await Promise.all([q('scout_teams'),allRows(()=>q('scout_matches').order('id')),allRows(()=>q('scout_vetoes').order('id')),allRows(()=>q('scout_rounds').order('id')),sb.from('scrims').select('*').eq('team_id',tid),sb.from('scrim_map_results').select('*').eq('team_id',tid),q('scout_settings')]);
  if(sco!==s)return;
  const bad=t.error||m.error||v.error||r.error;
  Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
@@ -1150,7 +1181,7 @@ function scoutV(){
  return head('Scouting',`Opponents ${esc(cur.name)} is tracking. Each team has its own separate copy.`,btns)+libTabs()+(!sco.loaded?wait:sco.err?`<div class="cd"><p>${esc(sco.err)}</p></div>`:(sco.lp?lpB():'')+(sco.form?soForm():homeB()));
 }
 const libTabs=()=>`<div class="row wrap" style="gap:8px;margin-bottom:16px" role="group" aria-label="Scouting pages">${[['sct','Opponents',sco.page==='home'],['slm','Match Library',sco.page==='lib'&&sco.kind==='m'],['slr','Round Library',sco.page==='lib'&&sco.kind==='r'],['slv','Vetoes',sco.page==='lib'&&sco.kind==='v']].map(x=>`<button class="ch" data-a="${x[0]}" aria-pressed="${x[2]}">${x[1]}</button>`).join('')}</div>`;
-const scOwn=t=>teamKeys(t).some(k=>ownKeys().has(k))||t.site_team_id===cur.id,scShown=()=>sco.teams.filter(t=>!scOwn(t));
+const scOwn=t=>[t.name,...(t.aliases||[])].some(isOwnName)||t.site_team_id===cur.id,scShown=()=>sco.teams.filter(t=>!scOwn(t));
 function homeB(){
  const leagues=[...new Set(scShown().map(t=>t.league).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
  const chips=`<div class="row wrap" style="gap:8px;margin-bottom:12px" role="group" aria-label="League"><button class="ch" data-a="scleague" data-l="" aria-pressed="${!sco.league}">All (${scShown().length})</button>${leagues.map(l=>`<button class="ch" data-a="scleague" data-l="${esc(l)}" aria-pressed="${sco.league===l}">${esc(l)} (${scShown().filter(t=>t.league===l).length})</button>`).join('')}</div>`;
@@ -1191,7 +1222,7 @@ async function saveSo(form){
  if(lpRaw&&!lpName)return toast('Paste a Liquipedia Rainbow Six team link, like https://liquipedia.net/rainbowsix/Cloud9');
  const oldIds=id?sco.teams.find(x=>x.id===id)?.source_ids||{}:{};
  if(id||lpName){const{liquipedia:_,...keep}=oldIds;row.source_ids=lpName?{...keep,liquipedia:lpName}:keep}
- if(!id){const nm=$('#son').value.trim();if(ownKeys().has(squash(nm)))return toast('That is your own team, so it does not need adding as an opponent');const st=teams.find(x=>teamKeys(x).includes(squash(nm)));if(st)row.site_team_id=st.id}
+ if(!id){const nm=$('#son').value.trim();if(isOwnName(nm))return toast('That is your own team, so it does not need adding as an opponent');const st=teams.find(x=>[x.name,...(x.aliases||[])].some(y=>sameName(y,nm)));if(st)row.site_team_id=st.id;const dupT=sco.teams.find(t=>scSame(t,nm));if(dupT)return toast('This is already tracked as '+dupT.name)}
  row.aliases=aliasList($('#soa').value);const clash=row.aliases.find(x=>sco.teams.some(o=>o.id!==id&&scKeys(o).has(norm(x))));if(clash)return toast(`"${clash}" is already used by another team`);
  if(id)row.players=$('#sop').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
  else{row.name=$('#son').value.trim();row.short_name=$('#sos').value.trim();if(!row.name)return toast('Enter a name');if(sco.teams.some(t=>norm(t.name)===norm(row.name)))return toast('This opponent is already tracked');row.owner_team_id=sco.tid}
@@ -1626,12 +1657,13 @@ const lpCall=async b=>{
 const lpFrom=()=>{const n={3:3,6:6,12:12}[sco.lp.range];if(!n)return '';const d=new Date();d.setMonth(d.getMonth()-n);return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
 function lpB(){
  const l=sco.lp,prog=l.prog;
- const head=`<section class="cd" style="gap:12px;margin-bottom:16px"><div class="row wrap" style="justify-content:space-between"><div style="min-width:0;flex:1 1 220px"><h2 style="font-size:17px;font-weight:600">${l.team?'Pull everything':l.only?'Check matches':'Pull from Liquipedia'}</h2><p class="mu">${l.team?`Every event this team played in the last 12 months. Data saves under ${esc(cur.name)} only. This can take several minutes, so keep this tab open.`:l.only?'Compares every game that has a match link with the official page and siege.gg. Problems appear under Needs attention on this page.':`Paste a league or event link. Data saves under ${esc(cur.name)} only.`}</p></div>${l.running?'':'<button class="no" data-a="lpclose">Close</button>'}</div>`;
- if(l.step==='link')return `${head}<form data-s="lplink" class="row wrap" style="gap:8px"><input id="lpu" class="fi" style="flex:1 1 260px;min-width:0" inputmode="url" aria-label="Liquipedia link" placeholder="https://liquipedia.net/rainbowsix/North_America_League/2026/Stage_2" value="${esc(l.url||'')}"><button class="go" ${l.busy?'disabled':''}>${l.busy?'Checking…':'Check link'}</button></form>${l.err?`<p class="over">${esc(l.err)}</p>`:''}</section>`;
+ const head=`<section class="cd" style="gap:12px;margin-bottom:16px"><div class="row wrap" style="justify-content:space-between"><div style="min-width:0;flex:1 1 220px"><h2 style="font-size:17px;font-weight:600">${l.allRun||l.step==='allteams'?'Pull everything for all teams':l.team?'Pull everything':l.only?'Check matches':'Pull from Liquipedia'}</h2><p class="mu">${l.allRun||l.step==='allteams'?`Every event each team played. Data saves under ${esc(cur.name)} only.`:l.team?`Every event this team played in the last 12 months. Data saves under ${esc(cur.name)} only. This can take several minutes, so keep this tab open.`:l.only?'Compares every game that has a match link with the official page and siege.gg. Problems appear under Needs attention on this page.':`Paste a league or event link. Data saves under ${esc(cur.name)} only.`}</p></div>${l.running?'':'<button class="no" data-a="lpclose">Close</button>'}</div>`;
+ if(l.step==='allteams'){const list=scShown();return `${head}<div><span class="lb">Date range</span><div class="row wrap" style="gap:8px" role="group" aria-label="Date range">${[['3','3 months'],['6','6 months'],['12','12 months'],['all','All']].map(x=>`<button type="button" class="ch" data-a="lprange" data-r="${x[0]}" aria-pressed="${l.range===x[0]}">${x[1]}</button>`).join('')}</div></div><div><div class="row" style="justify-content:space-between"><span class="lb" style="margin:0">Teams (${l.tOn.size} of ${list.length})</span><span class="row" style="gap:6px"><button type="button" class="no" style="height:28px;padding:0 10px" data-a="lpall" data-v="1">All</button><button type="button" class="no" style="height:28px;padding:0 10px" data-a="lpall" data-v="0">None</button></span></div><div style="max-height:240px;overflow-y:auto">${list.map(t=>`<label class="row" style="gap:8px;color:var(--tx);margin:0;padding:3px 0;font-size:14px"><input type="checkbox" data-c="lpteam" data-id="${t.id}"${l.tOn.has(t.id)?' checked':''}><span style="overflow-wrap:anywhere;min-width:0">${esc(t.name)}</span></label>`).join('')}</div></div><div><label class="row" style="gap:8px;color:var(--tx);margin:0;padding:3px 0;font-size:14px"><input type="checkbox" data-c="lpopt" data-id="rosters"${l.rosters?' checked':''}><span>Get rosters <span class="mu">for teams with no roster yet, about 30 seconds per team</span></span></label><p class="mu" style="margin-top:6px">Reads each team's own Liquipedia pages for every event they played. Expect a few minutes per team the first time, so keep this tab open. Games are then checked against the official page and siege.gg. Anything already saved is skipped.</p></div><div class="row" style="justify-content:flex-end"><button class="no" data-a="lpallback">Back</button><button class="go" data-a="lpallgo" ${l.tOn.size?'':'disabled'}>Pull</button></div></section>`}
+ if(l.step==='link')return `${head}<div class="row wrap" style="gap:8px;align-items:center"><button class="go" data-a="lpallopen">Pull everything for all teams</button><span class="mu">Searches each team's Liquipedia pages. Or paste a league link:</span></div><form data-s="lplink" class="row wrap" style="gap:8px"><input id="lpu" class="fi" style="flex:1 1 260px;min-width:0" inputmode="url" aria-label="Liquipedia link" placeholder="https://liquipedia.net/rainbowsix/North_America_League/2026/Stage_2" value="${esc(l.url||'')}"><button class="go" ${l.busy?'disabled':''}>${l.busy?'Checking…':'Check link'}</button></form>${l.err?`<p class="over">${esc(l.err)}</p>`:''}</section>`;
  if(l.step==='run'||l.step==='done'){
   const pct=prog.n?Math.round(prog.i/prog.n*100):0,s=l.sum;
   return `${head}${l.step==='run'?`<p>${esc(prog.label||'Starting…')}</p><div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Pull progress"><i style="width:${pct}%"></i></div><p class="mu">${prog.i} of ${prog.n} steps</p><div><button class="no" data-a="lpstop" ${l.stop?'disabled':''}>${l.stop?'Stopping…':'Cancel'}</button></div>`:`<p style="font-weight:600">${l.stop?(l.only?'Check cancelled.':'Pull cancelled.')+' Anything already saved stays.':l.only?'Check finished.':'Pull finished.'}</p>`}
-  <div class="tiles">${[...(l.team?[['Events read',s.events],['Matches added',s.matches],['Vetoes added',s.vetoes],['Skipped duplicates',s.skipped]]:l.only?[]:[['Teams added',s.teams],['Matches added',s.matches],['Vetoes added',s.vetoes],['Skipped duplicates',s.skipped]]),['Games checked',s.checked],...(l.only?[['No link to check',s.nolink||0]]:[]),['Needs attention',s.flagged],['Replay links',s.replays],['Errors',l.fails.filter(f=>!LP_DEAD.test(f)).length],...(l.fails.some(f=>LP_DEAD.test(f))?[['Dead siege.gg links',l.fails.filter(f=>LP_DEAD.test(f)).length]]:[])].map(x=>`<div class="stat"><span class="mu">${x[0]}</span><b>${x[1]}</b></div>`).join('')}</div>
+  <div class="tiles">${[...(l.team||l.allRun?[['Events read',s.events],['Matches added',s.matches],['Vetoes added',s.vetoes],['Skipped duplicates',s.skipped]]:l.only?[]:[['Teams added',s.teams],['Matches added',s.matches],['Vetoes added',s.vetoes],['Skipped duplicates',s.skipped]]),['Games checked',s.checked],...(l.only?[['No link to check',s.nolink||0]]:[]),['Needs attention',s.flagged],['Replay links',s.replays],['Errors',l.fails.filter(f=>!LP_DEAD.test(f)).length],...(l.fails.some(f=>LP_DEAD.test(f))?[['Dead siege.gg links',l.fails.filter(f=>LP_DEAD.test(f)).length]]:[])].map(x=>`<div class="stat"><span class="mu">${x[0]}</span><b>${x[1]}</b></div>`).join('')}</div>
   ${l.step==='done'?`<div class="row wrap" style="gap:6px"><button class="go" data-a="ccopen" data-t="${l.team||''}">See the cross-check</button>${gapBtn(l.team||'')}</div>`:''}${l.fails.filter(f=>!LP_DEAD.test(f)).length?`<div><span class="lb">Other problems</span>${l.fails.filter(f=>!LP_DEAD.test(f)).map(lpFail).join('')}</div>`:''}</section>`;
  }
  const chk=(c,id,on,lab,sub='')=>`<label class="row" style="gap:8px;color:var(--tx);margin:0;padding:3px 0;font-size:14px"><input type="checkbox" data-c="${c}" data-id="${esc(id)}"${on?' checked':''}><span style="overflow-wrap:anywhere;min-width:0">${esc(lab)}${sub?` <span class="mu">${esc(sub)}</span>`:''}</span></label>`;
@@ -1643,7 +1675,7 @@ function lpB(){
  ${l.fails.length?l.fails.map(f=>`<p class="over" style="overflow-wrap:anywhere">${esc(f)}</p>`).join(''):''}
  <div class="row" style="justify-content:flex-end"><button class="no" data-a="lpevents">Back</button><button class="go" data-a="lpgo" ${l.tOn.size?'':'disabled'}>Pull</button></div></section>`;
 }
-const lpTitle=l=>l.team?'Pull everything · '+(sco.teams.find(t=>t.id===l.team)?.name||'team'):l.only?'Check matches':'Pull from Liquipedia';
+const lpTitle=l=>l.allRun?'Pull everything · all teams':l.team?'Pull everything · '+(sco.teams.find(t=>t.id===l.team)?.name||'team'):l.only?'Check matches':'Pull from Liquipedia';
 const lpSummary=l=>{const c=l.sum,bits=[c.matches?c.matches+' games added':'',c.vetoes?c.vetoes+' vetoes added':'',c.teams?plural(c.teams,'team')+' added':'',c.checked?plural(c.checked,'game')+' checked':'',c.flagged?c.flagged+' differ':'',c.replays?plural(c.replays,'replay link')+' saved':''].filter(Boolean);return bits.join(' · ')||'Nothing new'};
 const lpDraw=()=>{const l=sco?.lp;if(l?.running){if(!l.act)l.act=actStart(lpTitle(l),()=>{l.stop=true;lpDraw()});actSet(l.act,{detail:l.stop?'Stopping…':l.prog?.label||'',pct:l.prog?.n?Math.round(l.prog.i/l.prog.n*100):null})}if(view==='sc')render()};
 async function lpResolve(url){
@@ -1657,14 +1689,15 @@ async function lpScan(){
   try{const r=await lpCall({action:'scan',pages:t.slice(i,i+5)});r.pages.forEach(p=>{if(p.error)l.fails.push(p.title+': '+p.error);(p.teams||[]).forEach(x=>found.add(x))})}catch(e){l.fails.push(t.slice(i,i+5).join(', ')+': '+e.message)}
   l.scanN=Math.min(t.length,i+5);lpDraw();
  }
- l.busy=false;l.teams=[...found].filter(n=>!ownKeys().has(squash(n))).sort((a,b)=>a.localeCompare(b));l.tOn=new Set(l.teams);
+ l.busy=false;l.teams=[...found].filter(n=>!isOwnName(n)).sort((a,b)=>a.localeCompare(b));l.tOn=new Set(l.teams);
  if(l.teams.length)l.step='teams';else if(!l.fails.length)l.fails.push('No teams were found on these pages.');
  lpDraw();
 }
 async function lpRun(){
  const l=sco.lp,pages=[...l.on],teams=[...l.tOn],from=lpFrom();
  Object.assign(l,{step:'run',running:true,stop:false,fails:[],sum:{teams:0,matches:0,vetoes:0,skipped:0,replays:0,checked:0,ok:0,flagged:0}});
- const chunks=[];for(let i=0;i<teams.length;i+=10)chunks.push(teams.slice(i,i+10));
+ const adds=[];for(const n of teams){const ex=sco.teams.find(t=>scSame(t,n));if(ex&&squash(ex.name)!==squash(n)){if(!scKeys(ex).has(norm(n))){const u=await sb.from('scout_teams').update({aliases:[...new Set([...(ex.aliases||[]),n])]}).eq('id',ex.id).select().single();if(!u.error)Object.assign(ex,u.data)}}else adds.push(n)}
+ const chunks=[];for(let i=0;i<adds.length;i+=10)chunks.push(adds.slice(i,i+10));
  const leagueOf=l.title.split('/')[0];
  l.prog={i:0,n:chunks.length+pages.length+(l.rosters?teams.length:0),label:'Adding teams…'};lpDraw();
  const step=(label,fn,what)=>lpStep(l,label,fn,what);
@@ -1729,11 +1762,11 @@ const GAP_COLS=[['maps','Maps'],['veto','Veto'],['bans','Op bans'],['board','Sco
 function gapRows(team){
  const k=team?scKeys(team):null,pairOf=r=>[squash(r.team),squash(r.opponent)].sort().join('|'),groups=new Map();
  sco.m.forEach(r=>{if(k&&!k.has(norm(r.team))&&!k.has(norm(r.opponent)))return;const key=r.r6esports_id||r.siegegg_id||r.match_date+'|'+pairOf(r)+'|'+norm(r.phase);(groups.get(key)||groups.set(key,[]).get(key)).push(r)});
- const rnd=new Map();sco.r.forEach(x=>{const m=norm(x.match_id);(rnd.get(m)||rnd.set(m,[]).get(m)).push(x)});
+ const vetoed=new Set(sco.v.map(v=>v.veto_date+'|'+pairOf(v))),rnd=new Map();sco.r.forEach(x=>{const m=norm(x.match_id);(rnd.get(m)||rnd.set(m,[]).get(m)).push(x)});
  return[...groups.values()].map(rows=>{
   const r=rows[0],rs=x=>rnd.get(norm(matchId(x)))||[],same=!k||k.has(norm(r.team)),has={
    maps:rows.every(x=>parseScore(x.round_score)&&normRes(x.result)),
-   veto:sco.v.some(v=>v.veto_date===r.match_date&&pairOf(v)===pairOf(r)),
+   veto:vetoed.has(r.match_date+'|'+pairOf(r)),
    bans:rows.every(x=>(x.our_atk_ban||x.our_def_ban)&&(x.opp_atk_ban||x.opp_def_ban)),
    board:rows.every(x=>x.replay_match_id),
    log:rows.every(x=>rs(x).length>0),
@@ -1756,7 +1789,7 @@ function gapB(){
 }
 const hubRows=()=>sco.m.map(r=>({r,foe:r.opponent,map:r.map,date:r.match_date,res:normRes(r.result),score:r.round_score}));
 const issueList=l=>l.map(i=>`<button class="u" data-a="smatch" data-id="${i.x.r.id}" style="padding:6px 8px;justify-content:space-between;flex-wrap:wrap"><span style="min-width:0;flex:1 1 200px"><b style="display:block;font-weight:600;overflow-wrap:anywhere">${esc(i.x.r.team)} vs ${esc(i.x.r.opponent)}, ${esc(i.x.map)}</b><span class="mu" style="font-size:12px">${esc(fmtD(i.x.date))}</span></span><span class="over" style="flex:1 1 200px;overflow-wrap:anywhere">${esc(i.why.map(w=>/[.]$/.test(w)?w:w+'.').join(' '))}</span></button>`).join('');
-const hubIssues=()=>{const l=oppIssues(hubRows());return l.length?`<details class="cd" style="margin-bottom:8px;border-color:#ff8a8a"><summary style="cursor:pointer;font-weight:600"><span aria-hidden="true">⚠</span> Needs attention (${l.length}). Click one to fix it.</summary><div style="max-height:320px;overflow-y:auto;margin-top:6px">${issueList(l)}</div></details>`:''};
+const hubIssues=()=>{const l=oppIssues(hubRows());return l.length?`<details class="cd" style="margin-bottom:8px;border-color:#ff8a8a"><summary style="cursor:pointer;font-weight:600"><span aria-hidden="true">⚠</span> Needs attention (${l.length}). Click one to fix it.</summary><div style="max-height:320px;overflow-y:auto;margin-top:6px">${issueList(l.slice(0,200))}${l.length>200?'<p class="mu">Showing the first 200.</p>':''}</div></details>`:''};
 // Each failure says what went wrong and what can be done about it
 function lpFail(t){
  return `<p class="over" style="overflow-wrap:anywhere">${esc(t)}</p>`;
@@ -1810,8 +1843,8 @@ function ccHtml(){
  const tag={Agrees:'<span style="color:#34c46a;font-weight:600">✓ Agrees</span>',Differs:'<span class="over">⚠ Differs</span>',Reviewed:'<span class="mu">Reviewed</span>','Not checked':'<span class="mu">Not checked</span>','No source':'<span class="mu">No source</span>'};
  return `<div class="row" style="justify-content:space-between;margin-bottom:6px"><h2 class="serif" style="font-size:22px;overflow-wrap:anywhere">Cross-check · ${team?esc(team.name):'All teams'}</h2><button class="no" style="height:28px" data-a="ccclose">Close</button></div>
  <p class="mu" style="margin-bottom:8px">Official R6 esports and siege.gg compared with your Match Library. <span style="color:#34c46a;font-weight:600">${n('Agrees')} agree</span> · <span class="${n('Differs')?'over':''}">${n('Differs')} differ</span> · ${n('Reviewed')} reviewed · ${n('Not checked')+n('No source')} not checked</p>
- ${all.length?`<div style="overflow:auto;max-height:64vh"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">${team?'Opponent':'Match'}</th><th scope="col">Event</th><th scope="col">Library</th><th scope="col">Official</th><th scope="col">Siege.gg</th><th scope="col">Status</th></tr></thead><tbody>${all.map(x=>`<tr style="vertical-align:top"><td>${esc(x.date)}</td><td style="white-space:normal;font-weight:600;min-width:110px">${esc(x.who)}</td><td class="mu" style="white-space:normal;min-width:90px">${esc(x.event)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.lib)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.off)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.gg)}</td><td>${tag[x.status]}</td></tr>${x.status==='Differs'?x.differs.map(({r,f})=>`<tr><td colspan="7" style="white-space:normal;background:rgba(255,138,138,.06)"><div class="row wrap" style="gap:6px"><span style="font-weight:600;font-size:12.5px">${esc(mapCanon(r.map))}: which is right?</span>${fixButtons(r,f)}</div></td></tr>`).join(''):''}`).join('')}</tbody></table></div>`:'<p>No games with a match link yet.</p>'}
- <p class="mu" style="margin-top:8px;font-size:12px">Only games with an official or siege.gg link are listed. Games with nothing to compare are under Missing data.</p>`;
+ ${all.length?`<div style="overflow:auto;max-height:64vh"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">${team?'Opponent':'Match'}</th><th scope="col">Event</th><th scope="col">Library</th><th scope="col">Official</th><th scope="col">Siege.gg</th><th scope="col">Status</th></tr></thead><tbody>${all.slice(0,300).map(x=>`<tr style="vertical-align:top"><td>${esc(x.date)}</td><td style="white-space:normal;font-weight:600;min-width:110px">${esc(x.who)}</td><td class="mu" style="white-space:normal;min-width:90px">${esc(x.event)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.lib)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.off)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.gg)}</td><td>${tag[x.status]}</td></tr>${x.status==='Differs'?x.differs.map(({r,f})=>`<tr><td colspan="7" style="white-space:normal;background:rgba(255,138,138,.06)"><div class="row wrap" style="gap:6px"><span style="font-weight:600;font-size:12.5px">${esc(mapCanon(r.map))}: which is right?</span>${fixButtons(r,f)}</div></td></tr>`).join(''):''}`).join('')}</tbody></table></div>`:'<p>No games with a match link yet.</p>'}
+ <p class="mu" style="margin-top:8px;font-size:12px">${all.length>300?'Showing the first 300, with disagreements at the top. ':''}Only games with an official or siege.gg link are listed. Games with nothing to compare are under Missing data.</p>`;
 }
 function ccDraw(){const d=$('#dlg'),top=d.querySelector('[style*="max-height:64vh"]')?.scrollTop||0;d.innerHTML=ccHtml();const w=d.querySelector('[style*="max-height:64vh"]');if(w)w.scrollTop=top}
 function ccOpen(teamId){const d=$('#dlg');sco.cc={team:teamId};d.className='ccw';ccDraw();if(d.open)return;d.showModal();d.addEventListener('close',()=>{d.className='';if(sco)sco.cc=null;if(view==='sc'&&!sdirty)render()},{once:true})}
@@ -1879,28 +1912,42 @@ async function lpChecks(l,every){
  const dead=l.fails.filter(f=>LP_DEAD.test(f)).map(f=>/\d+/.exec(f)[0]);await mark(dead,true);await mark(items.map(x=>x.gg).filter(g=>g&&!dead.includes(g)),false);
 }
 async function lpReload(l){
- const q=t=>sb.from(t).select('*').eq('owner_team_id',sco.tid),[a,b,c]=await Promise.all([q('scout_teams'),q('scout_matches'),q('scout_vetoes')]);
+ const q=t=>sb.from(t).select('*').eq('owner_team_id',sco.tid),[a,b,c]=await Promise.all([q('scout_teams'),allRows(()=>q('scout_matches').order('id')),allRows(()=>q('scout_vetoes').order('id'))]);
  if(!a.error)sco.teams=a.data.sort((x,y)=>x.name.localeCompare(y.name));if(!b.error)sco.m=b.data;if(!c.error)sco.v=c.data;
  await refreshTeams();
  l.running=false;l.step='done';if(l.act)actEnd(l.act,l.fails.some(f=>!LP_DEAD.test(f))?'warn':'ok',l.stop?'Stopped. Anything already saved stays. '+lpSummary(l):lpSummary(l));l.act=null;lpDraw();
  if(!l.stop&&l.sum.checked&&view==='sc')ccOpen(l.team||null);
 }
 // one opponent: every event they played in the last 12 months
-async function lpRunTeam(t){
- const l=sco.lp={team:t.id,step:'run',running:true,stop:false,fails:[],pages:[],on:new Set(),teams:[],tOn:new Set(),sum:{events:0,teams:0,matches:0,vetoes:0,skipped:0,replays:0,checked:0,ok:0,flagged:0},prog:{i:0,n:3,label:'Starting…'}};lpDraw();
- const d=new Date();d.setMonth(d.getMonth()-12);const from=new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10),years=[];for(let y=+from.slice(0,4);y<=new Date().getFullYear();y++)years.push(String(y));
+// Reads one team's Liquipedia pages: its events, then every game in them
+async function lpTeamWork(l,t,from,rosters,tag=''){
+ const years=[];if(from)for(let y=+from.slice(0,4);y<=new Date().getFullYear();y++)years.push(String(y));
  let name=t.source_ids?.liquipedia||t.name,aliases=[],ok=false;
- await lpStep(l,`Finding ${t.name} on Liquipedia`,async()=>{try{const r=await lpCall({action:'find',part:'team',name,opp_id:t.id});name=r.name;aliases=r.aliases||[];ok=true}catch(e){throw new Error(/no page called/i.test(e.message)?`Liquipedia has no page called ${name}. Add this team's Liquipedia link in Settings.`:e.message)}},t.name);
- if(!ok)return lpReload(l);
+ await lpStep(l,tag+`Finding ${t.name} on Liquipedia`,async()=>{try{const r=await lpCall({action:'find',part:'team',name,opp_id:t.id});name=r.name;aliases=r.aliases||[];ok=true}catch(e){throw new Error(/no page called/i.test(e.message)?`Liquipedia has no page called ${name}. Add this team's Liquipedia link in Settings.`:e.message)}},t.name);
+ if(!ok||l.stop)return;
  const found=new Set();
- for(const part of ['results','matches'])await lpStep(l,'Finding every event they played in, about 30 seconds',async()=>{(await lpCall({action:'find',part,name})).titles.forEach(x=>found.add(x))},'Event list');
- const skip=/Showmatch|Global Standings|\/Results|\/Statistics|\/Transfers/i,recent=[...found].filter(x=>years.some(y=>new RegExp('\\b'+y+'\\b').test(x))&&!skip.test(x)).sort((a,b)=>a.localeCompare(b)),roots=recent.filter(x=>!recent.some(y=>y!==x&&x.startsWith(y+'/')));
+ for(const part of ['results','matches'])await lpStep(l,tag+'Finding every event they played in, about 30 seconds',async()=>{(await lpCall({action:'find',part,name})).titles.forEach(x=>found.add(x))},t.name+' event list');
+ const skip=/Showmatch|Global Standings|\/Results|\/Statistics|\/Transfers/i,recent=[...found].filter(x=>(!from||years.some(y=>x.includes(y)))&&!skip.test(x)).sort((a,b)=>a.localeCompare(b)),roots=recent.filter(x=>!recent.some(y=>y!==x&&x.startsWith(y+'/')));
  const pages=new Set(recent);l.prog.n+=roots.length;lpDraw();
- for(const x of roots)await lpStep(l,'Listing '+x,async()=>{(await lpCall({action:'resolve',url:'https://liquipedia.net/rainbowsix/'+encodeURI(x.replace(/ /g,'_'))})).pages.forEach(p=>{if(!skip.test(p.title))pages.add(p.title)})},x);
- l.sum.events=pages.size;l.prog.n+=pages.size;lpDraw();
- for(const p of pages)await lpStep(l,'Reading '+p,async()=>{const r=await lpCall({action:'pull',page:p,teams:[name,...aliases],canon:name,from});l.sum.matches+=r.matches;l.sum.vetoes+=r.vetoes;l.sum.skipped+=r.skipped},p);
- if(!(t.players||[]).length){l.prog.n++;await lpStep(l,'Getting roster, about 30 seconds',()=>lpCall({action:'roster',name}),'Roster')}
- if(!l.stop&&!l.sum.matches&&!l.sum.skipped)l.fails.push(`No games from the last 12 months were found for ${t.name} on Liquipedia.`);
+ for(const x of roots)await lpStep(l,tag+'Listing '+x,async()=>{(await lpCall({action:'resolve',url:'https://liquipedia.net/rainbowsix/'+encodeURI(x.replace(/ /g,'_'))})).pages.forEach(p=>{if(!skip.test(p.title))pages.add(p.title)})},x);
+ l.sum.events+=pages.size;l.prog.n+=pages.size;lpDraw();
+ const before=l.sum.matches+l.sum.skipped;
+ for(const p of pages)await lpStep(l,tag+'Reading '+p,async()=>{const r=await lpCall({action:'pull',page:p,teams:[name,...aliases],canon:name,from:from||undefined});l.sum.matches+=r.matches;l.sum.vetoes+=r.vetoes;l.sum.skipped+=r.skipped},p);
+ if(rosters&&!(t.players||[]).length){l.prog.n++;await lpStep(l,tag+'Getting roster, about 30 seconds',()=>lpCall({action:'roster',name}),t.name+' roster')}
+ if(!l.stop&&l.sum.matches+l.sum.skipped===before)l.fails.push(`No games in this date range were found for ${t.name} on Liquipedia.`);
+}
+const lpNewSum=()=>({events:0,teams:0,matches:0,vetoes:0,skipped:0,replays:0,checked:0,ok:0,flagged:0});
+async function lpRunTeam(t){
+ const l=sco.lp={team:t.id,step:'run',running:true,stop:false,fails:[],pages:[],on:new Set(),teams:[],tOn:new Set(),sum:lpNewSum(),prog:{i:0,n:3,label:'Starting…'}};lpDraw();
+ const d=new Date();d.setMonth(d.getMonth()-12);const from=new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+ await lpTeamWork(l,t,from,true);
+ if(!l.stop)await lpChecks(l);
+ await lpReload(l);
+}
+async function lpRunAll(){
+ const l=sco.lp,list=scShown().filter(t=>l.tOn.has(t.id)),from=lpFrom();
+ Object.assign(l,{allRun:true,step:'run',running:true,stop:false,fails:[],sum:lpNewSum(),prog:{i:0,n:list.length*3,label:'Starting…'}});lpDraw();
+ let n=0;for(const t of list){if(l.stop)break;n++;await lpTeamWork(l,t,from,l.rosters,`${n} of ${list.length}, ${t.name}: `)}
  if(!l.stop)await lpChecks(l);
  await lpReload(l);
 }
@@ -1965,6 +2012,9 @@ const A={
  lpback:()=>{sco.lp.step='link';render()},
  lpevents:()=>{sco.lp.step='events';render()},
  lprange:d=>{sco.lp.range=d.r;render()},
+ lpallopen:()=>{const list=scShown().map(t=>t.id);Object.assign(sco.lp,{step:'allteams',range:'12',teams:list,tOn:new Set(list),rosters:true});render()},
+ lpallback:()=>{Object.assign(sco.lp,{step:'link',teams:[],tOn:new Set()});render()},
+ lpallgo:()=>lpRunAll(),
  lpscan:()=>lpScan(),
  lpall:d=>{sco.lp.tOn=new Set(d.v==='1'?sco.lp.teams:[]);render()},
  lpgo:()=>lpRun(),
@@ -2029,7 +2079,7 @@ const A={
  scimpx:()=>{sco.imp=null;render()},
  scimpgo:async(d,b)=>{const p=sco.imp,L=LIB[p.kind],rows=p.rows.filter(x=>x.status==='new').map(x=>({...x.r,owner_team_id:sco.tid}));b.disabled=true;
   for(let i=0;i<rows.length;i+=500){const r=await sb.from(L.table).upsert(rows.slice(i,i+500),{onConflict:L.conflict,ignoreDuplicates:true});if(r.error){b.disabled=false;return toast(scErr(r.error))}}
-  const f=await sb.from(L.table).select('*').eq('owner_team_id',sco.tid);if(!f.error)sco[p.kind]=f.data;const msg='Added '+plural(rows.length,'row')+', skipped '+plural(p.dups,'duplicate')+(p.bad?' and '+plural(p.bad,'row')+' with errors':'');sco.imp=null;render();toast(msg)},
+  const f=await allRows(()=>sb.from(L.table).select('*').eq('owner_team_id',sco.tid).order('id'));if(!f.error)sco[p.kind]=f.data;const msg='Added '+plural(rows.length,'row')+', skipped '+plural(p.dups,'duplicate')+(p.bad?' and '+plural(p.bad,'row')+' with errors':'');sco.imp=null;render();toast(msg)},
  scvod:d=>{const r=sco.m.find(x=>x.id===d.id),g=$('#dlg');g.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:6px">VOD link</h2><p class="mu" style="margin-bottom:12px;overflow-wrap:anywhere">${esc(fmtD(r.match_date))}: ${esc(r.team)} vs ${esc(r.opponent)}, ${esc(r.map)}</p><label for="vodu">VOD link</label><input id="vodu" class="fi" inputmode="url" value="${esc(r.vod_link||'')}" placeholder="https://…"><div class="row" style="margin-top:16px;justify-content:flex-end"><button class="no" data-a="close">Cancel</button><button class="go" data-a="scvodsave" data-id="${r.id}">Save</button></div>`;g.showModal()},
  scvodsave:async(d,b)=>{const v=$('#vodu').value.trim();if(v&&!/^https?:\/\/\S+$/i.test(v))return toast('Paste a full link starting with https://, or leave it empty to remove the VOD');b.disabled=true;const r=await sb.from('scout_matches').update({vod_link:v}).eq('id',d.id).select().single();b.disabled=false;if(r.error)return toast(scErr(r.error));Object.assign(sco.m.find(x=>x.id===d.id),r.data);$('#dlg').close();render();toast('VOD saved')},
  scrow:d=>askDel('Delete this row?','This permanently removes it from your '+LIB[sco.kind].title+'.','scrowyes',d.id),
@@ -2056,11 +2106,12 @@ const A={
  amode:d=>{an.mode=d.m;render()},
  aclear:()=>{Object.assign(an,{from:'',to:'',map:''});render()},
  recpick:d=>$('#'+d.t).click(),
- recclear:()=>{const p=an.rp;an.rp=null;p?.abort?.();p?.w?.terminate();Object.assign(an,{recs:[],skipped:0,rc:{},rex:{},rpick:{},rerr:''});recPaint()},
+ recclear:()=>{const p=an.rp;an.rp=null;p?.abort?.();p?.w?.terminate();Object.assign(an,{recs:[],skipped:0,rc:{},rex:{},rpick:{},rerr:'',rlib:null,rsum:null});recPaint()},
  actclear:()=>{act.items=act.items.filter(x=>x.state==='run');actDraw()},
  acttog:()=>{act.closed=!act.closed;act.pinned=!act.closed;actDraw();actIdle()},
  actstop:d=>{act.items.find(x=>x.id===+d.id)?.stop?.()},
  recsave:(d,b)=>recSave(d.k,b),
+ recsaveall:()=>recSaveAll(),
  recname:d=>{delete recRc(d.k).names[d.i];recPaint()},
  recteam:d=>{if(d.v)an.rpick[d.n]=d.v;else delete an.rpick[d.n];recPaint()},
  phopen:d=>{pl={tid:cur.id,uid:d.id,names:{},players:[],fromRoster:true};if(d.p==='sch')return A.pmysch();openPlayer(d.p)},
