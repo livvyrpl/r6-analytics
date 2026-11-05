@@ -1597,12 +1597,12 @@ const lpCall=async b=>{
 const lpFrom=()=>{const n={3:3,6:6,12:12}[sco.lp.range];if(!n)return '';const d=new Date();d.setMonth(d.getMonth()-n);return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
 function lpB(){
  const l=sco.lp,prog=l.prog;
- const head=`<section class="cd" style="gap:12px;margin-bottom:16px"><div class="row wrap" style="justify-content:space-between"><div style="min-width:0;flex:1 1 220px"><h2 style="font-size:17px;font-weight:600">${l.team?'Pull everything':l.only?'Check matches':'Pull from Liquipedia'}</h2><p class="mu">${l.team?`Every event this team played in the last 12 months. Data saves under ${esc(cur.name)} only. This can take several minutes, so keep this tab open.`:l.only?'Compares your games with the official page and siege.gg. Problems appear on each opponent\'s Overview.':`Paste a league or event link. Data saves under ${esc(cur.name)} only.`}</p></div>${l.running?'':'<button class="no" data-a="lpclose">Close</button>'}</div>`;
+ const head=`<section class="cd" style="gap:12px;margin-bottom:16px"><div class="row wrap" style="justify-content:space-between"><div style="min-width:0;flex:1 1 220px"><h2 style="font-size:17px;font-weight:600">${l.team?'Pull everything':l.only?'Check matches':'Pull from Liquipedia'}</h2><p class="mu">${l.team?`Every event this team played in the last 12 months. Data saves under ${esc(cur.name)} only. This can take several minutes, so keep this tab open.`:l.only?'Compares every game that has a match link with the official page and siege.gg. Problems appear under Needs attention on this page.':`Paste a league or event link. Data saves under ${esc(cur.name)} only.`}</p></div>${l.running?'':'<button class="no" data-a="lpclose">Close</button>'}</div>`;
  if(l.step==='link')return `${head}<form data-s="lplink" class="row wrap" style="gap:8px"><input id="lpu" class="fi" style="flex:1 1 260px;min-width:0" inputmode="url" aria-label="Liquipedia link" placeholder="https://liquipedia.net/rainbowsix/North_America_League/2026/Stage_2" value="${esc(l.url||'')}"><button class="go" ${l.busy?'disabled':''}>${l.busy?'Checking…':'Check link'}</button></form>${l.err?`<p class="over">${esc(l.err)}</p>`:''}</section>`;
  if(l.step==='run'||l.step==='done'){
   const pct=prog.n?Math.round(prog.i/prog.n*100):0,s=l.sum;
   return `${head}${l.step==='run'?`<p>${esc(prog.label||'Starting…')}</p><div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Pull progress"><i style="width:${pct}%"></i></div><p class="mu">${prog.i} of ${prog.n} steps</p><div><button class="no" data-a="lpstop" ${l.stop?'disabled':''}>${l.stop?'Stopping…':'Cancel'}</button></div>`:`<p style="font-weight:600">${l.stop?(l.only?'Check cancelled.':'Pull cancelled.')+' Anything already saved stays.':l.only?'Check finished.':'Pull finished.'}</p>`}
-  <div class="tiles">${[...(l.team?[['Events read',s.events],['Matches added',s.matches],['Vetoes added',s.vetoes],['Skipped duplicates',s.skipped]]:l.only?[]:[['Teams added',s.teams],['Matches added',s.matches],['Vetoes added',s.vetoes],['Skipped duplicates',s.skipped]]),['Games checked',s.checked],['Needs attention',s.flagged],['Replay links',s.replays],['Errors',l.fails.length]].map(x=>`<div class="stat"><span class="mu">${x[0]}</span><b>${x[1]}</b></div>`).join('')}</div>
+  <div class="tiles">${[...(l.team?[['Events read',s.events],['Matches added',s.matches],['Vetoes added',s.vetoes],['Skipped duplicates',s.skipped]]:l.only?[]:[['Teams added',s.teams],['Matches added',s.matches],['Vetoes added',s.vetoes],['Skipped duplicates',s.skipped]]),['Games checked',s.checked],...(l.only?[['No link to check',s.nolink||0]]:[]),['Needs attention',s.flagged],['Replay links',s.replays],['Errors',l.fails.length]].map(x=>`<div class="stat"><span class="mu">${x[0]}</span><b>${x[1]}</b></div>`).join('')}</div>
   ${l.step==='done'&&oppIssues(hubRows()).length?`<details><summary style="cursor:pointer;font-weight:600">Games that need attention (${oppIssues(hubRows()).length}). Click one to fix it.</summary><div style="max-height:280px;overflow-y:auto;margin-top:6px">${issueList(oppIssues(hubRows()))}</div></details>`:''}${l.fails.length?`<div><span class="lb">What failed</span>${l.fails.map(lpFail).join('')}</div>`:''}</section>`;
  }
  const chk=(c,id,on,lab,sub='')=>`<label class="row" style="gap:8px;color:var(--tx);margin:0;padding:3px 0;font-size:14px"><input type="checkbox" data-c="${c}" data-id="${esc(id)}"${on?' checked':''}><span style="overflow-wrap:anywhere;min-width:0">${esc(lab)}${sub?` <span class="mu">${esc(sub)}</span>`:''}</span></label>`;
@@ -1779,10 +1779,11 @@ async function recheck(r){
  try{await lpCall({action:'check',items:[{r6:r.r6esports_id,gg:r.siegegg_id}]});const q=await sb.from('scout_matches').select('*').eq('id',r.id).single(),o=sco?.m?.find(x=>x.id===r.id);if(q.data&&o){Object.assign(o,q.data);if(view==='sc'&&!sdirty&&['match','opp'].includes(sco.page))render()}}catch{}
 }
 const lpStep=async(l,label,fn,what)=>{if(l.stop)return;l.prog.label=label;lpDraw();try{await fn()}catch(e){l.fails.push(what+': '+e.message)}l.prog.i++;lpDraw()};
-async function lpChecks(l){
- const q=await sb.from('scout_matches').select('r6esports_id,siegegg_id').eq('owner_team_id',sco.tid).in('check_status',['','unavailable','mismatch']);
+// After a pull only unresolved games are checked. The Check matches button checks every game that has a link.
+async function lpChecks(l,every){
+ const q=await allRows(()=>{const b=sb.from('scout_matches').select('r6esports_id,siegegg_id').eq('owner_team_id',sco.tid);return(every?b:b.in('check_status',['','unavailable','mismatch'])).order('id')});
  if(q.error){l.fails.push('Match check: '+scErr(q.error));return}
- const seen=new Map();(q.data||[]).forEach(r=>{const k=r.r6esports_id||r.siegegg_id;if(k&&!seen.has(k))seen.set(k,{r6:r.r6esports_id,gg:r.siegegg_id})});
+ const seen=new Map();(q.data||[]).forEach(r=>{const k=r.r6esports_id||r.siegegg_id;if(!k){l.sum.nolink=(l.sum.nolink||0)+1;return}if(!seen.has(k))seen.set(k,{r6:r.r6esports_id,gg:r.siegegg_id})});
  const items=[...seen.values()];l.prog.n+=Math.ceil(items.length/3);lpDraw();
  for(let i=0;i<items.length;i+=3){const part=items.slice(i,i+3);await lpStep(l,`Checking matches, ${Math.min(i+3,items.length)} of ${items.length}`,async()=>{const r=await lpCall({action:'check',items:part});l.sum.checked+=r.checked;l.sum.ok+=r.ok;l.sum.flagged+=r.mismatch;l.sum.replays+=r.replays;r.errors.forEach(x=>l.fails.push(x))},'Match check')}
 }
@@ -1811,8 +1812,8 @@ async function lpRunTeam(t){
  await lpReload(l);
 }
 async function lpCheckOnly(){
- A.lpopen();const l=sco.lp;Object.assign(l,{only:true,step:'run',running:true,stop:false,fails:[],sum:{checked:0,ok:0,flagged:0,replays:0},prog:{i:0,n:0,label:'Finding games to check…'}});lpDraw();
- await lpChecks(l);await lpReload(l);
+ A.lpopen();const l=sco.lp;Object.assign(l,{only:true,step:'run',running:true,stop:false,fails:[],sum:{checked:0,ok:0,flagged:0,replays:0,nolink:0},prog:{i:0,n:0,label:'Finding games to check…'}});lpDraw();
+ await lpChecks(l,true);await lpReload(l);
 }
 // The same team under a different spelling counts as one team
 const teamKeys=t=>[t.name,...(t.aliases||[])].map(squash).filter(Boolean);
