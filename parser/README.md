@@ -17,7 +17,7 @@ You don't need to install anything. Any change inside `parser/` that reaches the
 
 To rebuild without changing anything, go to the **Actions** tab, choose **Build replay parser**, then **Run workflow**.
 
-Don't edit the two generated files in `parser-build/` by hand. The next build replaces them.
+Don't edit `parser.wasm` or `wasm_exec.js` in `parser-build/` by hand. The next build replaces them. `parser-worker.js` and `check.html` in that folder are written by hand and the build leaves them alone.
 
 ## Adding a new operator
 
@@ -55,3 +55,5 @@ Operators are the easy case. If an update changes the replay format, every file 
 `parseReplay` returns an error message rather than throwing, including for damaged files. The one exception is the browser running out of memory, which Go can't catch and which stops the program. The calling page must wrap the call in `try/catch` and load a fresh copy of the parser if it fails. Memory used by the parser is not given back to the browser until that copy is discarded.
 
 `score` for each player is the running total for the match, not the points from that round. Kills, deaths, assists and headshots are per round.
+
+The Import page in `index.html` runs the parser through `parser-build/parser-worker.js`, one file at a time, and starts a fresh copy for each match.

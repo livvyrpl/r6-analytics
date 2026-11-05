@@ -21,20 +21,21 @@ import (
 // Result is the JSON returned for one .rec file. When OK is false only Error
 // and Warnings are meaningful.
 type Result struct {
-	OK           bool     `json:"ok"`
-	Error        string   `json:"error,omitempty"`
-	GameVersion  string   `json:"gameVersion,omitempty"`
-	MatchID      string   `json:"matchId,omitempty"`
-	Timestamp    string   `json:"timestamp,omitempty"`
-	Map          string   `json:"map,omitempty"`
-	RoundNumber  int      `json:"roundNumber,omitempty"` // 1 is the first round, matching R01 in the file name
-	Teams        []Team   `json:"teams,omitempty"`
-	WinningTeam  *int     `json:"winningTeam"` // 0 or 1, null if the replay does not say
-	WinCondition string   `json:"winCondition,omitempty"`
-	Site         string   `json:"site"` // empty if the replay does not say
-	Players      []Player `json:"players,omitempty"`
-	Kills        []Kill   `json:"kills,omitempty"`
-	Warnings     []string `json:"warnings"`
+	OK           bool        `json:"ok"`
+	Error        string      `json:"error,omitempty"`
+	GameVersion  string      `json:"gameVersion,omitempty"`
+	MatchID      string      `json:"matchId,omitempty"`
+	Timestamp    string      `json:"timestamp,omitempty"`
+	Map          string      `json:"map,omitempty"`
+	RoundNumber  int         `json:"roundNumber,omitempty"` // 1 is the first round, matching R01 in the file name
+	Teams        []Team      `json:"teams,omitempty"`
+	WinningTeam  *int        `json:"winningTeam"` // 0 or 1, null if the replay does not say
+	WinCondition string      `json:"winCondition,omitempty"`
+	Site         string      `json:"site"` // empty if the replay does not say
+	Players      []Player    `json:"players,omitempty"`
+	Kills        []Kill      `json:"kills,omitempty"`
+	Objectives   []Objective `json:"objectives,omitempty"`
+	Warnings     []string    `json:"warnings"`
 }
 
 // Team is one side in the round. Score is the match score after this round,
@@ -70,6 +71,14 @@ type Kill struct {
 	Time        string  `json:"time"`
 	TimeSeconds float64 `json:"timeSeconds"`
 	Headshot    bool    `json:"headshot"`
+}
+
+// Objective is a completed plant or defuser disable. Player can be empty when
+// the replay does not say who did it.
+type Objective struct {
+	Type   string `json:"type"` // "plant" or "disable"
+	Player string `json:"player"`
+	Time   string `json:"time"`
 }
 
 // parseReplay turns the bytes of one .rec file into JSON. It never panics.
@@ -139,7 +148,7 @@ func parse(data []byte, warnings *warningCollector) (Result, error) {
 		})
 	}
 
-	res.Players, res.Kills = players(r, roles, warnings)
+	res.Players, res.Kills, res.Objectives = players(r, roles, warnings)
 	if len(res.Players) == 0 {
 		warnings.add("No players were found in this replay.")
 	}
@@ -201,7 +210,7 @@ func teamRoles(h dissect.Header, warnings *warningCollector) [2]string {
 
 // players builds the scoreboard and kill list. It counts kills itself because
 // the fork's PlayerStats credits kills by an unrecognised name to the first player.
-func players(r *dissect.Reader, roles [2]string, warnings *warningCollector) ([]Player, []Kill) {
+func players(r *dissect.Reader, roles [2]string, warnings *warningCollector) ([]Player, []Kill, []Objective) {
 	list := make([]Player, 0, len(r.Header.Players))
 	index := make(map[string]int, len(r.Header.Players))
 	for i, p := range r.Header.Players {
@@ -224,6 +233,7 @@ func players(r *dissect.Reader, roles [2]string, warnings *warningCollector) ([]
 	}
 
 	kills := make([]Kill, 0)
+	objectives := make([]Objective, 0)
 	died := make(map[int]bool)
 	find := func(username string) (int, bool) {
 		i, ok := index[username]
@@ -256,12 +266,16 @@ func players(r *dissect.Reader, roles [2]string, warnings *warningCollector) ([]
 			if i, ok := find(u.Username); ok {
 				died[i] = true
 			}
+		case dissect.DefuserPlantComplete:
+			objectives = append(objectives, Objective{Type: "plant", Player: u.Username, Time: u.Time})
+		case dissect.DefuserDisableComplete:
+			objectives = append(objectives, Objective{Type: "disable", Player: u.Username, Time: u.Time})
 		}
 	}
 	for i := range died {
 		list[i].Deaths = 1
 	}
-	return list, kills
+	return list, kills, objectives
 }
 
 func mapName(m dissect.Map, warnings *warningCollector) string {
