@@ -74,6 +74,8 @@ body.upd main{padding-bottom:88px}body.upd #toast{bottom:72px}
 .opi{display:inline-block;width:26px;height:26px;object-fit:contain;flex:none;vertical-align:middle}.opi.gone{visibility:hidden}.opr{display:flex;align-items:center;gap:8px;min-width:0}
 .mg{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:12px}
 footer{max-width:1180px;margin:0 auto;padding:0 24px 24px;font-size:11.5px;color:var(--mu)}
+.stv{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px;align-items:start}.stc{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.stc.one{grid-template-columns:minmax(0,1fr)}@media(max-width:640px){.stc{grid-template-columns:minmax(0,1fr)}}.stf{display:block;width:100%;aspect-ratio:16/10;min-height:220px;border:1px solid var(--bd);border-radius:12px;background:var(--cd)}
+@media(max-width:900px){.stv{grid-template-columns:minmax(0,1fr)}}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -87,13 +89,13 @@ const R={coach:'Coach',assistant_coach:'Assistant Coach',analyst:'Analyst',playe
 const REG=['North America','South America','Europe','Asia Pacific'],COL=['#e07cc0','#7cc0e0','#e0c07c','#9ae07c','#c07ce0','#e07c7c','#7ce0c0','#ece8f0'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=s=>document.querySelector(s),ico=p=>`<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
-let me=null,teams=[],mem={},allMem=[],profs=[],invs=[],cur=null,view='dash',viewing=false,fm=null,sel=null,mode='in',scr=null,sch=null,pl=null,ros=null,an=null,sdirty=false;
+let me=null,teams=[],mem={},allMem=[],profs=[],invs=[],cur=null,view='dash',viewing=false,fm=null,sel=null,mode='in',scr=null,sch=null,pl=null,ros=null,an=null,stra=null,cov=null,sdirty=false;
 const staff=()=>me&&['owner','admin'].includes(me.site_role),owner=()=>me&&me.site_role==='owner';
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3500)}
 const tile=(t,s=36)=>{const c=esc(t?.color||'#e07cc0');return `<span class="lt" style="--s:${s}px;color:${c};border-color:${c};background:${c}22">${t?.logo_url?`<img src="${esc(t.logo_url)}" alt="">`:esc((t?.name||'?').slice(0,2).toUpperCase())}</span>`};
 async function load(){
  const{data:{session}}=await sb.auth.getSession();
- if(!session){me=null;view='dash';viewing=false;scr=null;sch=null;pl=null;ros=null;an=null;sdirty=false;return render()}
+ if(!session){me=null;view='dash';viewing=false;scr=null;sch=null;pl=null;ros=null;an=null;stra=null;cov=null;sdirty=false;return render()}
  const uid=session.user.id;
  me=(await sb.from('profiles').select('*').eq('id',uid).maybeSingle()).data;
  if(!me||me.suspended)return render();
@@ -124,7 +126,7 @@ function render(){
  ${mine.length>1?`<select class="tb" data-c="sw" aria-label="Switch team">${mine.map(t=>`<option value="${t.id}"${cur&&t.id===cur.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`:''}
  <button class="tb" data-a="go" data-v="dash">Dashboard</button><button class="tb" data-a="settings">Settings</button><button class="tb" data-a="profile">Profile</button></header>
  ${viewing&&view==='dash'&&cur?`<div class="bar"><span>Viewing ${esc(cur.name)} as ${me.site_role}</span><button class="no" data-a="go" data-v="teamsV">Back to teams</button></div>`:''}
- <main>${({dash:dashV,admin:adminV,teamsV,users:usersV,create:createV,scrims:scrimsV,schedule:scheduleV,player:playerV,roster:rosterV,analyst:analystV})[view]()}</main><footer>Map and operator images © Ubisoft. Liv Analytics is not affiliated with Ubisoft.</footer>`;
+ <main>${({dash:dashV,admin:adminV,teamsV,users:usersV,create:createV,scrims:scrimsV,schedule:scheduleV,player:playerV,roster:rosterV,analyst:analystV,strats:stratsV,cover:coverV})[view]()}</main><footer>Map and operator images © Ubisoft. Liv Analytics is not affiliated with Ubisoft.</footer>`;
  if(view==='analyst')drawCharts();
 }
 function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analytics"><form class="cd" data-s="auth">
@@ -134,9 +136,9 @@ function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analyt
  <button type="button" class="no" style="border:0" data-a="mode">${mode==='in'?'Invited? Create your account':'I already have an account'}</button></form>
  <p class="mu">Access is by invitation. Ask your team owner to add you.</p></div>`}
 const HUBS=[['Scouting',['coach','assistant_coach','analyst'],'<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>',[['Scouting','operator bans by opponent, from scrims','scout'],['Match Library','all teams, every game'],['Round Library','all teams, every round'],['Vetoes','bans and picks per team'],['Export to Sheets','pick league and teams, then copy']]],
-['Coach Deck',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site'],['Player Hub','stats, journals, off days for every player','phub']]],
-['Analyst Deck',['analyst','coach','assistant_coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary','aover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Stats','your team and opponents','astats'],['Import','replays and scrims','aimport']]],
-['Player Deck',['player'],'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>',[['Overview','your week at a glance','pover'],['My Schedule','team schedule, add off days','pmysch'],['Journal','goals with deadlines','pjournal'],['My Stats','KOST, K/D, operators','pstats']]]];
+['Coach Deck',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches','cover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Player Hub','stats, journals, off days for every player','phub']]],
+['Analyst Deck',['analyst','coach','assistant_coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary','aover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Stats','your team and opponents','astats'],['Import','replays and scrims','aimport']]],
+['Player Deck',['player'],'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>',[['Overview','your week at a glance','pover'],['My Schedule','team schedule, add off days','pmysch'],['Journal','goals with deadlines','pjournal'],['My Stats','KOST, K/D, operators','pstats'],['Strats','open slides in the site','strats']]]];
 function dashV(){
  if(!cur)return `<div class="cd"><h2 class="serif" style="font-size:28px">No team yet</h2><p class="mu">${staff()?'Create a team in Admin, or open one from the Teams list.':'Ask the owner to add you to a team.'}</p></div>`;
  const roles=staff()?ALL:(mem[cur.id]||[]);
@@ -659,6 +661,112 @@ async function saveMapRows(sid,tid,rows,prev,scrim){
 const mapPick=vals=>`<div id="mpk" style="display:flex;flex-direction:column;gap:8px">${(vals.length?vals:['']).map(mapPickRow).join('')}</div><button type="button" class="no" style="height:34px;margin-top:8px" data-a="mpadd">Add map</button>`;
 const mapPickRow=v=>`<div class="row mps" style="gap:8px"><select class="fi" aria-label="Map">${mapOptions(v)}</select><button type="button" class="no" data-a="mprm">Remove</button></div>`;
 const readPick=()=>{const out=[];document.querySelectorAll('.mps select').forEach(s=>{if(s.value&&!out.some(x=>norm(x)===norm(s.value)))out.push(s.value)});return out};
+const SIDE={attack:'Attack',defense:'Defense'};
+const stErr=e=>/schema cache|does not exist/i.test(e.message)?'The strats database tables are not set up yet. Paste stage7.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
+const slidesInfo=u=>{const m=/^https:\/\/docs\.google\.com\/presentation\/(?:u\/\d+\/)?d\/(e\/)?([A-Za-z0-9_-]{10,})(?:[/?#]|$)/.exec(String(u||'').trim().replace(/^http:\/\//i,'https://').replace(/^docs\.google/i,'https://docs.google'));return m?{pub:!!m[1],id:m[2]}:null};
+const slidesPath=i=>`https://docs.google.com/presentation/d/${i.pub?'e/':''}${i.id}`;
+const slidesNorm=u=>{const i=slidesInfo(u);return i?slidesPath(i)+(i.pub?'/pub':'/edit'):null};
+async function openStrats(){
+ view='strats';
+ stra={tid:cur.id,st:'list',list:null,err:'',id:null,map:'',side:'',q:'',embed:''};
+ render();
+ if(!canSeeSch())return;
+ const s=stra,r=await sb.from('strats').select('*').eq('team_id',s.tid);
+ if(stra!==s)return;
+ s.err=r.error?stErr(r.error):'';s.list=(r.data||[]).sort((a,b)=>a.title.localeCompare(b.title));
+ if(view==='strats')render();
+}
+const stratMaps=()=>{const out=MAP_POOL.map(m=>m[0]);(stra.list||[]).forEach(x=>{if(!out.some(n=>norm(n)===norm(x.map)))out.push(x.map)});return out};
+function stratCards(){
+ const q=norm(stra.q),filtering=!!(q||stra.map||stra.side),can=canEditSch();
+ const rows=stra.list.filter(x=>(!stra.map||norm(x.map)===norm(stra.map))&&(!stra.side||x.side===stra.side)&&(!q||norm(x.title+' '+x.map+' '+x.notes).includes(q)));
+ if(filtering&&!rows.length)return '<div class="cd"><p class="mu">No strats match these filters.</p></div>';
+ const sides=stra.side?[stra.side]:['attack','defense'];
+ const col=(m,side)=>{const l=rows.filter(x=>norm(x.map)===norm(m)&&x.side===side);return `<div style="min-width:0;display:flex;flex-direction:column;gap:8px"><div class="row" style="justify-content:space-between;min-height:30px"><h3 style="font-size:13px;font-weight:600;color:var(--pk-lt)">${SIDE[side]}</h3>${can?`<button class="no" style="height:30px;padding:0 12px" data-a="stadd" data-map="${esc(m)}" data-side="${side}" aria-label="Add ${SIDE[side].toLowerCase()} strat on ${esc(m)}">Add</button>`:''}</div>${l.length?l.map(x=>`<button class="c" style="padding:12px" data-a="stview" data-id="${x.id}"><b style="overflow-wrap:anywhere;min-width:0">${esc(x.title)}</b></button>`).join(''):`<p class="mu">No ${SIDE[side].toLowerCase()} strats yet.</p>`}</div>`};
+ const maps=stratMaps().filter(m=>(!stra.map||norm(m)===norm(stra.map))&&(!filtering||rows.some(x=>norm(x.map)===norm(m))));
+ return `<div style="display:flex;flex-direction:column;gap:16px">${maps.map(m=>`<section class="cd" style="gap:12px" aria-label="${esc(m)}"><div class="row" style="gap:12px">${mapPhoto(m,'t')}<h2 style="font-size:17px;font-weight:600;min-width:0;overflow-wrap:anywhere">${esc(m)}</h2></div><div class="stc${sides.length===1?' one':''}">${sides.map(sd=>col(m,sd)).join('')}</div></section>`).join('')}</div>`;
+}
+function stratsV(){
+ if(!cur||!stra||stra.tid!==cur.id)return `<div class="cd"><p>Open Strats from a team's dashboard.</p><div>${backDash}</div></div>`;
+ if(!canSeeSch())return `<div class="cd"><p>Strats are for members of this team.</p><div>${backDash}</div></div>`;
+ if(stra.st==='form'&&canEditSch())return stratForm();
+ const x=stra.st==='view'&&(stra.list||[]).find(y=>y.id===stra.id);
+ if(x)return stratView(x);
+ const maps=stratMaps();
+ const filters=`<div class="row wrap" style="gap:12px;align-items:flex-end;margin-bottom:16px"><div style="flex:2 1 200px;min-width:0"><label for="stq">Search</label><input id="stq" class="fi" type="search" style="height:38px" data-c="stq" value="${esc(stra.q)}" placeholder="Title, map or notes"></div>
+ <div style="flex:1 1 130px;min-width:130px"><label for="stm2">Map</label><select id="stm2" class="fi" style="height:38px" data-c="stf" data-k="map"><option value="">All maps</option>${maps.map(m=>`<option${m===stra.map?' selected':''}>${esc(m)}</option>`).join('')}</select></div>
+ <div style="flex:1 1 130px;min-width:130px"><label for="sts2">Side</label><select id="sts2" class="fi" style="height:38px" data-c="stf" data-k="side"><option value="">Both sides</option>${Object.keys(SIDE).map(k=>`<option value="${k}"${k===stra.side?' selected':''}>${SIDE[k]}</option>`).join('')}</select></div></div>`;
+ const body=!stra.list?'<p class="mu">Loading strats…</p>':stra.err?`<div class="cd"><p>${esc(stra.err)}</p></div>`:`${filters}<div id="stl">${stratCards()}</div>`;
+ return `<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px">Strats</h1><p class="mu">${esc(cur.name)}</p></div><div class="row wrap">${backDash}${stra.list&&!stra.err&&canEditSch()?'<button class="go" data-a="stadd">Add strat</button>':''}</div></div>${body}`;
+}
+function stratForm(){
+ const x=stra.id?stra.list.find(y=>y.id===stra.id):null,half='flex:1;min-width:180px';
+ return `<div class="row wrap" style="margin-bottom:20px"><h1 class="serif" style="font-size:34px">${x?'Edit strat':'Add strat'}</h1></div>
+ <form class="cd" data-s="strat" data-dirty style="max-width:720px">
+ <div><label for="stt">Title</label><input id="stt" class="fi" required maxlength="120" value="${esc(x?.title||'')}" placeholder="e.g. Default B site hold"></div>
+ <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="stm">Map</label><select id="stm" class="fi" required>${mapOptions(x?.map||(!x&&stra.pre?.map)||'')}</select></div>
+ <div style="${half}"><label for="sts">Side</label><select id="sts" class="fi" required><option value="">Choose a side</option>${Object.keys(SIDE).map(k=>`<option value="${k}"${k===(x?.side||(!x&&stra.pre?.side))?' selected':''}>${SIDE[k]}</option>`).join('')}</select></div></div>
+ <div><label for="stu">Google Slides link</label><input id="stu" class="fi" required inputmode="url" value="${esc(x?.slides_url||'')}" placeholder="https://docs.google.com/presentation/d/…"></div>
+ <div><label for="stn">Notes</label><textarea id="stn" class="fi ta">${esc(x?.notes||'')}</textarea></div>
+ <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="stcancel">Cancel</button><button class="go">${x?'Save changes':'Add strat'}</button></div></form>`;
+}
+function stratView(x){
+ const i=slidesInfo(x.slides_url),can=canEditSch();
+ const deck=!i||stra.embed==='fail'?`<div class="cd"><p>This deck isn’t shared. In Google Slides, click Share and set it to anyone with the link can view.</p>${i?'<div><button class="no" data-a="stshow">Try showing it anyway</button></div>':''}</div>`:stra.embed==='ok'?`<iframe class="stf" src="${esc(slidesPath(i))}/embed?start=false&amp;loop=false&amp;delayms=3000" title="${esc(x.title)} slides" allowfullscreen></iframe>`:'<div class="cd"><p class="mu">Loading deck…</p></div>';
+ return `<div class="row wrap" style="margin-bottom:16px"><div style="flex:1 1 240px;min-width:0"><h1 class="serif" style="font-size:34px;overflow-wrap:anywhere">${esc(x.title)}</h1><p class="mu" style="overflow-wrap:anywhere">${SIDE[x.side]} · ${esc(x.map)}</p></div><div class="row wrap"><button class="no" data-a="stback">Back to strats</button>${i?`<a class="go" style="display:inline-flex;align-items:center;text-decoration:none" href="${esc(slidesPath(i))}/${i.pub?'pub':'edit'}" target="_blank" rel="noopener noreferrer">Open in Google Slides</a>`:''}${can?'<button class="no" data-a="stedit">Edit</button><button class="no" data-a="stdel">Delete</button>':''}</div></div>
+ <div class="stv"><div style="min-width:0">${deck}</div><aside class="cd" style="gap:8px" aria-label="Notes"><h2 style="font-size:15px;font-weight:600">Notes</h2>${x.notes?`<div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(x.notes)}</div>`:'<p class="mu">No notes.</p>'}</aside></div>`;
+}
+function probeDeck(x){
+ const i=slidesInfo(x.slides_url);
+ if(!i)return;
+ if(i.pub){stra.embed='ok';return}
+ const s=stra,id=x.id,set=v=>{if(stra===s&&s.id===id&&s.embed==='checking'&&view==='strats'){s.embed=v;render()}};
+ s.embed='checking';
+ const img=new Image();img.onload=()=>set('ok');img.onerror=()=>set('fail');img.src=`https://drive.google.com/thumbnail?id=${encodeURIComponent(i.id)}&sz=w200`;
+ setTimeout(()=>set('ok'),9000);
+}
+async function saveStrat(form){
+ const btn=form.querySelector('.go'),row={title:$('#stt').value.trim(),map:$('#stm').value,side:$('#sts').value,slides_url:slidesNorm($('#stu').value),notes:$('#stn').value};
+ if(!row.title||!row.map||!row.side)return toast('Enter a title, map and side');
+ if(!row.slides_url)return toast('Paste a Google Slides link, like https://docs.google.com/presentation/d/…');
+ btn.disabled=true;
+ const r=stra.id?await sb.from('strats').update(row).eq('id',stra.id).select().single():await sb.from('strats').insert({...row,team_id:stra.tid}).select().single();
+ btn.disabled=false;
+ if(r.error)return toast(stErr(r.error));
+ sdirty=false;
+ const i=stra.list.findIndex(y=>y.id===r.data.id);if(i>=0)stra.list[i]=r.data;else stra.list.push(r.data);
+ stra.list.sort((a,b)=>a.title.localeCompare(b.title));
+ A.stview({id:r.data.id});toast('Strat saved');
+}
+async function openCover(){
+ view='cover';cov={tid:cur.id,ready:false};render();
+ if(!canEditSch())return;
+ const s=cov,tid=s.tid,ids=[...new Set(allMem.filter(m=>m.team_id===tid&&m.roles.includes('player')).map(m=>m.user_id))],none={data:[]};
+ const[e,c,g,t,o,p]=await Promise.all([sb.from('schedule_entries').select('*').eq('team_id',tid),sb.from('scrims').select('*').eq('team_id',tid),sb.from('journal_goals').select('*').eq('team_id',tid),sb.from('strats').select('*').eq('team_id',tid),sb.from('strat_opens').select('*').eq('team_id',tid).eq('user_id',me.id),ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none]);
+ if(cov!==s)return;
+ const nm=Object.fromEntries((p.data||[]).map(x=>[x.id,x.display_name||x.email])),td=today(),end=addD(td,6),ev=e.data||[];
+ Object.assign(s,{ready:true,evErr:e.error?schE(e.error):'',scErr:c.error?sErr(c.error):'',gErr:g.error?pErr(g.error):'',stErr:t.error||o.error?stErr(t.error||o.error):''});
+ s.next=ev.filter(x=>{const d=schLocal(x).d;return d>=td&&d<=end}).sort((a,b)=>schKey(a).localeCompare(schKey(b)));
+ s.off=ev.filter(x=>x.kind==='off_day'&&schLocal(x).d>=td).sort((a,b)=>schKey(a).localeCompare(schKey(b))).slice(0,8).map(x=>({d:schLocal(x).d,title:x.title,who:x.user_id?nm[x.user_id]||'Team member':'Whole team'}));
+ s.scr=(c.data||[]).filter(x=>x.scrim_date<=td).sort((a,b)=>b.scrim_date.localeCompare(a.scrim_date)||String(b.created_at).localeCompare(String(a.created_at))).slice(0,5);
+ s.pl=ids.map(i=>{const gs=(g.data||[]).filter(x=>x.user_id===i&&x.status!=='done');return{id:i,name:nm[i]||'Player',n:gs.length,late:gs.filter(x=>x.deadline&&daysTo(x.deadline)<0).length}}).sort((a,b)=>a.name.localeCompare(b.name));
+ s.rec=(o.data||[]).sort((a,b)=>String(b.opened_at).localeCompare(String(a.opened_at))).map(x=>(t.data||[]).find(y=>y.id===x.strat_id)).filter(Boolean).slice(0,5);
+ if(view==='cover')render();
+}
+function coverV(){
+ if(!cur||!cov||cov.tid!==cur.id)return `<div class="cd"><p>Open the Overview from a team's dashboard.</p><div>${backDash}</div></div>`;
+ if(!canEditSch())return `<div class="cd"><p>This page is for this team's coaches and assistant coaches.</p><div>${backDash}</div></div>`;
+ const card=(title,act,body,err)=>`<section class="cd" style="gap:8px"><div class="row" style="justify-content:space-between"><h2 style="font-size:15px;font-weight:600">${title}</h2><button class="no" style="height:30px;padding:0 12px;flex:none" data-a="${act}" aria-label="View all: ${title}">View all</button></div>${err?`<p>${esc(err)}</p>`:body}</section>`;
+ const head=`<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px">Overview</h1><p class="mu">${esc(cur.name)}</p></div>${backDash}</div>`;
+ if(!cov.ready)return head+'<p class="mu">Loading…</p>';
+ return head+`<div class="ov">
+ ${card('Next 7 days','schedule',cov.next.length?cov.next.map(e=>upRow(e,'schedule')).join(''):'<p class="mu">Nothing scheduled in the next 7 days.</p>',cov.evErr)}
+ ${card('Last 5 scrims','scrims',cov.scr.length?cov.scr.map(s=>`<button class="u" data-a="asopen" data-id="${s.id}" style="padding:10px;justify-content:space-between"><span style="min-width:0"><b style="display:block;font-weight:600;overflow-wrap:anywhere">vs ${esc(s.opponent)}</b><span class="mu" style="font-size:12.5px">${esc(fmtD(s.scrim_date))}</span></span><span class="badge" style="flex:none">${esc(s.score||'No score')}</span></button>`).join(''):'<p class="mu">No scrims logged yet.</p>',cov.scErr)}
+ ${card('Player goals','phub',cov.pl.length?cov.pl.map(p=>`<button class="u" data-a="phopen" data-id="${p.id}" data-p="journal" style="padding:8px 10px;justify-content:space-between"><b style="font-weight:600;min-width:0;overflow-wrap:anywhere">${esc(p.name)}</b><span style="flex:none;font-variant-numeric:tabular-nums">${plural(p.n,'active goal')}${p.late?` · <span class="over"><span aria-hidden="true">⚠</span> ${p.late} overdue</span>`:''}</span></button>`).join(''):'<p class="mu">This team has no one with the Player role yet.</p>',cov.gErr)}
+ ${card('Upcoming off days','schedule',cov.off.length?cov.off.map(o=>`<div style="padding:6px 0"><b style="display:block;font-weight:600;overflow-wrap:anywhere">${esc(o.title)}</b><span class="mu" style="font-size:12.5px;overflow-wrap:anywhere">${esc(o.who)} · ${esc(dLabel(o.d,{weekday:'short',month:'short',day:'numeric'}))}</span></div>`).join(''):'<p class="mu">No off days coming up.</p>',cov.evErr)}
+ ${card('Recently opened strats','strats',cov.rec.length?cov.rec.map(x=>`<button class="u" data-a="stropen" data-id="${x.id}" style="padding:8px 10px">${mapPhoto(x.map,'t')}<span style="min-width:0"><b style="display:block;font-weight:600;overflow-wrap:anywhere">${esc(x.title)}</b><span class="mu" style="font-size:12.5px;overflow-wrap:anywhere">${SIDE[x.side]} · ${esc(x.map)}</span></span></button>`).join(''):'<p class="mu">Strats you open will show here.</p>',cov.stErr)}
+ </div>`;
+}
 const adminCards=[['Manage Users','find people, assign teams and roles','users','<circle cx="9" cy="9" r="3"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5"/>'],['Teams','all teams, open any dashboard','teamsV','<path d="M4 11l8-7 8 7v9H4z"/>'],['Create team','name, logo, color, players','create','<path d="M12 5v14M5 12h14"/>'],['Roles and Permissions','','',''],['Invites','','',''],['Data Pulls','','',''],['Activity Log','','',''],['Site Settings','owner only','',''],['Backups and Export','owner only','','']];
 function adminV(){return `<div class="row wrap" style="margin-bottom:24px"><div><h1 class="serif" style="font-size:34px">Admin panel</h1><p class="mu">Owner and admins only.</p></div></div><div class="g">${adminCards.map(c=>`<button class="c" data-a="${c[2]?'go':'soon'}" data-v="${c[2]}"><span class="ic">${ico(c[3]||'<circle cx="12" cy="12" r="3"/>')}</span><span><b>${c[0]}</b><small>${c[1]}</small></span>${c[2]?'':'<span class="soon">Soon</span>'}</button>`).join('')}</div>`}
 const srch=ph=>`<input class="fi" type="search" data-c="filter" aria-label="${ph}" placeholder="${ph}">`;
@@ -702,6 +810,17 @@ const A={
  pmysch:()=>openSch(pl?.tid===cur.id&&pl.uid?pl.uid:isPl()?me.id:'',true),
  pover:()=>openPlayer('over'),pjournal:()=>openPlayer('journal'),pstats:()=>openPlayer('stats'),pnotes:()=>openPlayer('notes'),
  phub:()=>openRoster(),
+ cover:()=>openCover(),
+ strats:()=>openStrats(),
+ stropen:async d=>{await openStrats();A.stview(d)},
+ stadd:d=>{stra.st='form';stra.id=null;stra.pre=d.map?{map:d.map,side:d.side}:null;render()},
+ stedit:()=>{stra.st='form';render()},
+ stcancel:()=>{stra.st=stra.id?'view':'list';render()},
+ stback:()=>{stra.st='list';stra.id=null;render()},
+ stview:d=>{const x=stra.list.find(y=>y.id===d.id);if(!x)return;stra.st='view';stra.id=d.id;stra.embed='checking';probeDeck(x);render();sb.from('strat_opens').upsert({strat_id:x.id,team_id:x.team_id,user_id:me.id,opened_at:new Date().toISOString()}).then(()=>{},()=>{})},
+ stshow:()=>{stra.embed='ok';render()},
+ stdel:()=>askDel('Delete this strat?','This permanently removes the strat from the site. The Google Slides deck is not touched.','stdelyes',stra.id),
+ stdelyes:async(d,b)=>{b.disabled=true;const r=await sb.from('strats').delete().eq('id',d.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast(r.error?stErr(r.error):'You do not have permission to make that change.');stra.list=stra.list.filter(y=>y.id!==d.id);stra.st='list';stra.id=null;render();toast('Strat deleted')},
  scout:()=>{if(an)an.opp=null;openAnalyst('scout')},
  scoutopen:d=>{an.opp=d.k;render()},
  scoutback:()=>{an.opp=null;render()},
@@ -775,12 +894,13 @@ const A={
   for(const p of fm.people){const email=p.email.trim().toLowerCase();if(email&&p.roles.length){const r=await assign(email,t.id,p.roles);if(r.error)toast(email+': '+r.error.message)}}
   fm=null;view='teamsV';await load();toast('Team created')}
 };
-const LEAVE=new Set(['go','open','out','savename','sdash','sback','sform','sedit','scancel','sopen','schcancel','updnow','schedule','pmysch','pover','pjournal','pstats','pnotes','pmine','aover','astats','aimport','asopen','scout','phub','phopen','gform','gedit','gcancel','gnoteopen','gnotecancel']),leaveOk=()=>!sdirty||(confirm('You have unsaved changes. Leave without saving?')&&!(sdirty=false));
+const LEAVE=new Set(['go','open','out','savename','sdash','sback','sform','sedit','scancel','sopen','schcancel','updnow','schedule','pmysch','pover','pjournal','pstats','pnotes','pmine','aover','astats','aimport','asopen','scout','cover','strats','stropen','stadd','stedit','stcancel','stback','stview','phub','phopen','gform','gedit','gcancel','gnoteopen','gnotecancel']),leaveOk=()=>!sdirty||(confirm('You have unsaved changes. Leave without saving?')&&!(sdirty=false));
 document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a]&&(!LEAVE.has(b.dataset.a)||leaveOk()))A[b.dataset.a](b.dataset,b)});
 window.addEventListener('beforeunload',e=>{if(sdirty){e.preventDefault();e.returnValue=''}});
-document.addEventListener('input',e=>{if(e.target.closest('[data-dirty]'))sdirty=true;if(e.target.dataset.c==='hex'){const v=normHex(e.target.value);if(v){fm.color=v;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v));$('#lp').innerHTML=tile({color:v,name:$('#tn').value||'?'},56)}}if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
-document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='sw'){if(!leaveOk()){e.target.value=cur.id;return}cur=teams.find(t=>t.id===e.target.value);viewing=false;if(view==='scrims')return A.scrims();if(view==='schedule')return openSch(sch?.forUser===me.id?me.id:'',false);if(view==='player')return openPlayer(pl.page);if(view==='roster')return openRoster();if(view==='analyst')return openAnalyst(an.page);render()}
+document.addEventListener('input',e=>{if(e.target.closest('[data-dirty]'))sdirty=true;if(e.target.dataset.c==='stq'){stra.q=e.target.value;const l=$('#stl');if(l)l.innerHTML=stratCards()}if(e.target.dataset.c==='hex'){const v=normHex(e.target.value);if(v){fm.color=v;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v));$('#lp').innerHTML=tile({color:v,name:$('#tn').value||'?'},56)}}if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
+document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='sw'){if(!leaveOk()){e.target.value=cur.id;return}cur=teams.find(t=>t.id===e.target.value);viewing=false;if(view==='scrims')return A.scrims();if(view==='schedule')return openSch(sch?.forUser===me.id?me.id:'',false);if(view==='player')return openPlayer(pl.page);if(view==='roster')return openRoster();if(view==='analyst')return openAnalyst(an.page);if(view==='strats')return openStrats();if(view==='cover')return openCover();render()}
  if(c==='mapsel'){const box=e.target.closest('.mapd');box.dataset.map=e.target.value;box.querySelector('.mph').innerHTML=mapPhoto(e.target.value)}
+ if(c==='stf'){stra[e.target.dataset.k]=e.target.value;const l=$('#stl');if(l)l.innerHTML=stratCards()}
  if(c==='afilter'){an[e.target.dataset.k]=e.target.value;const id=e.target.id;render();document.getElementById(id)?.focus()}
  if(c==='recs'){addRecs([...e.target.files].map(f=>({name:f.name,path:f.webkitRelativePath||f.name,size:f.size})));e.target.value=''}
  if(c==='schfor'){sch.forUser=e.target.value;render()}
@@ -788,7 +908,7 @@ document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='sw'){i
  if(c==='gstat'){const g=pl.goals.find(x=>x.id===e.target.dataset.id);if(!leaveOk()){e.target.value=g.status;return}sb.from('journal_goals').update({status:e.target.value}).eq('id',g.id).select().single().then(async r=>{if(r.error){toast(pErr(r.error));e.target.value=g.status;return}Object.assign(pl,{form:null,noteFor:null});await loadPlayer();render()})}
  if(c==='shk')$('#shgame').hidden=!['scrim','gameday'].includes(e.target.value);
  if(c==='logo'&&e.target.files[0]){const u=URL.createObjectURL(e.target.files[0]);$('#lp').innerHTML=`<span class="lt" style="--s:56px;border-color:${esc(fm.color)}"><img src="${u}" alt=""></span>`}});
-document.addEventListener('submit',async e=>{if(e.target.dataset.s==='scrim'){e.preventDefault();return saveScrim(e.target)}if(e.target.dataset.s==='sched'){e.preventDefault();return saveSch(e.target)}if(e.target.dataset.s==='goal'){e.preventDefault();return saveGoal(e.target)}if(e.target.dataset.s==='gnote'){e.preventDefault();return saveNote(e.target)}if(e.target.dataset.s!=='auth')return;e.preventDefault();
+document.addEventListener('submit',async e=>{if(e.target.dataset.s==='scrim'){e.preventDefault();return saveScrim(e.target)}if(e.target.dataset.s==='sched'){e.preventDefault();return saveSch(e.target)}if(e.target.dataset.s==='goal'){e.preventDefault();return saveGoal(e.target)}if(e.target.dataset.s==='gnote'){e.preventDefault();return saveNote(e.target)}if(e.target.dataset.s==='strat'){e.preventDefault();return saveStrat(e.target)}if(e.target.dataset.s!=='auth')return;e.preventDefault();
  const email=$('#em').value.trim(),password=$('#pw').value;
  if(mode==='in'){const{error}=await sb.auth.signInWithPassword({email,password});if(error)toast('Wrong email or password')}
  else{const{data,error}=await sb.auth.signUp({email,password});if(error)toast(/invited|Database error/i.test(error.message)?'This email has not been invited yet.':error.message);else if(!data.session)toast('Check your email to confirm, then sign in')}});
