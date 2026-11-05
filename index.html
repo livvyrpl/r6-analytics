@@ -103,15 +103,15 @@ const HUBS=[['Scouting',['coach','analyst'],'<circle cx="11" cy="11" r="6"/><pat
 ['Player hub',['player','coach'],'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>',[['Overview','your week at a glance'],['My Schedule','team schedule, add off days','schedule'],['Journal','goals with deadlines'],['My Stats','KOST, K/D, operators']]]];
 function dashV(){
  if(!cur)return `<div class="cd"><h2 class="serif" style="font-size:28px">No team yet</h2><p class="mu">${staff()?'Create a team in Admin, or open one from the Teams list.':'Ask the owner to add you to a team.'}</p></div>`;
- const roles=viewing||(staff()&&!mem[cur.id])?ALL:(mem[cur.id]||[]);
- const badge=(staff()&&!mem[cur.id]?[me.site_role]:roles.map(r=>R[r])).join(', '),seen=new Set();
+ const roles=staff()?ALL:(mem[cur.id]||[]);
+ const badge=[...(staff()?[me.site_role]:[]),...(mem[cur.id]||[]).map(r=>R[r])].join(', '),seen=new Set();
  return `<div class="row wrap" style="margin-bottom:24px;gap:14px">${tile(cur,48)}<h1 class="serif" style="font-size:34px;color:${esc(cur.color)}">${esc(cur.name)}</h1><span class="badge">${esc(badge)}</span></div>`+
  HUBS.filter(h=>h[1].some(r=>roles.includes(r))).map(h=>`<h2 class="hh">${h[0]}</h2><div class="g">${h[3].filter(c=>!c[2]||(!seen.has(c[2])&&seen.add(c[2]))).map(c=>`<button class="c" data-a="${c[2]||'soon'}"><span class="ic">${ico(h[2])}</span><span><b>${c[0]}</b><small>${c[1]}</small></span>${c[2]?'':'<span class="soon">Soon</span>'}</button>`).join('')}</div>`).join('');
 }
 const hasR=l=>staff()||(cur&&(mem[cur.id]||[]).some(r=>l.includes(r))),canSeeS=()=>hasR(['coach','assistant_coach','analyst']),canEditS=()=>hasR(['coach','assistant_coach','analyst']);
 const toList=s=>s.split(',').map(x=>x.trim()).filter(Boolean),fact=(k,v)=>`<div><span class="mu">${k}</span><b>${esc(v)||'—'}</b></div>`;
 const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)},fmtD=s=>new Date(s+'T00:00').toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
-const sErr=e=>/schema cache|does not exist/i.test(e.message)?'The scrims database tables are not set up yet. Paste scrims.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to change scrims for this team.':e.message;
+const sErr=e=>/schema cache|does not exist/i.test(e.message)?'The scrims database tables are not set up yet. Paste stage2.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to change scrims for this team.':e.message;
 const curScrim=()=>(scr.list||[]).find(x=>x.id===scr.id);
 const backDash=`<button class="no" data-a="sdash">Back to dashboard</button>`;
 function scrimsV(){
@@ -171,10 +171,12 @@ async function saveScrim(form){
  if(r.error)return toast(sErr(r.error));
  sdirty=false;await fetchScrims();await A.sopen({id:r.data.id});toast('Scrim saved');
 }
-const KIND={scrim:'Scrim',gameday:'Gameday',off_day:'Off day'};
-const schE=e=>/starts_at|schedule_entry_id/i.test(e.message)?'The schedule update is not set up yet. Paste schedule_sync.sql into the Supabase SQL Editor and run it.':/schema cache|does not exist/i.test(e.message)?'The schedule database tables are not set up yet. Paste schedule.sql and then schedule_sync.sql into the Supabase SQL Editor and run them.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
+const KIND={scrim:'Scrim',gameday:'Gameday',off_day:'Off day',other:'Other'};
+const schE=e=>/schema cache|does not exist/i.test(e.message)?'The schedule database tables are not set up yet. Paste stage2.sql into the Supabase SQL Editor and run it.':/schedule_entries_kind|check constraint/i.test(e.message)?'The schedule update is not set up yet. Paste stage2.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
 const canSeeSch=()=>staff()||!!mem[cur?.id],canEditSch=()=>hasR(['coach','assistant_coach']),isPlayerHere=()=>(mem[cur?.id]||[]).includes('player');
-const canEditEntry=e=>canEditSch()||(e.kind==='off_day'&&e.user_id===me.id&&isPlayerHere());
+const canDelEntry=e=>canEditSch()||(e.kind==='off_day'&&e.user_id===me.id&&isPlayerHere());
+const shiftYm=(ym,n)=>{const d=new Date(+ym.slice(0,4),+ym.slice(5)-1+n,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
+const monthName=ym=>new Date(+ym.slice(0,4),+ym.slice(5)-1,1).toLocaleDateString(undefined,{month:'long',year:'numeric'});
 const fmtT=t=>new Date('2000-01-01T'+t).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
 const myTz=()=>Intl.DateTimeFormat().resolvedOptions().timeZone||'your time zone';
 const schLocal=e=>{if(!e.starts_at)return{d:e.entry_date,t:(e.entry_time||'').slice(0,5)};const x=new Date(e.starts_at),y=new Date(x-x.getTimezoneOffset()*6e4).toISOString();return{d:y.slice(0,10),t:y.slice(11,16)}};
@@ -185,28 +187,29 @@ function scheduleV(){
  return sch.st==='form'&&(canEditSch()||isPlayerHere())?schForm():schList();
 }
 function schRow(e){
- const off=e.kind==='off_day',who=off?(e.user_id?sch.names[e.user_id]||'Former member':'Whole team'):'',time=e.starts_at?new Date(e.starts_at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit',timeZoneName:'short'}):e.entry_time?fmtT(e.entry_time)+' (time zone not set)':off?'All day':'';
- const meta=[fmtD(schLocal(e).d),time,who,e.opponent?'vs '+e.opponent:'',e.maps.join(', ')].filter(Boolean).join(' · ');
- return `<div class="tr"><div class="row wrap"><span class="badge">${KIND[e.kind]}</span><b style="flex:1 1 180px;min-width:0;overflow-wrap:anywhere">${esc(e.title)}</b>${canEditEntry(e)?`<span class="row" style="gap:8px"><button class="no" style="height:32px" data-a="schedit" data-id="${e.id}">Edit</button><button class="no" style="height:32px" data-a="schdel" data-id="${e.id}">Delete</button></span>`:''}</div><div class="mu" style="overflow-wrap:anywhere">${esc(meta)}</div>${e.notes?`<div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(e.notes)}</div>`:''}</div>`;
+ const off=e.kind==='off_day',who=e.user_id?sch.names[e.user_id]||'Former member':'Whole team',time=e.starts_at?new Date(e.starts_at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit',timeZoneName:'short'}):e.entry_time?fmtT(e.entry_time)+' (time zone not set)':off?'All day':'';
+ const meta=[time,who,e.opponent?'vs '+e.opponent:'',e.maps.join(', ')].filter(Boolean).join(' · ');
+ return `<div class="tr"><div class="row wrap"><span class="badge">${KIND[e.kind]}</span><b style="flex:1 1 180px;min-width:0;overflow-wrap:anywhere">${esc(e.title)}</b>${canDelEntry(e)?`<span class="row" style="gap:8px">${canEditSch()?`<button class="no" style="height:32px" data-a="schedit" data-id="${e.id}">Edit</button>`:''}<button class="no" style="height:32px" data-a="schdel" data-id="${e.id}">Delete</button></span>`:''}</div><div class="mu" style="overflow-wrap:anywhere">${esc(meta)}</div>${e.notes?`<div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(e.notes)}</div>`:''}</div>`;
 }
 function schList(){
- const ready=sch.list&&!sch.err,t=today(),up=(sch.list||[]).filter(e=>schLocal(e).d>=t).sort((a,b)=>schKey(a).localeCompare(schKey(b))),past=(sch.list||[]).filter(e=>schLocal(e).d<t).sort((a,b)=>schKey(b).localeCompare(schKey(a)));
+ const ready=sch.list&&!sch.err,t=today(),items=(sch.list||[]).filter(e=>schLocal(e).d.slice(0,7)===sch.month).sort((a,b)=>schKey(a).localeCompare(schKey(b))),days=[...new Set(items.map(e=>schLocal(e).d))];
  const add=!ready?'':canEditSch()?'<button class="go" data-a="schadd">Add to schedule</button>':isPlayerHere()?'<button class="go" data-a="schadd">Add off day</button>':'';
  const col='display:flex;flex-direction:column;gap:10px';
- const body=!sch.list?'<p class="mu">Loading schedule…</p>':sch.err?`<div class="cd"><p>${esc(sch.err)}</p></div>`:`<h2 class="hh">Upcoming</h2>${up.length?`<div style="${col}">${up.map(schRow).join('')}</div>`:'<div class="cd"><p class="mu">Nothing coming up.</p></div>'}${past.length?`<details style="margin-top:26px"><summary style="cursor:pointer;font-weight:600;font-size:15px">Past (${past.length})</summary><div style="${col};margin-top:12px">${past.map(schRow).join('')}</div></details>`:''}`;
- return `<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div><h1 class="serif" style="font-size:34px">Schedule</h1><p class="mu">${esc(cur.name)}, soonest first. Times are in your time zone (${esc(myTz())}).</p></div><span class="sp"></span>${backDash}${add}</div>${body}`;
+ const nav=`<div class="row" style="margin-bottom:12px"><button class="no" style="flex:none" data-a="schmonth" data-n="-1" aria-label="Previous month">‹ Prev</button><h2 class="serif" style="flex:1 1 0;min-width:0;text-align:center;font-size:26px;line-height:1.1" aria-live="polite">${esc(monthName(sch.month))}</h2><button class="no" style="flex:none" data-a="schmonth" data-n="1" aria-label="Next month">Next ›</button></div>${sch.month===t.slice(0,7)?'':'<div style="text-align:center;margin-bottom:12px"><button class="no" style="height:32px" data-a="schthis">This month</button></div>'}`;
+ const body=!sch.list?'<p class="mu">Loading schedule…</p>':sch.err?`<div class="cd"><p>${esc(sch.err)}</p></div>`:nav+(days.length?days.map(d=>`<h3 style="font-size:15px;font-weight:600;margin:20px 0 10px">${esc(new Date(d+'T00:00').toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))}${d===t?' <span style="color:var(--pk)">· Today</span>':''}</h3><div style="${col}">${items.filter(e=>schLocal(e).d===d).map(schRow).join('')}</div>`).join(''):`<div class="cd"><p class="mu">Nothing scheduled in ${esc(monthName(sch.month))}.</p></div>`);
+ return `<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div style="flex:1 1 220px;min-width:0"><h1 class="serif" style="font-size:34px">Schedule</h1><p class="mu">${esc(cur.name)}. Times are in your time zone (${esc(myTz())}).</p></div><div class="row wrap">${backDash}${add}</div></div>${body}`;
 }
 function schForm(){
- const e=sch.id?(sch.list||[]).find(x=>x.id===sch.id):null,ed=canEditSch(),kind=e?.kind||(ed?'scrim':'off_day'),off=kind==='off_day';
+ const e=sch.id?(sch.list||[]).find(x=>x.id===sch.id):null,ed=canEditSch(),kind=e?.kind||(ed?'scrim':'off_day'),game=kind==='scrim'||kind==='gameday';
  const ppl=[...sch.members];if(e?.user_id&&!ppl.some(p=>p.id===e.user_id))ppl.push({id:e.user_id,name:sch.names[e.user_id]||'Former member'});
- const half='flex:1;min-width:200px',loc=e?schLocal(e):{d:today(),t:''};
+ const half='flex:1;min-width:200px',loc=e?schLocal(e):{d:sch.month===today().slice(0,7)?today():sch.month+'-01',t:''};
  return `<div class="row wrap" style="margin-bottom:20px"><h1 class="serif" style="font-size:34px">${e?'Edit entry':ed?'Add to schedule':'Add off day'}</h1></div>
  <form class="cd" data-s="sched" data-dirty style="max-width:720px">
  ${ed?`<div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="shk">Type</label><select id="shk" class="fi" data-c="shk">${Object.keys(KIND).map(k=>`<option value="${k}"${k===kind?' selected':''}>${KIND[k]}</option>`).join('')}</select></div>
- <div id="shwrap" style="${half}"${off?'':' hidden'}><label for="shw">Who is off</label><select id="shw" class="fi"><option value="">Whole team</option>${ppl.map(p=>`<option value="${p.id}"${p.id===e?.user_id?' selected':''}>${esc(p.name)}</option>`).join('')}</select></div></div>`:''}
+ <div style="${half}"><label for="shw">Who it is for</label><select id="shw" class="fi"><option value="">Whole team</option>${ppl.map(p=>`<option value="${p.id}"${p.id===e?.user_id?' selected':''}>${esc(p.name)}</option>`).join('')}</select></div></div>`:''}
  <div><label for="sht">Title</label><input id="sht" class="fi" required maxlength="120" value="${esc(e?.title||'')}" placeholder="${ed?'e.g. Week 3 match':'e.g. Family trip'}"></div>
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="shd">Date</label><input id="shd" class="fi" type="date" required value="${esc(loc.d)}"></div><div style="${half}"><label for="shi">Time in ${esc(myTz())} (optional)</label><input id="shi" class="fi" type="time" value="${esc(loc.t)}"></div></div>
- ${ed?`<div id="shgame" class="row wrap" style="gap:12px;align-items:flex-start"${off?' hidden':''}><div style="${half}"><label for="sho">Opponent</label><input id="sho" class="fi" maxlength="120" value="${esc(e?.opponent||'')}"></div><div style="${half}"><label for="shm">Map(s), separated by commas</label><input id="shm" class="fi" value="${esc((e?.maps||[]).join(', '))}" placeholder="e.g. Clubhouse, Oregon"></div></div>`:''}
+ ${ed?`<div id="shgame" class="row wrap" style="gap:12px;align-items:flex-start"${game?'':' hidden'}><div style="${half}"><label for="sho">Opponent</label><input id="sho" class="fi" maxlength="120" value="${esc(e?.opponent||'')}"></div><div style="${half}"><label for="shm">Map(s), separated by commas</label><input id="shm" class="fi" value="${esc((e?.maps||[]).join(', '))}" placeholder="e.g. Clubhouse, Oregon"></div></div>`:''}
  <div><label for="shn">Notes</label><textarea id="shn" class="fi ta">${esc(e?.notes||'')}</textarea></div>
  <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="schcancel">Cancel</button><button class="go">${e?'Save changes':'Add'}</button></div></form>`;
 }
@@ -222,7 +225,7 @@ async function fetchSch(){
  sch.err='';sch.list=r.data;
 }
 async function saveSch(form){
- const btn=form.querySelector('.go'),ed=canEditSch(),kind=ed?$('#shk').value:'off_day',off=kind==='off_day',row={kind,title:$('#sht').value.trim(),entry_date:$('#shd').value,entry_time:null,starts_at:null,notes:$('#shn').value,opponent:off?null:$('#sho').value.trim()||null,maps:off?[]:toList($('#shm').value),user_id:!off?null:ed?$('#shw').value||null:me.id};
+ const btn=form.querySelector('.go'),ed=canEditSch(),kind=ed?$('#shk').value:'off_day',game=kind==='scrim'||kind==='gameday',row={kind,title:$('#sht').value.trim(),entry_date:$('#shd').value,entry_time:null,starts_at:null,notes:$('#shn').value,opponent:game?$('#sho').value.trim()||null:null,maps:game?toList($('#shm').value):[],user_id:ed?$('#shw').value||null:me.id};
  if(!row.title||!row.entry_date)return toast('Enter a title and a date');
  if($('#shi').value){row.starts_at=new Date(row.entry_date+'T'+$('#shi').value).toISOString();
   const was=sch.id&&sch.list.find(x=>x.id===sch.id);if(was?.starts_at&&new Date(was.starts_at).getTime()===new Date(row.starts_at).getTime())row.entry_date=was.entry_date}
@@ -230,7 +233,7 @@ async function saveSch(form){
  const r=sch.id?await sb.from('schedule_entries').update(row).eq('id',sch.id).select().single():await sb.from('schedule_entries').insert({...row,team_id:sch.tid}).select().single();
  btn.disabled=false;
  if(r.error)return toast(schE(r.error));
- sdirty=false;sch.st='list';sch.id=null;await fetchSch();render();toast('Schedule saved');
+ sdirty=false;sch.st='list';sch.id=null;sch.month=schLocal(row).d.slice(0,7);await fetchSch();render();toast('Schedule saved');
 }
 const adminCards=[['Manage Users','find people, assign teams and roles','users','<circle cx="9" cy="9" r="3"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5"/>'],['Teams','all teams, open any dashboard','teamsV','<path d="M4 11l8-7 8 7v9H4z"/>'],['Create team','name, logo, color, players','create','<path d="M12 5v14M5 12h14"/>'],['Roles and Permissions','','',''],['Invites','','',''],['Data Pulls','','',''],['Activity Log','','',''],['Site Settings','owner only','',''],['Backups and Export','owner only','','']];
 function adminV(){return `<div class="row wrap" style="margin-bottom:24px"><div><h1 class="serif" style="font-size:34px">Admin panel</h1><p class="mu">Owner and admins only.</p></div></div><div class="g">${adminCards.map(c=>`<button class="c" data-a="${c[2]?'go':'soon'}" data-v="${c[2]}"><span class="ic">${ico(c[3]||'<circle cx="12" cy="12" r="3"/>')}</span><span><b>${c[0]}</b><small>${c[1]}</small></span>${c[2]?'':'<span class="soon">Soon</span>'}</button>`).join('')}</div>`}
@@ -269,7 +272,9 @@ const A={
  go:d=>{view=d.v;viewing=false;fm=view==='create'?fm:null;render()},
  soon:()=>toast('Coming in the next stage'),
  scrims:async()=>{view='scrims';scr={tid:cur.id,st:'list',list:null,err:'',id:null,people:null,notes:{},dErr:''};render();if(!canSeeS())return;await fetchScrims();if(view==='scrims')render()},
- schedule:async()=>{view='schedule';sch={tid:cur.id,st:'list',list:null,err:'',id:null,names:{},members:[]};render();if(!canSeeSch())return;await fetchSch();if(view==='schedule')render()},
+ schedule:async()=>{view='schedule';sch={tid:cur.id,st:'list',list:null,err:'',id:null,names:{},members:[],month:today().slice(0,7)};render();if(!canSeeSch())return;await fetchSch();if(view==='schedule')render()},
+ schmonth:d=>{sch.month=shiftYm(sch.month,+d.n);render()},
+ schthis:()=>{sch.month=today().slice(0,7);render()},
  schadd:()=>{sch.st='form';sch.id=null;render()},
  schedit:d=>{sch.st='form';sch.id=d.id;render()},
  schcancel:()=>{sch.st='list';sch.id=null;render()},
@@ -281,7 +286,7 @@ const A={
  sedit:()=>{scr.st='form';render()},
  scancel:()=>{scr.st=scr.id?'detail':'list';render()},
  sopen:async d=>{Object.assign(scr,{st:'detail',id:d.id,people:null,notes:{},dErr:''});render();await loadDetail(d.id);if(view==='scrims'&&scr?.st==='detail'&&scr.id===d.id)render()},
- snotes:async(d,b)=>{const s=curScrim(),gen=$('#sgen').value,rows=[...document.querySelectorAll('[data-p]')].filter(t=>t.value!==(scr.notes[t.dataset.p]||'')).map(t=>({scrim_id:s.id,user_id:t.dataset.p,notes:t.value}));
+ snotes:async(d,b)=>{const s=curScrim(),gen=$('#sgen').value,rows=[...document.querySelectorAll('[data-p]')].filter(t=>t.value!==(scr.notes[t.dataset.p]||'')).map(t=>({scrim_id:s.id,team_id:scr.tid,user_id:t.dataset.p,notes:t.value}));
   b.disabled=true;
   if(gen!==s.notes){const r=await sb.from('scrims').update({notes:gen}).eq('id',s.id).select().single();if(r.error){b.disabled=false;return toast(sErr(r.error))}s.notes=gen}
   if(rows.length){const r=await sb.from('scrim_player_notes').upsert(rows);if(r.error){b.disabled=false;return toast(sErr(r.error))}rows.forEach(x=>scr.notes[x.user_id]=x.notes)}
@@ -317,7 +322,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&
 window.addEventListener('beforeunload',e=>{if(sdirty){e.preventDefault();e.returnValue=''}});
 document.addEventListener('input',e=>{if(e.target.closest('[data-dirty]'))sdirty=true;if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
 document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='sw'){if(!leaveOk()){e.target.value=cur.id;return}cur=teams.find(t=>t.id===e.target.value);viewing=false;if(view==='scrims')return A.scrims();if(view==='schedule')return A.schedule();render()}
- if(c==='shk'){const off=e.target.value==='off_day';$('#shgame').hidden=off;$('#shwrap').hidden=!off}
+ if(c==='shk')$('#shgame').hidden=!['scrim','gameday'].includes(e.target.value);
  if(c==='logo'&&e.target.files[0]){const u=URL.createObjectURL(e.target.files[0]);$('#lp').innerHTML=`<span class="lt" style="--s:56px;border-color:${esc(fm.color)}"><img src="${u}" alt=""></span>`}});
 document.addEventListener('submit',async e=>{if(e.target.dataset.s==='scrim'){e.preventDefault();return saveScrim(e.target)}if(e.target.dataset.s==='sched'){e.preventDefault();return saveSch(e.target)}if(e.target.dataset.s!=='auth')return;e.preventDefault();
  const email=$('#em').value.trim(),password=$('#pw').value;
