@@ -172,38 +172,40 @@ async function saveScrim(form){
  sdirty=false;await fetchScrims();await A.sopen({id:r.data.id});toast('Scrim saved');
 }
 const KIND={scrim:'Scrim',gameday:'Gameday',off_day:'Off day'};
-const schE=e=>/schema cache|does not exist/i.test(e.message)?'The schedule database tables are not set up yet. Paste schedule.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
+const schE=e=>/starts_at|schedule_entry_id/i.test(e.message)?'The schedule update is not set up yet. Paste schedule_sync.sql into the Supabase SQL Editor and run it.':/schema cache|does not exist/i.test(e.message)?'The schedule database tables are not set up yet. Paste schedule.sql and then schedule_sync.sql into the Supabase SQL Editor and run them.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
 const canSeeSch=()=>staff()||!!mem[cur?.id],canEditSch=()=>hasR(['coach','assistant_coach']),isPlayerHere=()=>(mem[cur?.id]||[]).includes('player');
 const canEditEntry=e=>canEditSch()||(e.kind==='off_day'&&e.user_id===me.id&&isPlayerHere());
 const fmtT=t=>new Date('2000-01-01T'+t).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
-const schKey=e=>e.entry_date+' '+(e.entry_time||'');
+const myTz=()=>Intl.DateTimeFormat().resolvedOptions().timeZone||'your time zone';
+const schLocal=e=>{if(!e.starts_at)return{d:e.entry_date,t:(e.entry_time||'').slice(0,5)};const x=new Date(e.starts_at),y=new Date(x-x.getTimezoneOffset()*6e4).toISOString();return{d:y.slice(0,10),t:y.slice(11,16)}};
+const schKey=e=>{const l=schLocal(e);return l.d+' '+l.t};
 function scheduleV(){
  if(!cur||!sch||sch.tid!==cur.id)return `<div class="cd"><p>Open Schedule from a team's dashboard.</p><div>${backDash}</div></div>`;
  if(!canSeeSch())return `<div class="cd"><p>The schedule is for members of this team.</p><div>${backDash}</div></div>`;
  return sch.st==='form'&&(canEditSch()||isPlayerHere())?schForm():schList();
 }
 function schRow(e){
- const off=e.kind==='off_day',who=off?(e.user_id?sch.names[e.user_id]||'Former member':'Whole team'):'',time=e.entry_time?fmtT(e.entry_time):off?'All day':'';
- const meta=[fmtD(e.entry_date),time,who,e.opponent?'vs '+e.opponent:'',e.maps.join(', ')].filter(Boolean).join(' · ');
+ const off=e.kind==='off_day',who=off?(e.user_id?sch.names[e.user_id]||'Former member':'Whole team'):'',time=e.starts_at?new Date(e.starts_at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit',timeZoneName:'short'}):e.entry_time?fmtT(e.entry_time)+' (time zone not set)':off?'All day':'';
+ const meta=[fmtD(schLocal(e).d),time,who,e.opponent?'vs '+e.opponent:'',e.maps.join(', ')].filter(Boolean).join(' · ');
  return `<div class="tr"><div class="row wrap"><span class="badge">${KIND[e.kind]}</span><b style="flex:1 1 180px;min-width:0;overflow-wrap:anywhere">${esc(e.title)}</b>${canEditEntry(e)?`<span class="row" style="gap:8px"><button class="no" style="height:32px" data-a="schedit" data-id="${e.id}">Edit</button><button class="no" style="height:32px" data-a="schdel" data-id="${e.id}">Delete</button></span>`:''}</div><div class="mu" style="overflow-wrap:anywhere">${esc(meta)}</div>${e.notes?`<div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(e.notes)}</div>`:''}</div>`;
 }
 function schList(){
- const ready=sch.list&&!sch.err,t=today(),up=(sch.list||[]).filter(e=>e.entry_date>=t).sort((a,b)=>schKey(a).localeCompare(schKey(b))),past=(sch.list||[]).filter(e=>e.entry_date<t).sort((a,b)=>schKey(b).localeCompare(schKey(a)));
+ const ready=sch.list&&!sch.err,t=today(),up=(sch.list||[]).filter(e=>schLocal(e).d>=t).sort((a,b)=>schKey(a).localeCompare(schKey(b))),past=(sch.list||[]).filter(e=>schLocal(e).d<t).sort((a,b)=>schKey(b).localeCompare(schKey(a)));
  const add=!ready?'':canEditSch()?'<button class="go" data-a="schadd">Add to schedule</button>':isPlayerHere()?'<button class="go" data-a="schadd">Add off day</button>':'';
  const col='display:flex;flex-direction:column;gap:10px';
  const body=!sch.list?'<p class="mu">Loading schedule…</p>':sch.err?`<div class="cd"><p>${esc(sch.err)}</p></div>`:`<h2 class="hh">Upcoming</h2>${up.length?`<div style="${col}">${up.map(schRow).join('')}</div>`:'<div class="cd"><p class="mu">Nothing coming up.</p></div>'}${past.length?`<details style="margin-top:26px"><summary style="cursor:pointer;font-weight:600;font-size:15px">Past (${past.length})</summary><div style="${col};margin-top:12px">${past.map(schRow).join('')}</div></details>`:''}`;
- return `<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div><h1 class="serif" style="font-size:34px">Schedule</h1><p class="mu">${esc(cur.name)}, soonest first.</p></div><span class="sp"></span>${backDash}${add}</div>${body}`;
+ return `<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div><h1 class="serif" style="font-size:34px">Schedule</h1><p class="mu">${esc(cur.name)}, soonest first. Times are in your time zone (${esc(myTz())}).</p></div><span class="sp"></span>${backDash}${add}</div>${body}`;
 }
 function schForm(){
  const e=sch.id?(sch.list||[]).find(x=>x.id===sch.id):null,ed=canEditSch(),kind=e?.kind||(ed?'scrim':'off_day'),off=kind==='off_day';
  const ppl=[...sch.members];if(e?.user_id&&!ppl.some(p=>p.id===e.user_id))ppl.push({id:e.user_id,name:sch.names[e.user_id]||'Former member'});
- const half='flex:1;min-width:200px';
+ const half='flex:1;min-width:200px',loc=e?schLocal(e):{d:today(),t:''};
  return `<div class="row wrap" style="margin-bottom:20px"><h1 class="serif" style="font-size:34px">${e?'Edit entry':ed?'Add to schedule':'Add off day'}</h1></div>
  <form class="cd" data-s="sched" data-dirty style="max-width:720px">
  ${ed?`<div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="shk">Type</label><select id="shk" class="fi" data-c="shk">${Object.keys(KIND).map(k=>`<option value="${k}"${k===kind?' selected':''}>${KIND[k]}</option>`).join('')}</select></div>
  <div id="shwrap" style="${half}"${off?'':' hidden'}><label for="shw">Who is off</label><select id="shw" class="fi"><option value="">Whole team</option>${ppl.map(p=>`<option value="${p.id}"${p.id===e?.user_id?' selected':''}>${esc(p.name)}</option>`).join('')}</select></div></div>`:''}
  <div><label for="sht">Title</label><input id="sht" class="fi" required maxlength="120" value="${esc(e?.title||'')}" placeholder="${ed?'e.g. Week 3 match':'e.g. Family trip'}"></div>
- <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="shd">Date</label><input id="shd" class="fi" type="date" required value="${esc(e?.entry_date||today())}"></div><div style="${half}"><label for="shi">Time (optional)</label><input id="shi" class="fi" type="time" value="${esc((e?.entry_time||'').slice(0,5))}"></div></div>
+ <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="shd">Date</label><input id="shd" class="fi" type="date" required value="${esc(loc.d)}"></div><div style="${half}"><label for="shi">Time in ${esc(myTz())} (optional)</label><input id="shi" class="fi" type="time" value="${esc(loc.t)}"></div></div>
  ${ed?`<div id="shgame" class="row wrap" style="gap:12px;align-items:flex-start"${off?' hidden':''}><div style="${half}"><label for="sho">Opponent</label><input id="sho" class="fi" maxlength="120" value="${esc(e?.opponent||'')}"></div><div style="${half}"><label for="shm">Map(s), separated by commas</label><input id="shm" class="fi" value="${esc((e?.maps||[]).join(', '))}" placeholder="e.g. Clubhouse, Oregon"></div></div>`:''}
  <div><label for="shn">Notes</label><textarea id="shn" class="fi ta">${esc(e?.notes||'')}</textarea></div>
  <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="schcancel">Cancel</button><button class="go">${e?'Save changes':'Add'}</button></div></form>`;
@@ -220,8 +222,10 @@ async function fetchSch(){
  sch.err='';sch.list=r.data;
 }
 async function saveSch(form){
- const btn=form.querySelector('.go'),ed=canEditSch(),kind=ed?$('#shk').value:'off_day',off=kind==='off_day',row={kind,title:$('#sht').value.trim(),entry_date:$('#shd').value,entry_time:$('#shi').value||null,notes:$('#shn').value,opponent:off?null:$('#sho').value.trim()||null,maps:off?[]:toList($('#shm').value),user_id:!off?null:ed?$('#shw').value||null:me.id};
+ const btn=form.querySelector('.go'),ed=canEditSch(),kind=ed?$('#shk').value:'off_day',off=kind==='off_day',row={kind,title:$('#sht').value.trim(),entry_date:$('#shd').value,entry_time:null,starts_at:null,notes:$('#shn').value,opponent:off?null:$('#sho').value.trim()||null,maps:off?[]:toList($('#shm').value),user_id:!off?null:ed?$('#shw').value||null:me.id};
  if(!row.title||!row.entry_date)return toast('Enter a title and a date');
+ if($('#shi').value){row.starts_at=new Date(row.entry_date+'T'+$('#shi').value).toISOString();
+  const was=sch.id&&sch.list.find(x=>x.id===sch.id);if(was?.starts_at&&new Date(was.starts_at).getTime()===new Date(row.starts_at).getTime())row.entry_date=was.entry_date}
  btn.disabled=true;
  const r=sch.id?await sb.from('schedule_entries').update(row).eq('id',sch.id).select().single():await sb.from('schedule_entries').insert({...row,team_id:sch.tid}).select().single();
  btn.disabled=false;
