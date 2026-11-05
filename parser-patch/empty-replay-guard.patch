@@ -1,0 +1,16 @@
+diff --git a/dissect/reader.go b/dissect/reader.go
+index da6343f..bae2283 100644
+--- a/dissect/reader.go
++++ b/dissect/reader.go
+@@ -230,6 +230,11 @@ func (r *Reader) Read() (err error) {
+ 	if r.readPartial {
+ 		end /= 3
+ 	}
++	// Nothing to scan. Without this, a worker goroutine reads past the end of
++	// r.b, and a panic in a goroutine cannot be recovered by the caller.
++	if start >= end {
++		return io.ErrUnexpectedEOF
++	}
+ 	blockSize := int(math.Floor(float64(end-start) / float64(numWorkers)))
+ 	log.Debug().Int("workers", numWorkers).Int("blockSize", blockSize).Send()
+ 	wg.Add(numWorkers)

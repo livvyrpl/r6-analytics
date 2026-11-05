@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Parser check</title>
+<style>
+  :root { --bg:#0b0a0e; --cd:#131118; --bd:#231f2b; --bd2:#2a2532; --tx:#ece8f0; --mu:#9a93a6; --pk:#e07cc0; --pk-lt:#f3c2e3; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--tx); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  h2 { margin: 24px 0 8px; font-size: 15px; color: var(--pk-lt); }
+  p { margin: 0 0 16px; color: var(--mu); }
+  .card { background: var(--cd); border: 1px solid var(--bd); border-radius: 10px; padding: 16px; margin-top: 16px; }
+  #status { font-weight: 600; }
+  .good { color: var(--pk-lt); }
+  .bad { color: #ff8f8f; }
+  input[type=file]::file-selector-button { background: var(--pk); color: var(--bg); border: 0; border-radius: 6px; padding: 8px 14px; margin-right: 12px; font-weight: 600; cursor: pointer; }
+  input[type=file] { color: var(--mu); max-width: 100%; }
+  input[type=file]:disabled { opacity: .5; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--bd2); text-align: left; white-space: nowrap; }
+  th { color: var(--mu); font-weight: 500; }
+  td.n, th.n { text-align: right; }
+  pre { margin: 0; max-height: 360px; overflow: auto; font-size: 12px; color: var(--mu); }
+  ul { margin: 0; padding-left: 20px; }
+  summary { cursor: pointer; color: var(--pk-lt); }
+  details pre { margin-top: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Parser check</h1>
+  <p>Choose one .rec file to confirm the replay parser works. The file is read on this computer and is not uploaded.</p>
+
+  <div class="card">
+    <div id="status">Loading the parser…</div>
+    <div style="margin-top:12px"><input type="file" id="file" accept=".rec" disabled></div>
+  </div>
+
+  <div id="result" hidden></div>
+</main>
+
+<script src="wasm_exec.js"></script>
+<script>
+  const statusEl = document.getElementById('status');
+  const fileEl = document.getElementById('file');
+  const resultEl = document.getElementById('result');
+
+  function setStatus(text, cls) {
+    statusEl.textContent = text;
+    statusEl.className = cls || '';
+  }
+  function fail(text) {
+    setStatus(text, 'bad');
+    fileEl.disabled = true;
+  }
+  function el(tag, text, cls) {
+    const node = document.createElement(tag);
+    if (text !== undefined) node.textContent = text;
+    if (cls) node.className = cls;
+    return node;
+  }
+  function table(headers, rows, numeric) {
+    const wrap = el('div', undefined, 'scroll');
+    const t = el('table');
+    const head = el('tr');
+    headers.forEach((h, i) => head.append(el('th', h, numeric.includes(i) ? 'n' : '')));
+    t.append(head);
+    rows.forEach(row => {
+      const tr = el('tr');
+      row.forEach((c, i) => tr.append(el('td', String(c), numeric.includes(i) ? 'n' : '')));
+      t.append(tr);
+    });
+    wrap.append(t);
+    return wrap;
+  }
+
+  async function load() {
+    if (typeof Go === 'undefined') {
+      fail('wasm_exec.js is missing. The build on GitHub has not finished or did not run.');
+      return;
+    }
+    try {
+      const go = new Go();
+      const response = await fetch('parser.wasm');
+      if (!response.ok) throw new Error('parser.wasm is missing. The build on GitHub has not finished or did not run.');
+      const { instance } = await WebAssembly.instantiate(await response.arrayBuffer(), go.importObject);
+      go.run(instance);
+      setStatus('Parser loaded. Choose a .rec file.', 'good');
+      fileEl.disabled = false;
+    } catch (err) {
+      fail(err.message);
+    }
+  }
+
+  function show(name, data, ms) {
+    resultEl.hidden = false;
+    resultEl.replaceChildren();
+    const card = el('div', undefined, 'card');
+    resultEl.append(card);
+
+    if (!data.ok) {
+      setStatus('The parser ran and reported a problem with this file.', 'bad');
+      card.append(el('div', data.error, 'bad'));
+    } else {
+      setStatus(`Working. Read ${name} in ${(ms / 1000).toFixed(1)} seconds.`, 'good');
+      const winner = data.winningTeam === null ? 'Unknown' : data.teams[data.winningTeam].name;
+      card.append(table(['Map', 'Round', 'Site', 'Winner', 'Game version'],
+        [[data.map, data.roundNumber, data.site || 'Not found', winner, data.gameVersion]], [1]));
+
+      card.append(el('h2', 'Teams'));
+      card.append(table(['Team', 'Side', 'Score before', 'Score after'],
+        data.teams.map(t => [t.name, t.role, t.startingScore, t.score]), [2, 3]));
+
+      card.append(el('h2', 'Players'));
+      card.append(table(['Player', 'Team', 'Operator', 'Side', 'K', 'D', 'A', 'HS', 'Match score so far'],
+        data.players.map(p => [p.username, data.teams[p.teamIndex] ? data.teams[p.teamIndex].name : p.teamIndex, p.operator, p.role, p.kills, p.deaths, p.assists, p.headshots, p.score]),
+        [4, 5, 6, 7, 8]));
+
+      card.append(el('h2', 'Kills'));
+      card.append(table(['Time', 'Killer', 'Target', 'Headshot'],
+        (data.kills || []).map(k => [k.time, k.killer, k.target, k.headshot ? 'Yes' : 'No']), []));
+    }
+
+    card.append(el('h2', 'Warnings'));
+    if (data.warnings.length) {
+      const list = el('ul');
+      data.warnings.forEach(w => list.append(el('li', w)));
+      card.append(list);
+    } else {
+      card.append(el('div', 'None'));
+    }
+
+    const details = el('details');
+    details.style.marginTop = '20px';
+    details.append(el('summary', 'Show the full JSON'));
+    details.append(el('pre', JSON.stringify(data, null, 2)));
+    card.append(details);
+  }
+
+  fileEl.addEventListener('change', async () => {
+    const file = fileEl.files[0];
+    if (!file) return;
+    setStatus('Reading…');
+    fileEl.disabled = true;
+    await new Promise(r => setTimeout(r, 30)); // lets the status text appear first
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const started = performance.now();
+      const data = JSON.parse(parseReplay(bytes));
+      show(file.name, data, performance.now() - started);
+      fileEl.disabled = false;
+    } catch (err) {
+      fail('The parser stopped unexpectedly: ' + err.message + '. Reload this page and try again.');
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>

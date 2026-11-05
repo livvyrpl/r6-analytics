@@ -1,0 +1,51 @@
+name: Build replay parser
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "parser/**"
+      - ".github/workflows/build-parser.yml"
+  workflow_dispatch: # adds a "Run workflow" button on GitHub
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-parser
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # parser.wasm and wasm_exec.js must come from the same Go version.
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.3"
+          cache-dependency-path: parser/go.sum
+
+      - name: Build parser.wasm
+        working-directory: parser
+        env:
+          GOOS: js
+          GOARCH: wasm
+        run: go build -trimpath -ldflags="-s -w" -o ../parser-build/parser.wasm ./wasm
+
+      - name: Copy wasm_exec.js
+        run: cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" parser-build/wasm_exec.js
+
+      - name: Commit the results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add parser-build/parser.wasm parser-build/wasm_exec.js
+          if git diff --cached --quiet; then
+            echo "The build output has not changed, so there is nothing to commit."
+            exit 0
+          fi
+          git commit -m "Rebuild replay parser"
+          # Someone may have pushed to main while this was building.
+          git pull --rebase origin main
+          git push origin HEAD:main

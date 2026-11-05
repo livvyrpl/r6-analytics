@@ -1,0 +1,91 @@
+diff --git a/dissect/header.go b/dissect/header.go
+index 2cd816d..538fdad 100644
+--- a/dissect/header.go
++++ b/dissect/header.go
+@@ -559,7 +559,10 @@ func (r *Reader) deriveTeamRoles() {
+ 		if p.Operator == Recruit {
+ 			continue
+ 		}
+-		role := p.Operator.Role()
++		role, known := p.Operator.KnownRole()
++		if !known {
++			continue
++		}
+ 		teamIndex := p.TeamIndex
+ 		oppositeTeamIndex := teamIndex ^ 1
+ 		if role == Attack {
+diff --git a/dissect/operator_roles.go b/dissect/operator_roles.go
+index ce9ea22..dbbf238 100644
+--- a/dissect/operator_roles.go
++++ b/dissect/operator_roles.go
+@@ -81,6 +81,7 @@ var _operatorRoles = map[Operator]TeamRole{
+ 	92270644293:  Defense,
+ 	92270644319:  Defense,
+ 	92270644345:  Attack,
++	456757346397: Defense, // Noor
+ }
+ 
+ func (i Operator) Role() TeamRole {
+@@ -89,3 +90,15 @@ func (i Operator) Role() TeamRole {
+ 	}
+ 	panic(fmt.Sprintf("role unknown for operator ID %d", i))
+ }
++
++// KnownRole is like Role but reports false instead of panicking when the
++// operator id is not in the table (a game build newer than this parser).
++func (i Operator) KnownRole() (TeamRole, bool) {
++	r, ok := _operatorRoles[i]
++	return r, ok
++}
++
++func isDefenseOp(o Operator) bool {
++	r, ok := o.KnownRole()
++	return ok && r == Defense
++}
+diff --git a/dissect/operator_string.go b/dissect/operator_string.go
+index cd4016d..3ed93f1 100644
+--- a/dissect/operator_string.go
++++ b/dissect/operator_string.go
+@@ -172,8 +172,16 @@ var _Operator_map = map[Operator]string{
+ }
+ 
+ func (i Operator) String() string {
++	if name, ok := _extraOperatorNames[i]; ok {
++		return name
++	}
+ 	if str, ok := _Operator_map[i]; ok {
+ 		return str
+ 	}
+ 	return "Operator(" + strconv.FormatInt(int64(i), 10) + ")"
+ }
++
++// Operators added after the generated table above. Add new ones here.
++var _extraOperatorNames = map[Operator]string{
++	456757346397: "Noor",
++}
+diff --git a/dissect/player.go b/dissect/player.go
+index 2701010..93790ef 100644
+--- a/dissect/player.go
++++ b/dissect/player.go
+@@ -137,7 +137,7 @@ func readPlayer(r *Reader) error {
+ 		DissectID: id,
+ 		uiID:      uiID,
+ 	}
+-	if p.Operator != Recruit && p.Operator.Role() == Defense {
++	if p.Operator != Recruit && isDefenseOp(p.Operator) {
+ 		p.Spawn = r.Header.Site // We cannot detect the spawn here on defense
+ 	}
+ 	log.Debug().Str("username", username).
+diff --git a/dissect/site.go b/dissect/site.go
+index 9bca948..04c0680 100644
+--- a/dissect/site.go
++++ b/dissect/site.go
+@@ -71,7 +71,7 @@ func readSpawn(r *Reader) error {
+ 		log.Debug().Str("site", formatted).Msg("defense site")
+ 		for i, p := range r.Header.Players {
+ 			defenseTeam := r.Header.Teams[p.TeamIndex].Role == Defense
+-			defenseRole := p.Operator != Recruit && p.Operator != 0 && p.Operator.Role() == Defense
++			defenseRole := p.Operator != Recruit && p.Operator != 0 && isDefenseOp(p.Operator)
+ 			if defenseTeam || defenseRole {
+ 				r.Header.Players[i].Spawn = formatted
+ 			}
