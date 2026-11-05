@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Liv Analytics</title>
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+<style>
+:root{--pk:#e07cc0;--bg:#0b0a0e;--cd:#131118;--bd:#231f2b;--bd2:#2a2532;--tx:#ece8f0;--mu:#9a93a6}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse 70% 40% at 50% 0%,rgba(224,124,192,.09),transparent 70%),var(--bg);color:var(--tx);font:400 14px Inter,sans-serif;min-height:100vh}
+h1,h2,h3,p{margin:0}button,input,select{font:inherit}
+.serif{font-family:'Cormorant Garamond',serif;font-weight:600}
+header{display:flex;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid #1d1923;flex-wrap:wrap}
+header img{height:52px}header .brand{font-size:26px;letter-spacing:.02em}.sp{flex:1}
+main{max-width:1180px;margin:0 auto;padding:28px 24px}
+.tb{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--bd2);background:var(--cd);color:var(--pk);font-weight:500;cursor:pointer}
+.tb:hover,.no:hover,.ch:hover{border-color:var(--pk)}
+.go{height:42px;padding:0 20px;border:0;border-radius:10px;background:var(--pk);color:#1a0b15;font-weight:600;cursor:pointer}.go:hover{background:#ea90cd;box-shadow:0 0 28px rgba(224,124,192,.35)}
+.no{height:42px;padding:0 18px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--tx);font-weight:500;cursor:pointer}
+.ch{height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--bd2);background:#0f0d13;color:#cfc8d6;font-weight:500;font-size:13px;cursor:pointer}
+.ch[aria-pressed=true]{border-color:var(--pk);background:rgba(224,124,192,.16);color:#f3c2e3}
+.fi{width:100%;height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--bd2);background:#0f0d13;color:var(--tx)}
+.fi:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--pk);outline-offset:2px}
+label,.lb{display:block;margin:0 0 6px;font-size:13px;color:#a59dad}
+.cd{padding:22px;border-radius:16px;background:var(--cd);border:1px solid var(--bd);display:flex;flex-direction:column;gap:16px}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.c{display:flex;gap:14px;align-items:center;padding:18px;border-radius:14px;background:var(--cd);border:1px solid var(--bd);color:var(--tx);text-align:left;cursor:pointer;width:100%;transition:all .15s}
+.c:hover{border-color:var(--pk);background:linear-gradient(135deg,rgba(224,124,192,.14),var(--cd) 70%);box-shadow:0 0 30px rgba(224,124,192,.18)}
+.ic{width:42px;height:42px;border-radius:10px;border:1px solid var(--bd2);display:flex;align-items:center;justify-content:center;color:var(--pk);flex:none}
+.c b{display:block;font-weight:600;font-size:15px}.c small{display:block;margin-top:3px;font-size:12.5px;color:var(--mu)}
+.soon{margin-left:auto;font-size:11px;color:var(--mu);border:1px solid var(--bd2);border-radius:999px;padding:2px 8px}
+h2.hh{font-size:15px;font-weight:600;margin:26px 0 12px}h2.hh:first-of-type{margin-top:0}
+.lt{width:var(--s,36px);height:var(--s,36px);flex:none;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;overflow:hidden;border:1px solid}
+.lt img{width:100%;height:100%;object-fit:cover}
+.row{display:flex;align-items:center;gap:12px}.wrap{flex-wrap:wrap}.mu{color:var(--mu);font-size:13px}
+.u{display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;border:1px solid transparent;background:none;color:var(--tx);width:100%;text-align:left;cursor:pointer}
+.u:hover{background:rgba(224,124,192,.08);border-color:#3a2a35}.u[aria-current=true]{background:rgba(224,124,192,.14);border-color:var(--pk)}
+.av{width:38px;height:38px;border-radius:50%;background:#2a1d26;color:#f3c2e3;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none}
+.tr{padding:14px;border-radius:12px;border:1px solid var(--bd);background:#0f0d13;display:flex;flex-direction:column;gap:10px}
+.sw{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}.sw[aria-pressed=true]{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--tx)}
+.two{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:20px;align-items:start}.two2{display:grid;grid-template-columns:1fr 1.3fr;gap:20px;align-items:start}
+@media(max-width:820px){.two,.two2{grid-template-columns:1fr}}
+.bar{background:rgba(224,124,192,.16);border-bottom:1px solid var(--pk);color:#f3c2e3;padding:10px 24px;display:flex;gap:12px;align-items:center}
+.badge{padding:4px 10px;border-radius:999px;border:1px solid #3a2a35;color:var(--pk);font-size:12px;font-weight:600}
+.login{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:30px}
+.login img{width:280px;max-width:80%}.login .cd{width:100%;max-width:400px}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1d1923;border:1px solid var(--pk);padding:12px 18px;border-radius:10px;display:none;z-index:9}
+dialog{background:var(--cd);color:var(--tx);border:1px solid var(--bd2);border-radius:16px;padding:24px;width:min(420px,92vw)}dialog::backdrop{background:rgba(0,0,0,.6)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="app"></div><div id="toast" role="status"></div><dialog id="dlg"></dialog>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL='https://hyfycayfadqjhxucpfnm.supabase.co',SUPABASE_KEY='sb_publishable_91fUHDwka-sQOMN5A8J8CQ_KyfQVsc7';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const R={coach:'Coach',assistant_coach:'Assistant Coach',analyst:'Analyst',player:'Player'},ALL=Object.keys(R);
+const REG=['North America','South America','Europe','Asia Pacific'],COL=['#e07cc0','#7cc0e0','#e0c07c','#9ae07c','#c07ce0','#e07c7c','#7ce0c0','#ece8f0'];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $=s=>document.querySelector(s),ico=p=>`<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+let me=null,teams=[],mem={},allMem=[],profs=[],invs=[],cur=null,view='dash',viewing=false,fm=null,sel=null,mode='in';
+const staff=()=>me&&['owner','admin'].includes(me.site_role),owner=()=>me&&me.site_role==='owner';
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3500)}
+const tile=(t,s=36)=>{const c=esc(t?.color||'#e07cc0');return `<span class="lt" style="--s:${s}px;color:${c};border-color:${c};background:${c}22">${t?.logo_url?`<img src="${esc(t.logo_url)}" alt="">`:esc((t?.name||'?').slice(0,2).toUpperCase())}</span>`};
+async function load(){
+ const{data:{session}}=await sb.auth.getSession();
+ if(!session){me=null;return render()}
+ const uid=session.user.id;
+ me=(await sb.from('profiles').select('*').eq('id',uid).maybeSingle()).data;
+ if(!me||me.suspended)return render();
+ const[t,m]=await Promise.all([sb.from('teams').select('*').order('name'),sb.from('team_members').select('*')]);
+ teams=t.data||[];allMem=m.data||[];mem={};allMem.filter(x=>x.user_id===uid).forEach(x=>mem[x.team_id]=x.roles);
+ if(staff()){profs=(await sb.from('profiles').select('*').order('email')).data||[];invs=(await sb.from('invites').select('*')).data||[]}
+ cur=teams.find(x=>cur&&x.id===cur.id)||teams.find(x=>mem[x.id])||(staff()?null:teams[0])||null;
+ render();
+}
+function render(){
+ const a=$('#app');
+ if(!me)return a.innerHTML=loginV();
+ if(me.suspended)return a.innerHTML=`<div class="login"><div class="cd"><p>This account is suspended. Ask the owner for help.</p><button class="no" data-a="out">Sign out</button></div></div>`;
+ const mine=teams.filter(t=>mem[t.id]);
+ a.innerHTML=`<header><img src="logo.png" alt=""><span class="brand serif">Liv Analytics</span><span class="sp"></span>
+ ${staff()?`<button class="tb" data-a="go" data-v="admin">Admin</button>`:''}
+ ${mine.length>1?`<select class="tb" data-c="sw" aria-label="Switch team">${mine.map(t=>`<option value="${t.id}"${cur&&t.id===cur.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`:''}
+ <button class="tb" data-a="go" data-v="dash">Dashboard</button><button class="tb" data-a="settings">Settings</button><button class="tb" data-a="profile">Profile</button></header>
+ ${viewing&&view==='dash'&&cur?`<div class="bar"><span>Viewing ${esc(cur.name)} as ${me.site_role}</span><button class="no" data-a="go" data-v="teamsV">Back to teams</button></div>`:''}
+ <main>${({dash:dashV,admin:adminV,teamsV,users:usersV,create:createV})[view]()}</main>`;
+}
+function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analytics"><form class="cd" data-s="auth">
+ <div><label for="em">Email</label><input id="em" class="fi" type="email" required autocomplete="email"></div>
+ <div><label for="pw">Password</label><input id="pw" class="fi" type="password" required minlength="8" autocomplete="${mode==='in'?'current-password':'new-password'}"></div>
+ <button class="go" style="height:48px">${mode==='in'?'Sign in':'Create account'}</button>
+ <button type="button" class="no" style="border:0" data-a="mode">${mode==='in'?'Invited? Create your account':'I already have an account'}</button></form>
+ <p class="mu">Access is by invitation. Ask your team owner to add you.</p></div>`}
+const HUBS=[['Scouting',['coach','analyst'],'<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>',[['Scouting','teams by region and league'],['Match Library','all teams, every game'],['Round Library','all teams, every round'],['Vetoes','bans and picks per team'],['Export to Sheets','pick league and teams, then copy']]],
+['Coaches hub',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches'],['Scrims','import, notes per player'],['Schedule','scrims, gamedays, off days'],['Strats','open slides in the site']]],
+['Analyst hub',['analyst','coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary'],['Stats','your team and opponents'],['Import','replays and scrims']]],
+['Player hub',['player','coach'],'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>',[['Overview','your week at a glance'],['My Schedule','add off days'],['Journal','goals with deadlines'],['My Stats','KOST, K/D, operators']]]];
+function dashV(){
+ if(!cur)return `<div class="cd"><h2 class="serif" style="font-size:28px">No team yet</h2><p class="mu">${staff()?'Create a team in Admin, or open one from the Teams list.':'Ask the owner to add you to a team.'}</p></div>`;
+ const roles=viewing||(staff()&&!mem[cur.id])?ALL:(mem[cur.id]||[]);
+ const badge=(staff()&&!mem[cur.id]?[me.site_role]:roles.map(r=>R[r])).join(', ');
+ return `<div class="row wrap" style="margin-bottom:24px;gap:14px">${tile(cur,48)}<h1 class="serif" style="font-size:34px;color:${esc(cur.color)}">${esc(cur.name)}</h1><span class="badge">${esc(badge)}</span></div>`+
+ HUBS.filter(h=>h[1].some(r=>roles.includes(r))).map(h=>`<h2 class="hh">${h[0]}</h2><div class="g">${h[3].map(c=>`<button class="c" data-a="soon"><span class="ic">${ico(h[2])}</span><span><b>${c[0]}</b><small>${c[1]}</small></span><span class="soon">Soon</span></button>`).join('')}</div>`).join('');
+}
+const adminCards=[['Manage Users','find people, assign teams and roles','users','<circle cx="9" cy="9" r="3"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5"/>'],['Teams','all teams, open any dashboard','teamsV','<path d="M4 11l8-7 8 7v9H4z"/>'],['Create team','name, logo, color, players','create','<path d="M12 5v14M5 12h14"/>'],['Roles and Permissions','','',''],['Invites','','',''],['Data Pulls','','',''],['Activity Log','','',''],['Site Settings','owner only','',''],['Backups and Export','owner only','','']];
+function adminV(){return `<div class="row wrap" style="margin-bottom:24px"><div><h1 class="serif" style="font-size:34px">Admin panel</h1><p class="mu">Owner and admins only.</p></div></div><div class="g">${adminCards.map(c=>`<button class="c" data-a="${c[2]?'go':'soon'}" data-v="${c[2]}"><span class="ic">${ico(c[3]||'<circle cx="12" cy="12" r="3"/>')}</span><span><b>${c[0]}</b><small>${c[1]}</small></span>${c[2]?'':'<span class="soon">Soon</span>'}</button>`).join('')}</div>`}
+const srch=ph=>`<input class="fi" type="search" data-c="filter" aria-label="${ph}" placeholder="${ph}">`;
+function teamsV(){return `<div class="row wrap" style="margin-bottom:20px"><div><h1 class="serif" style="font-size:34px">Teams</h1><p class="mu">Every team on the site. Open one to see its dashboard.</p></div><span class="sp"></span><button class="go" data-a="go" data-v="create">New team</button></div>${srch('Search teams')}
+ <div class="g" style="margin-top:16px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">${teams.length?teams.map(t=>`<button class="c" data-a="open" data-id="${t.id}" data-s="${esc((t.name+' '+(t.region||'')+' '+(t.league||'')).toLowerCase())}" style="flex-direction:column;align-items:flex-start"><span class="row" style="width:100%">${tile(t)}<b style="flex:1">${esc(t.name)}</b><span style="color:var(--pk);font-size:12px">Open dashboard</span></span><small>${esc(t.region||'No region')} · ${esc(t.league||'No league')} · ${allMem.filter(m=>m.team_id===t.id).length} members</small></button>`).join(''):'<p class="mu">No teams yet. Create the first one.</p>'}</div>`}
+function usersV(){
+ const u=profs.find(p=>p.id===sel),ms=allMem.filter(m=>m.user_id===sel),free=teams.filter(t=>!ms.find(m=>m.team_id===t.id));
+ const nm=p=>p.display_name||p.email;
+ return `<div class="row wrap" style="margin-bottom:20px"><div><h1 class="serif" style="font-size:34px">Manage users</h1><p class="mu">Give each person one or more teams, and one or more roles on each. New people are added from Create team.</p></div></div><div class="two">
+ <div class="cd">${srch('Search name or email')}<div>${profs.map(p=>`<button class="u" data-a="pick" data-id="${p.id}" data-s="${esc((nm(p)+' '+p.email).toLowerCase())}"${p.id===sel?' aria-current="true"':''}><span class="av">${esc(nm(p)[0].toUpperCase())}</span><span><b>${esc(nm(p))}</b><div class="mu">${p.site_role}${p.suspended?' · suspended':''} · ${allMem.filter(m=>m.user_id===p.id).length} teams</div></span></button>`).join('')}</div>
+ ${invs.length?`<div><div class="lb">Invited, not signed up yet</div>${invs.map(i=>`<div class="row" style="padding:6px 0"><span class="mu" style="flex:1">${esc(i.email)}</span><button class="no" style="height:32px" data-a="delinv" data-id="${esc(i.email)}">Cancel</button></div>`).join('')}</div>`:''}</div>
+ <div class="cd">${u?`<div class="row"><span class="av" style="width:52px;height:52px">${esc(nm(u)[0].toUpperCase())}</span><div><h2 class="serif" style="font-size:24px">${esc(nm(u))}</h2><div class="mu">${esc(u.email)}</div></div></div>
+ <div><h3 style="font-size:15px;margin-bottom:4px">Site role</h3><p class="mu" style="margin-bottom:10px">Admins see every team and all data and can assign teams and roles. Only the owner changes admins.</p>
+ ${u.site_role==='owner'?'<span class="badge">Owner</span>':`<div class="row" style="gap:8px">${['member','admin'].map(r=>`<button class="ch" aria-pressed="${u.site_role===r}" data-a="srole" data-r="${r}"${owner()?'':' disabled'}>${r==='admin'?'Admin':'Member'}</button>`).join('')}</div>`}</div>
+ <div><h3 style="font-size:15px;margin-bottom:10px">Team access</h3><div style="display:flex;flex-direction:column;gap:10px">${ms.map(m=>{const t=teams.find(x=>x.id===m.team_id);return t?`<div class="tr"><div class="row">${tile(t,28)}<b style="flex:1">${esc(t.name)}</b><button class="no" style="height:32px" data-a="rmteam" data-t="${t.id}">Remove team</button></div><div class="row wrap" style="gap:8px">${ALL.map(r=>`<button class="ch" aria-pressed="${m.roles.includes(r)}" data-a="role" data-t="${t.id}" data-r="${r}">${R[r]}</button>`).join('')}</div></div>`:''}).join('')||'<p class="mu">Not on any team yet.</p>'}</div>
+ ${free.length?`<div class="row" style="margin-top:12px"><select id="addt" class="fi" aria-label="Team to add">${free.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select><button class="no" data-a="addteam" style="white-space:nowrap">Add team</button></div>`:''}</div>
+ ${u.site_role==='owner'?'':`<div class="row" style="border-top:1px solid var(--bd);padding-top:16px"><button class="no" data-a="susp">${u.suspended?'Restore access':'Suspend'}</button></div>`}`:'<p class="mu">Pick a person on the left.</p>'}</div></div>`}
+const prow=p=>`<div class="tr pr"><div class="row"><div style="flex:1"><label>Email (sends an invite)</label><input class="fi pe" type="email" value="${esc(p.email)}" placeholder="person@email.com"></div><button class="no" data-a="rmp" style="align-self:end">Remove</button></div><div class="row wrap" style="gap:8px">${ALL.map(r=>`<button type="button" class="ch" data-a="prole" data-r="${r}" aria-pressed="${p.roles.includes(r)}">${R[r]}</button>`).join('')}</div></div>`;
+function createV(){fm=fm||{color:COL[0],people:[{email:'',roles:['coach']},{email:'',roles:['player']}]};
+ return `<div class="row wrap" style="margin-bottom:20px"><div><h1 class="serif" style="font-size:34px">Create team</h1><p class="mu">Set up the team, then add its players and staff.</p></div><span class="sp"></span><button class="no" data-a="go" data-v="teamsV">Back to teams</button></div><div class="two2"><div style="display:flex;flex-direction:column;gap:20px"><div class="cd">
+ <div><label for="tn">Team name</label><input id="tn" class="fi" value="${esc(fm.name||'')}"></div>
+ <div class="row" style="gap:12px"><div style="flex:1"><label for="rg">Region</label><select id="rg" class="fi">${REG.map(r=>`<option${fm.region===r?' selected':''}>${r}</option>`).join('')}</select></div><div style="flex:1"><label for="lg">League</label><input id="lg" class="fi" value="${esc(fm.league||'')}" placeholder="e.g. NA League"></div></div>
+ <div><span class="lb">Team color</span><div class="row wrap" style="gap:10px">${COL.map(c=>`<button type="button" class="sw" data-a="color" data-c="${c}" style="background:${c}" aria-label="Color ${c}" aria-pressed="${c===fm.color}"></button>`).join('')}</div></div>
+ <div><label for="logo">Logo (PNG or SVG, transparent works best)</label><div class="row"><span id="lp">${tile({color:fm.color,name:fm.name||'?'},56)}</span><input id="logo" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" data-c="logo"></div></div></div></div>
+ <div class="cd"><h2 style="font-size:18px">Players and staff</h2><p class="mu">Tick every role each person holds. If they already have an account they are added right away. Otherwise they are invited and join the team when they sign up.</p><div id="people" style="display:flex;flex-direction:column;gap:12px">${fm.people.map(prow).join('')}</div><button class="no" data-a="addp" style="align-self:flex-start">+ Add person</button></div></div>
+ <div class="row" style="justify-content:flex-end;margin-top:20px"><button class="go" data-a="mk">Create team</button></div>`}
+function cap(){if(!$('#tn'))return;Object.assign(fm,{name:$('#tn').value,region:$('#rg').value,league:$('#lg').value});fm.people=[...document.querySelectorAll('.pr')].map(r=>({email:r.querySelector('.pe').value,roles:[...r.querySelectorAll('[aria-pressed=true]')].map(b=>b.dataset.r)}))}
+async function assign(email,tid,roles){
+ const pr=profs.find(x=>x.email.toLowerCase()===email);
+ if(pr)return sb.from('team_members').upsert({team_id:tid,user_id:pr.id,roles});
+ const inv=(await sb.from('invites').select('*').eq('email',email).maybeSingle()).data;
+ return sb.from('invites').upsert({email,site_role:inv?.site_role||'member',assignments:(inv?.assignments||[]).filter(a=>a.team_id!==tid).concat([{team_id:tid,roles}])});
+}
+const A={
+ go:d=>{view=d.v;viewing=false;fm=view==='create'?fm:null;render()},
+ soon:()=>toast('Coming in the next stage'),
+ out:()=>sb.auth.signOut(),
+ mode:()=>{mode=mode==='in'?'up':'in';render()},
+ open:d=>{cur=teams.find(t=>t.id===d.id);viewing=true;view='dash';render()},
+ pick:d=>{sel=d.id;render()},
+ settings:()=>{const d=$('#dlg');d.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:14px">Settings</h2><label for="dn">Display name</label><input id="dn" class="fi" value="${esc(me.display_name||'')}"><div class="row" style="margin-top:16px"><button class="go" data-a="savename">Save</button><button class="no" data-a="out">Sign out</button><button class="no" data-a="close">Close</button></div>`;d.showModal()},
+ profile:()=>{const d=$('#dlg');d.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:10px">${esc(me.display_name||me.email)}</h2><p class="mu">${esc(me.email)}</p><p style="margin:12px 0">Site role: ${me.site_role}</p>${teams.filter(t=>mem[t.id]).map(t=>`<p>${esc(t.name)}: ${mem[t.id].map(r=>R[r]).join(', ')||'no role'}</p>`).join('')}<button class="no" style="margin-top:16px" data-a="close">Close</button>`;d.showModal()},
+ close:()=>$('#dlg').close(),
+ savename:async()=>{const r=await sb.rpc('update_my_name',{n:$('#dn').value});r.error?toast(r.error.message):(toast('Saved'),$('#dlg').close(),load())},
+ srole:async d=>{const r=await sb.rpc('set_site_role',{target:sel,new_role:d.r});r.error?toast(r.error.message):load()},
+ susp:async()=>{const u=profs.find(p=>p.id===sel);const r=await sb.rpc('set_suspended',{target:sel,flag:!u.suspended});r.error?toast(r.error.message):load()},
+ role:async d=>{const m=allMem.find(x=>x.team_id===d.t&&x.user_id===sel),roles=m.roles.includes(d.r)?m.roles.filter(x=>x!==d.r):[...m.roles,d.r];const r=await sb.from('team_members').upsert({team_id:d.t,user_id:sel,roles});r.error?toast(r.error.message):load()},
+ rmteam:async d=>{const r=await sb.from('team_members').delete().match({team_id:d.t,user_id:sel});r.error?toast(r.error.message):load()},
+ addteam:async()=>{const r=await sb.from('team_members').upsert({team_id:$('#addt').value,user_id:sel,roles:['player']});r.error?toast(r.error.message):load()},
+ delinv:async d=>{await sb.from('invites').delete().eq('email',d.id);load()},
+ color:(d,b)=>{cap();fm.color=d.c;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x===b));$('#lp').innerHTML=tile({color:fm.color,name:fm.name||'?'},56)},
+ prole:(d,b)=>b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true'),
+ addp:()=>{cap();fm.people.push({email:'',roles:['player']});$('#people').innerHTML=fm.people.map(prow).join('')},
+ rmp:(d,b)=>{cap();const i=[...document.querySelectorAll('.pr')].indexOf(b.closest('.pr'));fm.people.splice(i,1);$('#people').innerHTML=fm.people.map(prow).join('')},
+ mk:async()=>{cap();if(!fm.name.trim())return toast('Enter a team name');let logo_url=null;const f=$('#logo').files[0];
+  if(f){const path=crypto.randomUUID()+'.'+(f.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,''),up=await sb.storage.from('logos').upload(path,f,{contentType:f.type});if(up.error)return toast(up.error.message);logo_url=sb.storage.from('logos').getPublicUrl(path).data.publicUrl}
+  const{data:t,error}=await sb.from('teams').insert({name:fm.name.trim(),region:fm.region,league:fm.league.trim()||null,color:fm.color,logo_url}).select().single();if(error)return toast(error.message);
+  for(const p of fm.people){const email=p.email.trim().toLowerCase();if(email&&p.roles.length){const r=await assign(email,t.id,p.roles);if(r.error)toast(email+': '+r.error.message)}}
+  fm=null;view='teamsV';await load();toast('Team created')}
+};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a])A[b.dataset.a](b.dataset,b)});
+document.addEventListener('input',e=>{if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
+document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='sw'){cur=teams.find(t=>t.id===e.target.value);viewing=false;render()}
+ if(c==='logo'&&e.target.files[0]){const u=URL.createObjectURL(e.target.files[0]);$('#lp').innerHTML=`<span class="lt" style="--s:56px;border-color:${esc(fm.color)}"><img src="${u}" alt=""></span>`}});
+document.addEventListener('submit',async e=>{if(e.target.dataset.s!=='auth')return;e.preventDefault();
+ const email=$('#em').value.trim(),password=$('#pw').value;
+ if(mode==='in'){const{error}=await sb.auth.signInWithPassword({email,password});if(error)toast('Wrong email or password')}
+ else{const{data,error}=await sb.auth.signUp({email,password});if(error)toast(/invited|Database error/i.test(error.message)?'This email has not been invited yet.':error.message);else if(!data.session)toast('Check your email to confirm, then sign in')}});
+sb.auth.onAuthStateChange((ev)=>{if(['SIGNED_IN','SIGNED_OUT','INITIAL_SESSION'].includes(ev))setTimeout(load,0)});
+</script>
+</body>
+</html>
