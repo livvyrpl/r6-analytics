@@ -955,11 +955,11 @@ function oppBans(t,rows){
 }
 function oppB2(t){
  const c=normHex(t.color)||'#e07cc0',rows=oppRows(t),tabs=[['over','Overview'],['games','Games'],['maps','Maps'],['ranks','Map ranks'],['lib','Match library'],['vet','Vetoes'],['ops','Operators'],['pl','Players'],['notes','Coach notes']];
- const head=`<div class="opph" style="border-color:${c};background:linear-gradient(135deg,${c}55,${c}14 60%,var(--cd))">${tile(t,64)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px;overflow-wrap:anywhere">${esc(t.name)}</h1><p class="mu" style="color:var(--tx);overflow-wrap:anywhere">${esc([t.short_name,t.region,t.league].filter(Boolean).join(' · ')||'Tracked opponent')}</p></div><div class="row wrap"><button class="no" data-a="sct">All opponents</button><button class="no" data-a="soedit">Settings</button></div></div>`;
+ const head=`<div class="opph" style="border-color:${c};background:linear-gradient(135deg,${c}55,${c}14 60%,var(--cd))">${tile(t,64)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px;overflow-wrap:anywhere">${esc(t.name)}</h1><p class="mu" style="color:var(--tx);overflow-wrap:anywhere">${esc([t.short_name,t.region,t.league].filter(Boolean).join(' · ')||'Tracked opponent')}</p></div><div class="row wrap"><button class="go" data-a="lpteam" ${sco.lp?.running?'disabled':''}>Pull everything</button><button class="no" data-a="sct">All opponents</button><button class="no" data-a="soedit">Settings</button></div></div>`;
  const bar=`<div class="row" style="gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px" role="group" aria-label="Opponent pages">${tabs.map(x=>`<button class="ch" style="flex:none" data-a="sotab" data-t="${x[0]}" aria-pressed="${sco.tab===x[0]}">${x[1]}</button>`).join('')}</div>`;
  if(sco.form)return head+soForm();
  const fn={over:oTabOver,games:oTabGames,maps:oTabMaps,ranks:oTabRanks,lib:oTabLib,vet:oTabVet,ops:oTabOps,pl:oTabPl,notes:oTabNotes}[sco.tab]||oTabOver;
- return head+bar+fn(t,rows);
+ return head+(sco.lp?.team===t.id?lpB():'')+bar+fn(t,rows);
 }
 const none2=m=>`<div class="cd"><p class="mu">${m}</p></div>`;
 function oTabOver(t,rows){
@@ -1147,12 +1147,12 @@ const lpCall=async b=>{
 const lpFrom=()=>{const n={3:3,6:6,12:12}[sco.lp.range];if(!n)return '';const d=new Date();d.setMonth(d.getMonth()-n);return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
 function lpB(){
  const l=sco.lp,prog=l.prog;
- const head=`<section class="cd" style="gap:12px;margin-bottom:16px"><div class="row wrap" style="justify-content:space-between"><div style="min-width:0;flex:1 1 220px"><h2 style="font-size:17px;font-weight:600">${l.only?'Check matches':'Pull from Liquipedia'}</h2><p class="mu">${l.only?'Compares your games with the official page and siege.gg. Problems appear on each opponent\'s Overview.':`Paste a league or event link. Data saves under ${esc(cur.name)} only.`}</p></div>${l.running?'':'<button class="no" data-a="lpclose">Close</button>'}</div>`;
+ const head=`<section class="cd" style="gap:12px;margin-bottom:16px"><div class="row wrap" style="justify-content:space-between"><div style="min-width:0;flex:1 1 220px"><h2 style="font-size:17px;font-weight:600">${l.team?'Pull everything':l.only?'Check matches':'Pull from Liquipedia'}</h2><p class="mu">${l.team?`Every event this team played in the last 12 months. Data saves under ${esc(cur.name)} only. This can take several minutes, so keep this tab open.`:l.only?'Compares your games with the official page and siege.gg. Problems appear on each opponent\'s Overview.':`Paste a league or event link. Data saves under ${esc(cur.name)} only.`}</p></div>${l.running?'':'<button class="no" data-a="lpclose">Close</button>'}</div>`;
  if(l.step==='link')return `${head}<form data-s="lplink" class="row wrap" style="gap:8px"><input id="lpu" class="fi" style="flex:1 1 260px;min-width:0" inputmode="url" aria-label="Liquipedia link" placeholder="https://liquipedia.net/rainbowsix/North_America_League/2026/Stage_2" value="${esc(l.url||'')}"><button class="go" ${l.busy?'disabled':''}>${l.busy?'Checking…':'Check link'}</button></form>${l.err?`<p class="over">${esc(l.err)}</p>`:''}</section>`;
  if(l.step==='run'||l.step==='done'){
   const pct=prog.n?Math.round(prog.i/prog.n*100):0,s=l.sum;
   return `${head}${l.step==='run'?`<p>${esc(prog.label||'Starting…')}</p><div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Pull progress"><i style="width:${pct}%"></i></div><p class="mu">${prog.i} of ${prog.n} steps</p><div><button class="no" data-a="lpstop" ${l.stop?'disabled':''}>${l.stop?'Stopping…':'Cancel'}</button></div>`:`<p style="font-weight:600">${l.stop?(l.only?'Check cancelled.':'Pull cancelled.')+' Anything already saved stays.':l.only?'Check finished.':'Pull finished.'}</p>`}
-  <div class="tiles">${[...(l.only?[]:[['Teams added',s.teams],['Matches added',s.matches],['Vetoes added',s.vetoes],['Skipped duplicates',s.skipped]]),['Games checked',s.checked],['Needs attention',s.flagged],['Replay links',s.replays],['Errors',l.fails.length]].map(x=>`<div class="stat"><span class="mu">${x[0]}</span><b>${x[1]}</b></div>`).join('')}</div>
+  <div class="tiles">${[...(l.team?[['Events read',s.events],['Matches added',s.matches],['Vetoes added',s.vetoes],['Skipped duplicates',s.skipped]]:l.only?[]:[['Teams added',s.teams],['Matches added',s.matches],['Vetoes added',s.vetoes],['Skipped duplicates',s.skipped]]),['Games checked',s.checked],['Needs attention',s.flagged],['Replay links',s.replays],['Errors',l.fails.length]].map(x=>`<div class="stat"><span class="mu">${x[0]}</span><b>${x[1]}</b></div>`).join('')}</div>
   ${l.fails.length?`<div><span class="lb">What failed</span>${l.fails.map(f=>`<p class="over" style="overflow-wrap:anywhere">${esc(f)}</p>`).join('')}</div>`:''}</section>`;
  }
  const chk=(c,id,on,lab,sub='')=>`<label class="row" style="gap:8px;color:var(--tx);margin:0;padding:3px 0;font-size:14px"><input type="checkbox" data-c="${c}" data-id="${esc(id)}"${on?' checked':''}><span style="overflow-wrap:anywhere;min-width:0">${esc(lab)}${sub?` <span class="mu">${esc(sub)}</span>`:''}</span></label>`;
@@ -1306,6 +1306,25 @@ async function lpReload(l){
  if(!a.error)sco.teams=a.data.sort((x,y)=>x.name.localeCompare(y.name));if(!b.error)sco.m=b.data;if(!c.error)sco.v=c.data;
  l.running=false;l.step='done';lpDraw();
 }
+// one opponent: every event they played in the last 12 months
+async function lpRunTeam(t){
+ const l=sco.lp={team:t.id,step:'run',running:true,stop:false,fails:[],pages:[],on:new Set(),teams:[],tOn:new Set(),sum:{events:0,teams:0,matches:0,vetoes:0,skipped:0,replays:0,checked:0,ok:0,flagged:0},prog:{i:0,n:3,label:'Starting…'}};lpDraw();
+ const d=new Date();d.setMonth(d.getMonth()-12);const from=new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10),years=[];for(let y=+from.slice(0,4);y<=new Date().getFullYear();y++)years.push(String(y));
+ let name=t.source_ids?.liquipedia||t.name,aliases=[],ok=false;
+ await lpStep(l,`Finding ${t.name} on Liquipedia`,async()=>{const r=await lpCall({action:'find',part:'team',name,opp_id:t.id});name=r.name;aliases=r.aliases||[];ok=true},t.name);
+ if(!ok)return lpReload(l);
+ const found=new Set();
+ for(const part of ['results','matches'])await lpStep(l,'Finding every event they played in, about 30 seconds',async()=>{(await lpCall({action:'find',part,name})).titles.forEach(x=>found.add(x))},'Event list');
+ const skip=/Showmatch|Global Standings|\/Results|\/Statistics|\/Transfers/i,recent=[...found].filter(x=>years.some(y=>new RegExp('\\b'+y+'\\b').test(x))&&!skip.test(x)).sort((a,b)=>a.localeCompare(b)),roots=recent.filter(x=>!recent.some(y=>y!==x&&x.startsWith(y+'/')));
+ const pages=new Set(recent);l.prog.n+=roots.length;lpDraw();
+ for(const x of roots)await lpStep(l,'Listing '+x,async()=>{(await lpCall({action:'resolve',url:'https://liquipedia.net/rainbowsix/'+encodeURI(x.replace(/ /g,'_'))})).pages.forEach(p=>{if(!skip.test(p.title))pages.add(p.title)})},x);
+ l.sum.events=pages.size;l.prog.n+=pages.size;lpDraw();
+ for(const p of pages)await lpStep(l,'Reading '+p,async()=>{const r=await lpCall({action:'pull',page:p,teams:[name,...aliases],canon:name,from});l.sum.matches+=r.matches;l.sum.vetoes+=r.vetoes;l.sum.skipped+=r.skipped},p);
+ if(!(t.players||[]).length){l.prog.n++;await lpStep(l,'Getting roster, about 30 seconds',()=>lpCall({action:'roster',name}),'Roster')}
+ if(!l.stop&&!l.sum.matches&&!l.sum.skipped)l.fails.push(`No games from the last 12 months were found for ${t.name} on Liquipedia.`);
+ if(!l.stop)await lpChecks(l);
+ await lpReload(l);
+}
 async function lpCheckOnly(){
  A.lpopen();const l=sco.lp;Object.assign(l,{only:true,step:'run',running:true,stop:false,fails:[],sum:{checked:0,ok:0,flagged:0,replays:0},prog:{i:0,n:0,label:'Finding games to check…'}});lpDraw();
  await lpChecks(l);await lpReload(l);
@@ -1365,6 +1384,7 @@ const A={
  lpscan:()=>lpScan(),
  lpall:d=>{sco.lp.tOn=new Set(d.v==='1'?sco.lp.teams:[]);render()},
  lpgo:()=>lpRun(),
+ lpteam:()=>{const t=sco.teams.find(x=>x.id===sco.oppId);if(t&&!sco.lp?.running)lpRunTeam(t)},
  lpstop:()=>{sco.lp.stop=true;render()},
  sct:()=>openSc('home'),slm:()=>openSc('lib','m'),slr:()=>openSc('lib','r'),slv:()=>openSc('lib','v'),
  sx:async()=>{await openSc('home');if(sco?.loaded&&!sco.err)A.xopen()},
