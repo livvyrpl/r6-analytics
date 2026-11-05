@@ -147,7 +147,7 @@ function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analyt
  <p class="mu">Access is by invitation. Ask your team owner to add you.</p></div>`}
 const HUBS=[['Scouting',['coach','assistant_coach','analyst'],'<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>',[['Scouting','tracked opponents by region and league','sct'],['Match Library','all teams, every game','slm'],['Round Library','all teams, every round','slr'],['Vetoes','bans and picks per team','slv'],['Export to Sheets','pick league and teams, then export','sx']]],
 ['Coach Deck',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches','cover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Player Hub','stats, journals, off days for every player','phub'],['Team Settings','name, region, league, color, logo','tset']]],
-['Analyst Deck',['analyst','coach','assistant_coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary','aover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Stats','your team and opponents','astats'],['Import','replays and scrims','aimport']]],
+['Analyst Deck',['analyst','coach','assistant_coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary','aover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Stats','your team and opponents','astats'],['Import','replays and scrims','aimport'],['Parse','drop in .rec replay files','aparse']]],
 ['Player Deck',['player'],'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>',[['Overview','your week at a glance','pover'],['My Schedule','team schedule, add off days','pmysch'],['Journal','goals with deadlines','pjournal'],['My Stats','KOST, K/D, operators','pstats'],['Strats','open slides in the site','strats']]]];
 function dashV(){
  if(!cur)return `<div class="cd"><h2 class="serif" style="font-size:28px">No team yet</h2><p class="mu">${staff()?'Create a team in Admin, or open one from the Teams list.':'Ask the owner to add you to a team.'}</p></div>`;
@@ -509,10 +509,11 @@ async function openAnalyst(page){
 function analystV(){
  if(!cur||!an||an.tid!==cur.id)return `<div class="cd"><p>Open the Analyst Deck from a team's dashboard.</p><div>${backDash}</div></div>`;
  if(!canAn())return `<div class="cd"><p>This page is for this team's analysts, coaches and assistant coaches.</p><div>${backDash}</div></div>`;
- const T={over:'Overview',stats:'Stats',import:'Import',scout:'Scouting'}[an.page];
- const tabs=`<div class="row wrap" style="gap:8px;margin-bottom:20px" role="group" aria-label="Analyst pages">${[['aover','Overview','over'],['astats','Stats','stats'],['aimport','Import','import']].map(x=>`<button class="ch" data-a="${x[0]}" aria-pressed="${x[2]===an.page}">${x[1]}</button>`).join('')}</div>`;
+ const T={over:'Overview',stats:'Stats',import:'Import',parse:'Parse',scout:'Scouting'}[an.page];
+ const tabs=`<div class="row wrap" style="gap:8px;margin-bottom:20px" role="group" aria-label="Analyst pages">${[['aover','Overview','over'],['astats','Stats','stats'],['aimport','Import','import'],['aparse','Parse','parse']].map(x=>`<button class="ch" data-a="${x[0]}" aria-pressed="${x[2]===an.page}">${x[1]}</button>`).join('')}</div>`;
  const head=`<div class="row wrap" style="margin-bottom:16px">${tile(cur,48)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px">${T}</h1><p class="mu">${esc(cur.name)}</p></div><div class="row wrap">${an.page==='scout'?'<button class="no" data-a="sct">All scouting</button>':''}${backDash}</div></div>${an.page==='scout'?'':tabs}`;
  if(an.page==='import')return head+importB();
+ if(an.page==='parse')return head+replayBox();
  const body=!an.list?'<p class="mu">Loading…</p>':an.err?`<div class="cd"><p>${esc(an.err)}</p></div>`:an.page==='stats'?aStatsB():an.page==='scout'?scoutB():aOverB();
  return head+body;
 }
@@ -753,12 +754,13 @@ function walkEntry(en,out){
  const next=()=>new Promise(ok=>rd.readEntries(async es=>{if(!es.length)return ok();await Promise.all(es.map(x=>walkEntry(x,out)));await next();ok()},()=>ok()));
  return next();
 }
-function importB(){
- return `<div style="display:flex;flex-direction:column;gap:16px"><section><h2 class="hh" style="margin-top:0">Scrim</h2><p class="mu" style="margin-bottom:12px">This adds to the same list as Scrims in the Coach Deck. After saving, you can add player notes.</p>${scrimForm(true)}</section>
- <section class="cd"><div><h2 style="font-size:15px;font-weight:600;margin-bottom:4px">Replays</h2><p class="mu">Files are read on this device and are never uploaded. Only the results are saved, after you check them.</p></div>
+const replayBox=()=>`<section class="cd"><div><h2 style="font-size:15px;font-weight:600;margin-bottom:4px">Replays</h2><p class="mu">Files are read on this device and are never uploaded. Only the results are saved, after you check them.</p></div>
  <div id="dz" class="dz"><p style="font-weight:600">Drop .rec files or folders here</p><div class="row wrap" style="justify-content:center;gap:8px"><button class="no" data-a="recpick" data-t="recf">Choose files</button><button class="no" data-a="recpick" data-t="recd">Choose folder</button></div></div>
  <input id="recf" type="file" multiple accept=".rec" data-c="recs" hidden aria-label="Choose replay files"><input id="recd" type="file" webkitdirectory multiple data-c="recs" hidden aria-label="Choose a folder of replays">
- <div id="recl" style="display:flex;flex-direction:column;gap:10px">${recList()}</div></section></div>`;
+ <div id="recl" style="display:flex;flex-direction:column;gap:10px">${recList()}</div></section>`;
+function importB(){
+ return `<div style="display:flex;flex-direction:column;gap:16px"><section><h2 class="hh" style="margin-top:0">Scrim</h2><p class="mu" style="margin-bottom:12px">This adds to the same list as Scrims in the Coach Deck. After saving, you can add player notes.</p>${scrimForm(true)}</section>
+ ${replayBox()}</div>`;
 }
 const BANS=[['our_atk_bans','Our bans: attackers','ops-atk'],['our_def_bans','Our bans: defenders','ops-def'],['their_atk_bans','Their bans: attackers','ops-atk'],['their_def_bans','Their bans: defenders','ops-def']];
 const opsLists=()=>`<datalist id="ops-atk">${OPS_ATK.map(o=>`<option value="${esc(o)}">`).join('')}</datalist><datalist id="ops-def">${OPS_DEF.map(o=>`<option value="${esc(o)}">`).join('')}</datalist>`;
@@ -1793,7 +1795,7 @@ const A={
  scout:()=>{if(an)an.opp=null;openAnalyst('scout')},
  scoutopen:d=>{an.opp=d.k;render()},
  scoutback:()=>{an.opp=null;render()},
- aover:()=>openAnalyst('over'),astats:()=>openAnalyst('stats'),aimport:()=>openAnalyst('import'),
+ aover:()=>openAnalyst('over'),astats:()=>openAnalyst('stats'),aimport:()=>openAnalyst('import'),aparse:()=>openAnalyst('parse'),
  asopen:async d=>{await A.scrims();await A.sopen(d)},
  amode:d=>{an.mode=d.m;render()},
  aclear:()=>{Object.assign(an,{from:'',to:'',map:''});render()},
@@ -1862,7 +1864,7 @@ const A={
   for(const p of fm.people){const email=p.email.trim().toLowerCase();if(email&&p.roles.length){const r=await assign(email,t.id,p.roles);if(r.error)toast(email+': '+r.error.message)}}
   fm=null;view='teamsV';await load();toast('Team created')}
 };
-const LEAVE=new Set(['go','open','out','savename','sdash','sback','sform','sedit','scancel','sopen','schcancel','updnow','schedule','pmysch','pover','pjournal','pstats','pnotes','pmine','aover','astats','aimport','asopen','scout','tset','smatch','smback','somap','smok','sct','slm','slr','slv','sx','sopp','sotab','soadd','soedit','socancel','cover','strats','stropen','stadd','stedit','stcancel','stback','stview','phub','phopen','gform','gedit','gcancel','gnoteopen','gnotecancel']),leaveOk=()=>!sdirty||(confirm('You have unsaved changes. Leave without saving?')&&!(sdirty=false));
+const LEAVE=new Set(['go','open','out','savename','sdash','sback','sform','sedit','scancel','sopen','schcancel','updnow','schedule','pmysch','pover','pjournal','pstats','pnotes','pmine','aover','astats','aimport','aparse','asopen','scout','tset','smatch','smback','somap','smok','sct','slm','slr','slv','sx','sopp','sotab','soadd','soedit','socancel','cover','strats','stropen','stadd','stedit','stcancel','stback','stview','phub','phopen','gform','gedit','gcancel','gnoteopen','gnotecancel']),leaveOk=()=>!sdirty||(confirm('You have unsaved changes. Leave without saving?')&&!(sdirty=false));
 document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a]&&(!LEAVE.has(b.dataset.a)||leaveOk()))A[b.dataset.a](b.dataset,b)});
 window.addEventListener('beforeunload',e=>{if(sdirty||sco?.lp?.running){e.preventDefault();e.returnValue=''}});
 document.addEventListener('input',e=>{if(e.target.closest('[data-dirty]'))sdirty=true;if(e.target.dataset.c==='tsx'){const v=normHex(e.target.value);document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v))}if(e.target.dataset.c==='scq'){sco.q=e.target.value;const l=$('#scl');if(l)l.innerHTML=homeCards()}if(e.target.dataset.c==='stq'){stra.q=e.target.value;const l=$('#stl');if(l)l.innerHTML=stratCards()}if(e.target.dataset.c==='hex'){const v=normHex(e.target.value);if(v){fm.color=v;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v));$('#lp').innerHTML=tile({color:v,name:$('#tn').value||'?'},56)}}if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
@@ -1891,9 +1893,9 @@ document.addEventListener('submit',async e=>{if(e.target.dataset.s==='scrim'){e.
  const email=$('#em').value.trim(),password=$('#pw').value;
  if(mode==='in'){const{error}=await sb.auth.signInWithPassword({email,password});if(error)toast('Wrong email or password')}
  else{const{data,error}=await sb.auth.signUp({email,password});if(error)toast(/invited|Database error/i.test(error.message)?'This email has not been invited yet.':error.message);else if(!data.session)toast('Check your email to confirm, then sign in')}});
-document.addEventListener('dragover',e=>{if(view==='analyst'&&an?.page==='import'){e.preventDefault();$('#dz')?.classList.toggle('on',!!e.target.closest?.('#dz'))}});
+document.addEventListener('dragover',e=>{if(view==='analyst'&&['import','parse'].includes(an?.page)){e.preventDefault();$('#dz')?.classList.toggle('on',!!e.target.closest?.('#dz'))}});
 document.addEventListener('dragleave',e=>{if(view==='analyst'&&!e.relatedTarget)$('#dz')?.classList.remove('on')});
-document.addEventListener('drop',async e=>{if(view!=='analyst'||an?.page!=='import')return;e.preventDefault();$('#dz')?.classList.remove('on');if(!e.target.closest?.('#dz'))return;
+document.addEventListener('drop',async e=>{if(view!=='analyst'||!['import','parse'].includes(an?.page))return;e.preventDefault();$('#dz')?.classList.remove('on');if(!e.target.closest?.('#dz'))return;
  const dt=e.dataTransfer,es=[...(dt.items||[])].map(i=>i.webkitGetAsEntry?.()).filter(Boolean),out=[];
  if(es.length)await Promise.all(es.map(x=>walkEntry(x,out)));else [...(dt.files||[])].forEach(f=>out.push({file:f,name:f.name,path:f.name,size:f.size}));
  addRecs(out)});
