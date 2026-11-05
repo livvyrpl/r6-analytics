@@ -159,14 +159,60 @@ function applyAccent(){
  for(let i=0;i<12&&(lum(c)+.05)/(bg+.05)<4.5;i++)c=c.map(x=>Math.round(x+(255-x)*.12));
  st.setProperty('--pk','rgb('+c+')');st.setProperty('--pk-rgb',c.join(','));st.setProperty('--pk-lt','rgb('+c.map(x=>Math.round(x+(255-x)*.55))+')');
 }
+// BACK: each draw notes where you are, so the Back button works everywhere without each page having to take part
+const nav={stack:[],cur:null,sig:'',busy:false};
+function navPlace(){
+ const p={view,team:cur?.id||null,viewing:!!viewing};
+ if(view==='sc'&&sco)p.s={page:sco.page,form:!!sco.form,kind:sco.page==='lib'?sco.kind:'',tab:sco.page==='opp'?sco.tab:'',oppId:sco.page==='opp'?sco.oppId:'',matchId:sco.page==='match'?sco.matchId:'',gapTeam:sco.page==='gaps'?sco.gapTeam:''};
+ if(view==='analyst'&&an)p.s={page:an.page,opp:an.opp||''};
+ if(view==='player'&&pl)p.s={page:pl.page,uid:pl.uid,fromRoster:!!pl.fromRoster};
+ if(view==='scrims'&&scr)p.s={st:scr.st,id:scr.id};
+ if(view==='strats'&&stra)p.s={st:stra.st,id:stra.id};
+ if(view==='schedule'&&sch)p.s={st:sch.st,forUser:sch.forUser,fromHub:!!sch.fromHub};
+ return p;
+}
+function navTrack(){
+ const p=navPlace(),sig=JSON.stringify(p);if(sig===nav.sig)return;
+ if(nav.cur&&!nav.busy){
+  const top=nav.stack[nav.stack.length-1];
+  // going back with a page's own button shouldn't leave a step behind
+  if(top&&JSON.stringify(top.p)===sig)nav.stack.pop();
+  else{nav.stack.push({p:nav.cur,y:window.scrollY||0});if(nav.stack.length>40)nav.stack.shift()}
+ }
+ nav.cur=p;nav.sig=sig;
+}
+async function navGo(p){
+ const s=p.s||{};cur=p.team?teams.find(t=>t.id===p.team)||cur:cur;viewing=p.viewing;sdirty=false;
+ if(p.view==='sc'){
+  if(!sco||sco.tid!==cur?.id)await openSc(s.page||'home',s.kind||undefined,s.oppId||undefined);
+  Object.assign(sco,{page:s.page||'home',form:null,plr:null,oppF:'',oppMap:''});if(s.kind)sco.kind=s.kind;if(s.tab)sco.tab=s.tab;if(s.oppId)sco.oppId=s.oppId;if(s.matchId)sco.matchId=s.matchId;if(s.page==='gaps')Object.assign(sco,{gapTeam:s.gapTeam,gapF:''});
+  view='sc';render();return;
+ }
+ if(p.view==='analyst'){await openAnalyst(s.page||'over');if(an){an.opp=s.opp||null;render()}return}
+ if(p.view==='player'){if(!pl||pl.tid!==cur?.id)pl={tid:cur.id,uid:s.uid,names:{},players:[]};else pl.uid=s.uid;view='player';await openPlayer(s.page||'over');pl.fromRoster=s.fromRoster;render();return}
+ if(p.view==='scrims'){await A.scrims();if(s.st==='detail'&&s.id)await A.sopen({id:s.id});return}
+ if(p.view==='strats'){await openStrats();if(s.st==='view'&&s.id)A.stview({id:s.id});return}
+ if(p.view==='schedule')return openSch(s.forUser||'',s.fromHub);
+ if(p.view==='roster')return openRoster();
+ if(p.view==='cover')return openCover();
+ if(p.view==='tset')return openTset();
+ const v=p.viewing;A.go({v:p.view});viewing=v;render();
+}
+async function navBack(){
+ let e;while((e=nav.stack.pop())){if(!e.p.team||teams.some(t=>t.id===e.p.team))break}
+ if(!e){const b=$('#navb');if(b)b.hidden=true;return}
+ nav.busy=true;try{await navGo(e.p)}finally{nav.busy=false;nav.cur=navPlace();nav.sig=JSON.stringify(nav.cur);const b=$('#navb');if(b)b.hidden=!nav.stack.length}
+ window.scrollTo?.(0,e.y);
+}
 function render(){
  applyAccent();
  killCharts();
  const a=$('#app');
  if(!me)return a.innerHTML=loginV();
  if(me.suspended)return a.innerHTML=`<div class="login"><div class="cd"><p>This account is suspended. Ask the owner for help.</p><button class="no" data-a="out">Sign out</button></div></div>`;
+ navTrack();
  const mine=teams.filter(t=>mem[t.id]);
- a.innerHTML=`<header><button class="hm" data-a="go" data-v="dash" aria-label="Liv Analytics, go to dashboard"><img src="logo.png" alt=""><span class="brand serif">Liv Analytics</span></button><span class="sp"></span>
+ a.innerHTML=`<header><button class="hm" data-a="go" data-v="dash" aria-label="Liv Analytics, go to dashboard"><img src="logo.png" alt=""><span class="brand serif">Liv Analytics</span></button><button id="navb" class="tb" data-a="navback"${nav.stack.length?'':' hidden'}>← Back</button><span class="sp"></span>
  ${staff()?`<button class="tb" data-a="go" data-v="admin">Admin</button>`:''}
  ${mine.length>1?`<select class="tb" data-c="sw" aria-label="Switch team">${mine.map(t=>`<option value="${t.id}"${cur&&t.id===cur.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`:''}
  <button class="tb" data-a="go" data-v="dash">Dashboard</button><button class="tb" data-a="settings">Settings</button><button class="tb" data-a="profile">Profile</button></header>
@@ -2200,7 +2246,8 @@ const A={
   b.disabled=false;sdirty=false;render();toast('Saved')},
  sdel:()=>{const s=curScrim(),d=$('#dlg');d.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:10px">Delete this scrim?</h2><p class="mu" style="overflow-wrap:anywhere">This permanently removes the scrim against ${esc(s.opponent)} and all of its notes.</p><div class="row" style="margin-top:16px"><button class="go" data-a="sdelyes">Delete scrim</button><button class="no" data-a="close">Cancel</button></div>`;d.showModal()},
  sdelyes:async(d,b)=>{b.disabled=true;const r=await sb.from('scrims').delete().eq('id',scr.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast(r.error?sErr(r.error):'You do not have permission to change scrims for this team.');sdirty=false;scr.st='list';scr.id=null;await fetchScrims();render();toast('Scrim deleted')},
- out:()=>sb.auth.signOut(),
+ navback:()=>navBack(),
+ out:()=>{nav.stack=[];nav.cur=null;nav.sig='';return sb.auth.signOut()},
  mode:()=>{mode=mode==='in'?'up':'in';render()},
  open:d=>{cur=teams.find(t=>t.id===d.id);viewing=true;view='dash';render()},
  pick:d=>{sel=d.id;render()},
@@ -2224,7 +2271,7 @@ const A={
   for(const p of fm.people){const email=p.email.trim().toLowerCase();if(email&&p.roles.length){const r=await assign(email,t.id,p.roles);if(r.error)toast(email+': '+r.error.message)}}
   fm=null;view='teamsV';await load();toast('Team created')}
 };
-const LEAVE=new Set(['go','open','out','savename','sdash','sback','sform','sedit','scancel','sopen','schcancel','updnow','schedule','pmysch','pover','pjournal','pstats','pnotes','pmine','aover','astats','aimport','aparse','asopen','scout','tset','smatch','smback','somap','fixmap','smok','gapopen','gapback','gapfix','tdel','sct','slm','slr','slv','sx','sopp','sotab','soadd','soedit','socancel','cover','strats','stropen','stadd','stedit','stcancel','stback','stview','phub','phopen','gform','gedit','gcancel','gnoteopen','gnotecancel']),leaveOk=()=>!sdirty||(confirm('You have unsaved changes. Leave without saving?')&&!(sdirty=false));
+const LEAVE=new Set(['navback','go','open','out','savename','sdash','sback','sform','sedit','scancel','sopen','schcancel','updnow','schedule','pmysch','pover','pjournal','pstats','pnotes','pmine','aover','astats','aimport','aparse','asopen','scout','tset','smatch','smback','somap','fixmap','smok','gapopen','gapback','gapfix','tdel','sct','slm','slr','slv','sx','sopp','sotab','soadd','soedit','socancel','cover','strats','stropen','stadd','stedit','stcancel','stback','stview','phub','phopen','gform','gedit','gcancel','gnoteopen','gnotecancel']),leaveOk=()=>!sdirty||(confirm('You have unsaved changes. Leave without saving?')&&!(sdirty=false));
 document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a]&&(!LEAVE.has(b.dataset.a)||leaveOk()))A[b.dataset.a](b.dataset,b)});
 window.addEventListener('beforeunload',e=>{if(sdirty||sco?.lp?.running){e.preventDefault();e.returnValue=''}});
 document.addEventListener('input',e=>{if(e.target.closest('[data-dirty]'))sdirty=true;if(e.target.dataset.c==='tsx'){const v=normHex(e.target.value);document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v))}if(e.target.dataset.c==='scq'){sco.q=e.target.value;const l=$('#scl');if(l)l.innerHTML=homeCards()}if(e.target.dataset.c==='stq'){stra.q=e.target.value;const l=$('#stl');if(l)l.innerHTML=stratCards()}if(e.target.dataset.c==='hex'){const v=normHex(e.target.value);if(v){fm.color=v;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v));$('#lp').innerHTML=tile({color:v,name:$('#tn').value||'?'},56)}}if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
