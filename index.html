@@ -96,7 +96,8 @@ const $=s=>document.querySelector(s),ico=p=>`<svg viewBox="0 0 24 24" width="20"
 let me=null,teams=[],mem={},allMem=[],profs=[],invs=[],cur=null,view='dash',viewing=false,fm=null,sel=null,mode='in',scr=null,sch=null,pl=null,ros=null,an=null,stra=null,cov=null,sco=null,rost=null,sdirty=false;
 const staff=()=>me&&['owner','admin'].includes(me.site_role),owner=()=>me&&me.site_role==='owner';
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3500)}
-const tile=(t,s=36)=>{const c=esc(t?.color||'#e07cc0');return `<span class="lt" style="--s:${s}px;color:${c};border-color:${c};background:${c}22">${t?.logo_url?`<img src="${esc(t.logo_url)}" alt="">`:esc((t?.name||'?').slice(0,2).toUpperCase())}</span>`};
+const logoOk=u=>!!u&&!/liquipedia\.net/i.test(u);
+const tile=(t,s=36)=>{const c=esc(t?.color||'#e07cc0');return `<span class="lt" style="--s:${s}px;color:${c};border-color:${c};background:${c}22">${logoOk(t?.logo_url)?`<img src="${esc(t.logo_url)}" alt="">`:esc((t?.name||'?').slice(0,2).toUpperCase())}</span>`};
 async function load(){
  const{data:{session}}=await sb.auth.getSession();
  if(!session){me=null;view='dash';viewing=false;scr=null;sch=null;pl=null;ros=null;an=null;stra=null;cov=null;sco=null;rost=null;sdirty=false;return render()}
@@ -918,15 +919,15 @@ function soForm(){
  return `<form class="cd" data-s="sopp" data-dirty style="max-width:720px;margin-bottom:16px"><h2 style="font-size:17px;font-weight:600;overflow-wrap:anywhere">${t?'Settings for '+esc(t.name):'Add opponent'}</h2>
  ${t?'':`<div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:2;min-width:200px"><label for="son">Name</label><input id="son" class="fi" required maxlength="120" value="${esc(sco.form.name||'')}"></div><div style="${half}"><label for="sos">Short name</label><input id="sos" class="fi" maxlength="20"></div></div>`}
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="sor">Region</label><select id="sor" class="fi">${regs.map(r=>`<option${(t?.region||REG[0])===r?' selected':''}>${esc(r)}</option>`).join('')}</select></div><div style="${half}"><label for="sol">League</label><input id="sol" class="fi" maxlength="80" value="${esc(t?.league||'')}"></div></div>
- <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:2;min-width:200px"><label for="sou">Logo link (https)</label><input id="sou" class="fi" inputmode="url" value="${esc(t?.logo_url||'')}" placeholder="https://…"></div><div style="${half}"><label for="soc">Color (hex code)</label><input id="soc" class="fi" maxlength="7" value="${esc(t?.color||'#e07cc0')}"></div></div>
+ <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:2;min-width:200px"><label for="sou">Logo (PNG or SVG, up to 2 MB)</label><div class="row wrap"><span id="sop2">${tile(t||{color:'#e07cc0',name:sco.form.name||'?'},56)}</span><input id="sou" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" data-c="sou" style="min-width:0;max-width:100%"></div>${logoOk(t?.logo_url)?'<label class="row" style="gap:8px;margin-top:8px;color:var(--tx)"><input id="sod" type="checkbox">Remove the current logo</label>':''}</div><div style="${half}"><label for="soc">Color (hex code)</label><input id="soc" class="fi" maxlength="7" value="${esc(t?.color||'#e07cc0')}"></div></div>
  <div><label for="solp">Liquipedia link</label><input id="solp" class="fi" inputmode="url" value="${esc(lpLinkOf(t?.source_ids?.liquipedia||''))}" placeholder="https://liquipedia.net/rainbowsix/Cloud9"><p class="mu" style="font-size:12.5px;margin-top:4px">Used by Pull everything, so this team's name here doesn't have to match Liquipedia.</p></div>
  ${t?`<div><label for="sop">Players, one per line</label><textarea id="sop" class="fi ta">${esc((t.players||[]).join('\n'))}</textarea></div>`:''}
  <div class="row wrap" style="justify-content:space-between"><span>${t?'<button type="button" class="no" data-a="sodel">Stop tracking</button>':''}</span><span class="row"><button type="button" class="no" data-a="socancel">Cancel</button><button class="go">${t?'Save changes':'Add opponent'}</button></span></div></form>`;
 }
 async function saveSo(form){
- const btn=form.querySelector('.go'),id=sco.form.id,color=normHex($('#soc').value),logo=$('#sou').value.trim(),row={region:$('#sor').value,league:$('#sol').value.trim(),logo_url:logo};
+ const btn=form.querySelector('.go'),id=sco.form.id,color=normHex($('#soc').value),f=$('#sou').files[0],row={region:$('#sor').value,league:$('#sol').value.trim()};
  if(!color)return toast('Enter a hex color like #e07cc0');
- if(logo&&!/^https:\/\//i.test(logo))return toast('The logo link must start with https://');
+ if(f&&f.size>2097152)return toast('The logo must be 2 MB or smaller');
  row.color=color;
  const lpRaw=$('#solp').value.trim(),lpName=lpTeamOf(lpRaw);
  if(lpRaw&&!lpName)return toast('Paste a Liquipedia Rainbow Six team link, like https://liquipedia.net/rainbowsix/Cloud9');
@@ -935,6 +936,8 @@ async function saveSo(form){
  if(id)row.players=$('#sop').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
  else{row.name=$('#son').value.trim();row.short_name=$('#sos').value.trim();if(!row.name)return toast('Enter a name');if(sco.teams.some(t=>norm(t.name)===norm(row.name)))return toast('This opponent is already tracked');row.owner_team_id=sco.tid}
  btn.disabled=true;
+ if(f){const path=crypto.randomUUID()+'.'+(f.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,''),up=await sb.storage.from('logos').upload(path,f,{contentType:f.type});if(up.error){btn.disabled=false;return toast(/row-level security/i.test(up.error.message)?'Only coaches and assistant coaches can upload logos. Nothing was saved.':up.error.message)}row.logo_url=sb.storage.from('logos').getPublicUrl(path).data.publicUrl}
+ else if($('#sod')?.checked)row.logo_url='';
  const r=id?await sb.from('scout_teams').update(row).eq('id',id).select().single():await sb.from('scout_teams').insert(row).select().single();
  btn.disabled=false;
  if(r.error)return toast(scErr(r.error));
@@ -1513,6 +1516,7 @@ window.addEventListener('beforeunload',e=>{if(sdirty||sco?.lp?.running){e.preven
 document.addEventListener('input',e=>{if(e.target.closest('[data-dirty]'))sdirty=true;if(e.target.dataset.c==='tsx'){const v=normHex(e.target.value);document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v))}if(e.target.dataset.c==='scq'){sco.q=e.target.value;const l=$('#scl');if(l)l.innerHTML=homeCards()}if(e.target.dataset.c==='stq'){stra.q=e.target.value;const l=$('#stl');if(l)l.innerHTML=stratCards()}if(e.target.dataset.c==='hex'){const v=normHex(e.target.value);if(v){fm.color=v;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v));$('#lp').innerHTML=tile({color:v,name:$('#tn').value||'?'},56)}}if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
 document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='sw'){if(!leaveOk()){e.target.value=cur.id;return}cur=teams.find(t=>t.id===e.target.value);viewing=false;if(view==='scrims')return A.scrims();if(view==='schedule')return openSch(sch?.forUser===me.id?me.id:'',false);if(view==='player')return openPlayer(pl.page);if(view==='roster')return openRoster();if(view==='analyst')return openAnalyst(an.page);if(view==='strats')return openStrats();if(view==='cover')return openCover();if(view==='tset')return openTset();if(view==='sc')return openSc(['opp','match'].includes(sco.page)?'home':sco.page,sco.kind);render()}
  if(c==='mapsel'){const box=e.target.closest('.mapd');box.dataset.map=e.target.value;box.querySelector('.mph').innerHTML=mapPhoto(e.target.value)}
+ if(c==='sou'&&e.target.files[0]){$('#sop2').innerHTML=`<span class="lt" style="--s:56px;border-color:var(--pk)"><img src="${URL.createObjectURL(e.target.files[0])}" alt=""></span>`}
  if(c==='tsf'&&e.target.files[0]){$('#tsp').innerHTML=`<span class="lt" style="--s:56px;border-color:var(--pk)"><img src="${URL.createObjectURL(e.target.files[0])}" alt=""></span>`}
  if(c==='rlink'){const row=rost.list.find(x=>x.id===e.target.dataset.id),v=e.target.value||null;sb.from('team_roster').update({linked_user_id:v}).eq('id',row.id).select().single().then(r=>{if(r.error){e.target.value=row.linked_user_id||'';return toast('That link could not be saved. The name can only link to a player on this team.')}row.linked_user_id=v;toast('Roster saved')})}
  if(c==='lpev'||c==='lpteam'){const set=c==='lpev'?sco.lp.on:sco.lp.tOn;e.target.checked?set.add(e.target.dataset.id):set.delete(e.target.dataset.id);render()}
