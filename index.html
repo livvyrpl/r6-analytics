@@ -7,8 +7,8 @@
 <link rel="icon" href="logo.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap">
 <style id="app-css">
-:root{--pk:#e07cc0;--bg:#0b0a0e;--cd:#131118;--bd:#231f2b;--bd2:#2a2532;--tx:#ece8f0;--mu:#9a93a6}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse 70% 40% at 50% 0%,rgba(224,124,192,.09),transparent 70%),var(--bg);color:var(--tx);font:400 14px Inter,sans-serif;min-height:100vh}
+:root{--pk:#e07cc0;--pk-rgb:224,124,192;--pk-lt:#f3c2e3;--bg:#0b0a0e;--cd:#131118;--bd:#231f2b;--bd2:#2a2532;--tx:#ece8f0;--mu:#9a93a6}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse 70% 40% at 50% 0%,rgba(var(--pk-rgb),.09),transparent 70%),var(--bg);color:var(--tx);font:400 14px Inter,sans-serif;min-height:100vh}
 h1,h2,h3,p{margin:0}button,input,select,textarea{font:inherit}
 .serif{font-family:'Cormorant Garamond',serif;font-weight:600}
 header{display:flex;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid #1d1923;flex-wrap:wrap}
@@ -16,10 +16,10 @@ header img{height:52px}header .brand{font-size:26px;letter-spacing:.02em}.sp{fle
 main{max-width:1180px;margin:0 auto;padding:28px 24px}
 .tb{display:flex;align-items:center;gap:8px;height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--bd2);background:var(--cd);color:var(--pk);font-weight:500;cursor:pointer}
 .tb:hover,.no:hover,.ch:hover{border-color:var(--pk)}
-.go{height:42px;padding:0 20px;border:0;border-radius:10px;background:var(--pk);color:#1a0b15;font-weight:600;cursor:pointer}.go:hover{background:#ea90cd;box-shadow:0 0 28px rgba(224,124,192,.35)}
+.go{height:42px;padding:0 20px;border:0;border-radius:10px;background:var(--pk);color:#1a0b15;font-weight:600;cursor:pointer}.go:hover{filter:brightness(1.12);box-shadow:0 0 28px rgba(var(--pk-rgb),.35)}
 .no{height:42px;padding:0 18px;border-radius:10px;border:1px solid var(--bd2);background:transparent;color:var(--tx);font-weight:500;cursor:pointer}
 .ch{height:34px;padding:0 14px;border-radius:999px;border:1px solid var(--bd2);background:#0f0d13;color:#cfc8d6;font-weight:500;font-size:13px;cursor:pointer}
-.ch[aria-pressed=true]{border-color:var(--pk);background:rgba(224,124,192,.16);color:#f3c2e3}
+.ch[aria-pressed=true]{border-color:var(--pk);background:rgba(var(--pk-rgb),.16);color:var(--pk-lt)}
 .fi{width:100%;height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--bd2);background:#0f0d13;color:var(--tx)}
 .fi:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--pk);outline-offset:2px}
 .ta{display:block;height:auto;min-height:110px;padding:10px 14px;line-height:1.5;resize:vertical}
@@ -29,7 +29,7 @@ input[type=date],input[type=time]{color-scheme:dark}
 @media(max-width:900px){.lay{grid-template-columns:minmax(0,1fr)}}
 .cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.dow{font-size:12px;color:var(--mu);text-align:center;padding:4px 0}
 .dc{min-width:0;min-height:104px;padding:6px;border-radius:10px;border:1px solid var(--bd);background:var(--cd);color:var(--tx);display:flex;flex-direction:column;gap:4px;text-align:left;cursor:pointer}
-.dc:hover{border-color:var(--pk)}.dc.out{opacity:.45}.dc[aria-current=date]{border-color:var(--pk);background:rgba(224,124,192,.12)}.dn{font-size:12px;font-weight:600}
+.dc:hover{border-color:var(--pk)}.dc.out{opacity:.45}.dc[aria-current=date]{border-color:var(--pk);background:rgba(var(--pk-rgb),.12)}.dn{font-size:12px;font-weight:600}
 .evs{display:flex;flex-direction:column;gap:3px;min-width:0}.ev{display:flex;align-items:center;gap:4px;font-size:11.5px;min-width:0}.ev i{width:3px;height:12px;border-radius:2px;flex:none}.ev span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.more{font-size:11px}
 @media(max-width:640px){.dc{min-height:56px;padding:4px;align-items:center}.evs{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:3px}.ev span,.more{display:none}.ev i{width:8px;height:8px;border-radius:50%}}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
@@ -41,7 +41,7 @@ label,.lb{display:block;margin:0 0 6px;font-size:13px;color:#a59dad}
 .cd{padding:22px;border-radius:16px;background:var(--cd);border:1px solid var(--bd);display:flex;flex-direction:column;gap:16px}
 .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
 .c{display:flex;gap:14px;align-items:center;padding:18px;border-radius:14px;background:var(--cd);border:1px solid var(--bd);color:var(--tx);text-align:left;cursor:pointer;width:100%;transition:all .15s}
-.c:hover{border-color:var(--pk);background:linear-gradient(135deg,rgba(224,124,192,.14),var(--cd) 70%);box-shadow:0 0 30px rgba(224,124,192,.18)}
+.c:hover{border-color:var(--pk);background:linear-gradient(135deg,rgba(var(--pk-rgb),.14),var(--cd) 70%);box-shadow:0 0 30px rgba(var(--pk-rgb),.18)}
 .ic{width:42px;height:42px;border-radius:10px;border:1px solid var(--bd2);display:flex;align-items:center;justify-content:center;color:var(--pk);flex:none}
 .c b{display:block;font-weight:600;font-size:15px}.c small{display:block;margin-top:3px;font-size:12.5px;color:var(--mu)}
 .soon{margin-left:auto;font-size:11px;color:var(--mu);border:1px solid var(--bd2);border-radius:999px;padding:2px 8px}
@@ -50,20 +50,20 @@ h2.hh{font-size:15px;font-weight:600;margin:26px 0 12px}h2.hh:first-of-type{marg
 .lt img{width:100%;height:100%;object-fit:cover}
 .row{display:flex;align-items:center;gap:12px}.wrap{flex-wrap:wrap}.mu{color:var(--mu);font-size:13px}
 .u{display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;border:1px solid transparent;background:none;color:var(--tx);width:100%;text-align:left;cursor:pointer}
-.u:hover{background:rgba(224,124,192,.08);border-color:#3a2a35}.u[aria-current=true]{background:rgba(224,124,192,.14);border-color:var(--pk)}
-.av{width:38px;height:38px;border-radius:50%;background:#2a1d26;color:#f3c2e3;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none}
+.u:hover{background:rgba(var(--pk-rgb),.08);border-color:rgba(var(--pk-rgb),.3)}.u[aria-current=true]{background:rgba(var(--pk-rgb),.14);border-color:var(--pk)}
+.av{width:38px;height:38px;border-radius:50%;background:#2a1d26;color:var(--pk-lt);display:flex;align-items:center;justify-content:center;font-weight:600;flex:none}
 .tr{padding:14px;border-radius:12px;border:1px solid var(--bd);background:#0f0d13;display:flex;flex-direction:column;gap:10px}
 .sw{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}.sw[aria-pressed=true]{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--tx)}
 .two{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:20px;align-items:start}.two2{display:grid;grid-template-columns:1fr 1.3fr;gap:20px;align-items:start}
 @media(max-width:820px){.two,.two2{grid-template-columns:1fr}}
-.bar{background:rgba(224,124,192,.16);border-bottom:1px solid var(--pk);color:#f3c2e3;padding:10px 24px;display:flex;gap:12px;align-items:center}
-.badge{padding:4px 10px;border-radius:999px;border:1px solid #3a2a35;color:var(--pk);font-size:12px;font-weight:600}
+.bar{background:rgba(var(--pk-rgb),.16);border-bottom:1px solid var(--pk);color:var(--pk-lt);padding:10px 24px;display:flex;gap:12px;align-items:center}
+.badge{padding:4px 10px;border-radius:999px;border:1px solid rgba(var(--pk-rgb),.3);color:var(--pk);font-size:12px;font-weight:600}
 .login{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:30px}
 .login img{width:280px;max-width:80%}.login .cd{width:100%;max-width:400px}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1d1923;border:1px solid var(--pk);padding:12px 18px;border-radius:10px;display:none;z-index:9}
 dialog{background:var(--cd);color:var(--tx);border:1px solid var(--bd2);border-radius:16px;padding:24px;width:min(420px,92vw)}dialog::backdrop{background:rgba(0,0,0,.6)}
 .hm{display:flex;align-items:center;gap:12px;padding:0;border:0;border-radius:10px;background:none;color:inherit;cursor:pointer}
-#upd{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);height:44px;padding:0 20px;border:0;border-radius:999px;background:var(--pk);color:#1a0b15;font-weight:600;cursor:pointer;box-shadow:0 6px 28px rgba(0,0,0,.5),0 0 24px rgba(224,124,192,.35);z-index:8}#upd:hover{background:#ea90cd}
+#upd{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);height:44px;padding:0 20px;border:0;border-radius:999px;background:var(--pk);color:#1a0b15;font-weight:600;cursor:pointer;box-shadow:0 6px 28px rgba(0,0,0,.5),0 0 24px rgba(var(--pk-rgb),.35);z-index:8}#upd:hover{filter:brightness(1.12)}
 body.upd main{padding-bottom:88px}body.upd #toast{bottom:72px}
 [hidden]{display:none!important}
 </style>
@@ -94,7 +94,17 @@ async function load(){
  cur=teams.find(x=>cur&&x.id===cur.id)||teams.find(x=>mem[x.id])||(staff()?null:teams[0])||null;
  render();
 }
+const hexRgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const lum=c=>{const[r,g,b]=c.map(x=>{x/=255;return x<=.03928?x/12.92:((x+.055)/1.055)**2.4});return .2126*r+.7152*g+.0722*b};
+function applyAccent(){
+ const st=document.documentElement.style,h=me&&cur?normHex(cur.color):null;
+ if(!h){['--pk','--pk-rgb','--pk-lt'].forEach(v=>st.removeProperty(v));return}
+ let c=hexRgb(h);const bg=lum(hexRgb('#131118'));
+ for(let i=0;i<12&&(lum(c)+.05)/(bg+.05)<4.5;i++)c=c.map(x=>Math.round(x+(255-x)*.12));
+ st.setProperty('--pk','rgb('+c+')');st.setProperty('--pk-rgb',c.join(','));st.setProperty('--pk-lt','rgb('+c.map(x=>Math.round(x+(255-x)*.55))+')');
+}
 function render(){
+ applyAccent();
  const a=$('#app');
  if(!me)return a.innerHTML=loginV();
  if(me.suspended)return a.innerHTML=`<div class="login"><div class="cd"><p>This account is suspended. Ask the owner for help.</p><button class="no" data-a="out">Sign out</button></div></div>`;
@@ -120,7 +130,7 @@ function dashV(){
  if(!cur)return `<div class="cd"><h2 class="serif" style="font-size:28px">No team yet</h2><p class="mu">${staff()?'Create a team in Admin, or open one from the Teams list.':'Ask the owner to add you to a team.'}</p></div>`;
  const roles=staff()?ALL:(mem[cur.id]||[]);
  const badge=[...(staff()?[me.site_role]:[]),...(mem[cur.id]||[]).map(r=>R[r])].join(', '),seen=new Set();
- return `<div class="row wrap" style="margin-bottom:24px;gap:14px">${tile(cur,48)}<h1 class="serif" style="font-size:34px;color:${esc(cur.color)}">${esc(cur.name)}</h1><span class="badge">${esc(badge)}</span>${staff()?'<button class="no" style="height:32px" data-a="tcolor">Team color</button>':''}</div>`+
+ return `<div class="row wrap" style="margin-bottom:24px;gap:14px">${tile(cur,48)}<h1 class="serif" style="font-size:34px;color:var(--pk)">${esc(cur.name)}</h1><span class="badge">${esc(badge)}</span>${staff()?'<button class="no" style="height:32px" data-a="tcolor">Team color</button>':''}</div>`+
  HUBS.filter(h=>h[1].some(r=>roles.includes(r))).map(h=>`<h2 class="hh">${h[0]}</h2><div class="g">${h[3].filter(c=>!c[2]||(!seen.has(c[2])&&seen.add(c[2]))).map(c=>`<button class="c" data-a="${c[2]||'soon'}"><span class="ic">${ico(h[2])}</span><span><b>${c[0]}</b><small>${c[1]}</small></span>${c[2]?'':'<span class="soon">Soon</span>'}</button>`).join('')}</div>`).join('');
 }
 const hasR=l=>staff()||(cur&&(mem[cur.id]||[]).some(r=>l.includes(r))),canSeeS=()=>hasR(['coach','assistant_coach','analyst']),canEditS=()=>hasR(['coach','assistant_coach','analyst']);
@@ -189,11 +199,12 @@ async function saveScrim(form){
 const KIND={scrim:'Scrim',gameday:'Gameday',off_day:'Off day',other:'Other'};
 const schE=e=>/schema cache|does not exist/i.test(e.message)?'The schedule database tables are not set up yet. Paste stage2.sql into the Supabase SQL Editor and run it.':/schedule_entries_kind|check constraint/i.test(e.message)?'The schedule update is not set up yet. Paste stage2.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
 const canSeeSch=()=>staff()||!!mem[cur?.id],canEditSch=()=>hasR(['coach','assistant_coach']),canOwnOff=()=>(mem[cur?.id]||[]).some(r=>r==='player'||r==='analyst');
-const canDelEntry=e=>canEditSch()||(e.kind==='off_day'&&e.user_id===me.id&&canOwnOff());
+const canDelEntry=e=>e.kind!=='goal'&&(canEditSch()||(e.kind==='off_day'&&e.user_id===me.id&&canOwnOff()));
 const addD=(s,n)=>{const d=new Date(s+'T00:00');d.setDate(d.getDate()+n);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const weekStart=s=>addD(s,-new Date(s+'T00:00').getDay()),dLabel=(s,o)=>new Date(s+'T00:00').toLocaleDateString(undefined,o),plural=(n,w)=>n+' '+w+(n===1?'':'s');
-const KCOL={scrim:'#e0569f',gameday:'#3f9ae8',off_day:'#bd8b14',other:'#9a7bea'};
-const schShown=()=>(sch.list||[]).filter(e=>!sch.forUser||!e.user_id||e.user_id===sch.forUser);
+const KCOL={scrim:'#e0569f',gameday:'#3f9ae8',off_day:'#bd8b14',other:'#9a7bea',goal:'#2ba58a'},KINDL={...KIND,goal:'Goal deadline'};
+const goalEvent=g=>({id:'goal-'+g.id,kind:'goal',title:g.title,entry_date:g.deadline,entry_time:null,notes:'',opponent:null,maps:[],user_id:me.id});
+const schShown=()=>[...(sch.list||[]),...(sch.goals||[])].filter(e=>!sch.forUser||!e.user_id||e.user_id===sch.forUser);
 const normHex=s=>{const h=String(s).trim().replace(/^#/,'').toLowerCase();return /^[0-9a-f]{6}$/.test(h)?'#'+h:/^[0-9a-f]{3}$/.test(h)?'#'+[...h].map(c=>c+c).join(''):null};
 const fmtT=t=>new Date('2000-01-01T'+t).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
 const myTz=()=>Intl.DateTimeFormat().resolvedOptions().timeZone||'your time zone';
@@ -205,12 +216,12 @@ function scheduleV(){
  return sch.st==='form'&&(canEditSch()||canOwnOff())?schForm():schList();
 }
 function schRow(e){
- const who=e.user_id?sch.names[e.user_id]||'Former member':'Whole team',time=schTime(e);
+ const who=e.kind==='goal'?'Only visible to you':e.user_id?sch.names[e.user_id]||'Former member':'Whole team',time=schTime(e);
  const meta=[time,who,e.opponent?'vs '+e.opponent:'',e.maps.join(', ')].filter(Boolean).join(' · ');
- return `<div class="tr"><div class="row wrap"><span class="badge">${KIND[e.kind]}</span><b style="flex:1 1 180px;min-width:0;overflow-wrap:anywhere">${esc(e.title)}</b>${canDelEntry(e)?`<span class="row" style="gap:8px">${canEditSch()?`<button class="no" style="height:32px" data-a="schedit" data-id="${e.id}">Edit</button>`:''}<button class="no" style="height:32px" data-a="schdel" data-id="${e.id}">Delete</button></span>`:''}</div><div class="mu" style="overflow-wrap:anywhere">${esc(meta)}</div>${e.notes?`<div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(e.notes)}</div>`:''}</div>`;
+ return `<div class="tr"><div class="row wrap"><span class="badge">${KINDL[e.kind]}</span><b style="flex:1 1 180px;min-width:0;overflow-wrap:anywhere">${esc(e.title)}</b>${e.kind==='goal'?'<button class="no" style="height:32px" data-a="pmine">Open journal</button>':''}${canDelEntry(e)?`<span class="row" style="gap:8px">${canEditSch()?`<button class="no" style="height:32px" data-a="schedit" data-id="${e.id}">Edit</button>`:''}<button class="no" style="height:32px" data-a="schdel" data-id="${e.id}">Delete</button></span>`:''}</div><div class="mu" style="overflow-wrap:anywhere">${esc(meta)}</div>${e.notes?`<div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(e.notes)}</div>`:''}</div>`;
 }
 function schTime(e){return e.starts_at?new Date(e.starts_at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit',timeZoneName:'short'}):e.entry_time?fmtT(e.entry_time)+' (time zone not set)':e.kind==='off_day'?'All day':''}
-function upRow(e,act){const d=schLocal(e).d,t=schTime(e);return `<button class="u" data-a="${act}" data-d="${d}" style="padding:10px"><i style="width:4px;height:34px;border-radius:2px;flex:none;background:${KCOL[e.kind]}"></i><span style="min-width:0"><b style="display:block;font-weight:600;overflow-wrap:anywhere">${esc(e.title)}</b><span class="mu" style="display:block;font-size:12.5px">${esc(dLabel(d,{weekday:'short',month:'short',day:'numeric'}))}${t?' · '+esc(t):''} · ${KIND[e.kind]}</span></span></button>`}
+function upRow(e,act){const d=schLocal(e).d,t=schTime(e);return `<button class="u" data-a="${act}" data-d="${d}" style="padding:10px"><i style="width:4px;height:34px;border-radius:2px;flex:none;background:${KCOL[e.kind]}"></i><span style="min-width:0"><b style="display:block;font-weight:600;overflow-wrap:anywhere">${esc(e.title)}</b><span class="mu" style="display:block;font-size:12.5px">${esc(dLabel(d,{weekday:'short',month:'short',day:'numeric'}))}${t?' · '+esc(t):''} · ${KINDL[e.kind]}</span></span></button>`}
 function schList(){
  const ready=sch.list&&!sch.err,t=today(),a=sch.anchor,v=sch.cal,shown=schShown().sort((x,y)=>schKey(x).localeCompare(schKey(y))),on=d=>shown.filter(e=>schLocal(e).d===d);
  const add=!ready?'':canEditSch()?'<button class="go" data-a="schadd">Add to schedule</button>':canOwnOff()?'<button class="go" data-a="schadd">Add off day</button>':'';
@@ -227,7 +238,7 @@ function schList(){
   const ym=a.slice(0,7),s=weekStart(ym+'-01'),cells=[];
   for(let i=0;;i++){const d=addD(s,i);if(i>=28&&i%7===0&&d.slice(0,7)!==ym)break;cells.push(d)}
   main=`<div class="cal">${[0,1,2,3,4,5,6].map(i=>`<div class="dow">${esc(dLabel(addD(s,i),{weekday:'short'}))}</div>`).join('')}${cells.map(d=>{const ev=on(d);return `<button class="dc${d.slice(0,7)===ym?'':' out'}" data-a="schday" data-d="${d}"${d===t?' aria-current="date"':''} aria-label="${esc(dLabel(d,{weekday:'long',...sd}))}, ${ev.length?plural(ev.length,'event'):'no events'}"><span class="dn">${+d.slice(8)}</span><span class="evs">${ev.slice(0,3).map(e=>`<span class="ev"><i style="background:${KCOL[e.kind]}"></i><span>${esc(e.title)}</span></span>`).join('')}${ev.length>3?`<span class="mu more">+${ev.length-3} more</span>`:''}</span></button>`}).join('')}</div>
-  <div class="row wrap" style="gap:14px;margin-top:12px">${Object.keys(KIND).map(k=>`<span class="row mu" style="gap:6px;font-size:12.5px"><i style="width:10px;height:10px;border-radius:50%;background:${KCOL[k]}"></i>${KIND[k]}</span>`).join('')}</div>`;
+  <div class="row wrap" style="gap:14px;margin-top:12px">${[...Object.keys(KIND),...(sch.goals?.length?['goal']:[])].map(k=>`<span class="row mu" style="gap:6px;font-size:12.5px"><i style="width:10px;height:10px;border-radius:50%;background:${KCOL[k]}"></i>${KINDL[k]}</span>`).join('')}</div>`;
  }else if(v==='week'){
   main=[0,1,2,3,4,5,6].map(i=>{const d=addD(w,i),ev=on(d);return dayHead(d)+(ev.length?`<div style="${col}">${ev.map(schRow).join('')}</div>`:'<p class="mu">Nothing scheduled.</p>')}).join('');
  }else{
@@ -263,6 +274,9 @@ async function fetchSch(){
  sch.names=Object.fromEntries((p.data||[]).map(x=>[x.id,x.display_name||(canEditSch()||x.id===me.id?x.email:'Team member')]));
  sch.members=mids.filter(i=>sch.names[i]).map(i=>({id:i,name:sch.names[i]})).sort((a,b)=>a.name.localeCompare(b.name));
  sch.players=sch.members.filter(p=>allMem.some(m=>m.team_id===tid&&m.user_id===p.id&&m.roles.includes('player')));
+ const mg=isPl()?await sb.from('journal_goals').select('id,title,deadline,status').eq('team_id',tid).eq('user_id',me.id):{data:[]};
+ if(sch?.tid!==tid)return;
+ sch.goals=(mg.data||[]).filter(g=>g.deadline&&g.status!=='done').map(goalEvent);
  sch.err='';sch.list=r.data;
 }
 async function saveSch(form){
@@ -308,7 +322,9 @@ async function loadPlayer(){
   uid?sb.from('round_stats').select('*').eq('team_id',tid).eq('user_id',uid):none,
   uid&&canPick()?sb.from('scrim_player_notes').select('scrim_id,notes').eq('team_id',tid).eq('user_id',uid):none]);
  const sc=(sn.data||[]).length?await sb.from('scrims').select('id,opponent,scrim_date').in('id',sn.data.map(x=>x.scrim_id)):none;
+ const by=[...new Set((g.data||[]).map(x=>x.assigned_by).filter(Boolean))],bp=by.length?await sb.from('profiles').select('id,display_name').in('id',by):none;
  if(pl!==s||s.uid!==uid)return;
+ s.byNames=Object.fromEntries((bp.data||[]).map(x=>[x.id,x.display_name]));
  s.names=Object.fromEntries((p.data||[]).map(x=>[x.id,x.display_name||x.email]));
  s.players=ids.filter(i=>allMem.some(m=>m.team_id===tid&&m.user_id===i&&m.roles.includes('player'))).map(i=>({id:i,name:s.names[i]||'Player'})).sort((a,b)=>a.name.localeCompare(b.name));
  const bad=[g,n,r,e,sn,sc].find(x=>x.error);
@@ -321,12 +337,12 @@ function playerV(){
  const own=ownP(),nm=pl.names[pl.uid]||'Player',T={over:'Overview',journal:'Journal',stats:own?'My Stats':'Stats',notes:'Scrim notes'}[pl.page];
  const pick=canPick()?`<div style="flex:1 1 170px;max-width:260px"><select class="fi" style="height:34px;padding:0 10px" data-c="plfor" aria-label="Choose a player">${pl.players.map(p=>`<option value="${p.id}"${p.id===pl.uid?' selected':''}>${esc(p.name)}${p.id===me.id?' (you)':''}</option>`).join('')}</select></div>`:'';
  const tabs=`<div class="row wrap" style="gap:8px" role="group" aria-label="Player pages">${[['pover','Overview','over'],['pmysch',own?'My Schedule':'Schedule',''],['pjournal','Journal','journal'],['pstats',own?'My Stats':'Stats','stats'],...(canPick()?[['pnotes','Scrim notes','notes']]:[])].map(x=>`<button class="ch" data-a="${x[0]}" aria-pressed="${x[2]===pl.page}">${x[1]}</button>`).join('')}</div>`;
- const head=`<div class="row wrap" style="margin-bottom:16px">${tile(cur,48)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px">${T}</h1><p class="mu" style="overflow-wrap:anywhere">${own?esc(cur.name):`Viewing ${esc(nm)}${pl.page==='over'?'':'. Read only.'}`}</p></div>${pl.fromRoster?'<button class="no" data-a="phub">Back to Player Hub</button>':backDash}</div><div class="row wrap" style="margin-bottom:20px;justify-content:space-between">${tabs}${pick}</div>`;
+ const head=`<div class="row wrap" style="margin-bottom:16px">${tile(cur,48)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px">${T}</h1><p class="mu" style="overflow-wrap:anywhere">${own?esc(cur.name):`Viewing ${esc(nm)}${pl.page==='over'?'':pl.page==='journal'&&canPick()?'. You can add goals for this player here.':'. Read only.'}`}</p></div>${pl.fromRoster?'<button class="no" data-a="phub">Back to Player Hub</button>':backDash}</div><div class="row wrap" style="margin-bottom:20px;justify-content:space-between">${tabs}${pick}</div>`;
  const body=!pl.uid?'<div class="cd"><p class="mu">This team has no one with the Player role yet.</p></div>':!pl.goals?'<p class="mu">Loading…</p>':pl.err?`<div class="cd"><p>${esc(pl.err)}</p></div>`:pl.page==='journal'?journalB(own):pl.page==='stats'?statsB():pl.page==='notes'?notesB():overB();
  return head+body;
 }
 function overB(){
- const t=today(),end=addD(t,6),ev=pl.events.filter(e=>{const d=schLocal(e).d;return d>=t&&d<=end&&(!e.user_id||e.user_id===pl.uid)}).sort((a,b)=>schKey(a).localeCompare(schKey(b)));
+ const t=today(),end=addD(t,6),ev=[...pl.events,...(ownP()?pl.goals.filter(g=>g.deadline&&g.status!=='done').map(goalEvent):[])].filter(e=>{const d=schLocal(e).d;return d>=t&&d<=end&&(!e.user_id||e.user_id===pl.uid)}).sort((a,b)=>schKey(a).localeCompare(schKey(b)));
  const act=pl.goals.filter(g=>g.status!=='done').sort(goalSort);
  return `<div class="ov"><div class="cd" style="gap:8px"><h2 style="font-size:15px;font-weight:600">Next 7 days</h2>${ev.length?ev.map(e=>upRow(e,'pmysch')).join(''):'<p class="mu">Nothing scheduled in the next 7 days.</p>'}</div>
  <div class="cd" style="gap:8px"><h2 style="font-size:15px;font-weight:600">Active goals</h2>${act.length?act.map(g=>`<button class="u" data-a="pjournal" style="padding:10px;justify-content:space-between;flex-wrap:wrap"><span style="min-width:0;flex:1 1 150px"><b style="display:block;font-weight:600;overflow-wrap:anywhere">${esc(g.title)}</b><span class="mu" style="font-size:12.5px">${STAT[g.status]}</span></span>${dueHtml(g)}</button>`).join(''):'<p class="mu">No active goals.</p>'}</div></div>
@@ -335,8 +351,8 @@ function overB(){
 function goalForm(){
  const g=pl.form==='new'?null:pl.goals.find(x=>x.id===pl.form);
  return `<form class="cd" data-s="goal" data-dirty style="margin-bottom:16px">
- <h2 style="font-size:15px;font-weight:600">${g?'Edit goal':'New goal'}</h2>
- <div><label for="gt">Title</label><input id="gt" class="fi" required maxlength="120" value="${esc(g?.title||'')}" placeholder="e.g. Improve my smoke timing"></div>
+ <h2 style="font-size:15px;font-weight:600;overflow-wrap:anywhere">${g?'Edit goal':ownP()?'New goal':'New goal for '+esc(pl.names[pl.uid]||'player')}</h2>
+ <div><label for="gt">Title</label><input id="gt" class="fi" required maxlength="120" value="${esc(g?.title||'')}" placeholder="${ownP()?'e.g. Improve my smoke timing':'e.g. Improve smoke timing'}"></div>
  <div><label for="gd">Description</label><textarea id="gd" class="fi ta">${esc(g?.description||'')}</textarea></div>
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:1;min-width:180px"><label for="gl">Deadline (optional)</label><input id="gl" class="fi" type="date" value="${esc(g?.deadline||'')}"></div>
  <div style="flex:1;min-width:180px"><label for="gs">Status</label><select id="gs" class="fi">${Object.keys(STAT).map(k=>`<option value="${k}"${k===(g?.status||'not_started')?' selected':''}>${STAT[k]}</option>`).join('')}</select></div></div>
@@ -344,17 +360,19 @@ function goalForm(){
 }
 function goalCard(g,own){
  const ns=pl.notes.filter(n=>n.goal_id===g.id).sort((a,b)=>b.note_date.localeCompare(a.note_date)||b.created_at.localeCompare(a.created_at));
+ const asg=!!g.assigned_by,mng=asg&&!own&&canPick();
  const stat=own?`<select class="fi" style="height:34px;width:auto;padding:0 10px" data-c="gstat" data-id="${g.id}" aria-label="Status of ${esc(g.title)}">${Object.keys(STAT).map(k=>`<option value="${k}"${k===g.status?' selected':''}>${STAT[k]}</option>`).join('')}</select>`:`<span class="badge">${STAT[g.status]}</span>`;
  return `<article class="tr"><div class="row wrap"><b style="flex:1 1 180px;min-width:0;font-size:15px;overflow-wrap:anywhere">${esc(g.title)}</b>${stat}</div>
+ ${asg?`<div class="mu" style="overflow-wrap:anywhere">Set by ${esc(pl.byNames?.[g.assigned_by]||'a coach')}</div>`:''}
  ${dueHtml(g)?`<div>${dueHtml(g)}</div>`:''}
  ${g.description?`<div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(g.description)}</div>`:''}
  <div><div class="lb" style="margin-top:4px">Progress notes</div>${ns.length?ns.map(n=>`<div class="row" style="align-items:flex-start;padding:8px 0;border-top:1px solid var(--bd)"><div style="flex:1;min-width:0"><div class="mu">${esc(fmtD(n.note_date))}</div><div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(n.body)}</div></div>${own?`<button class="no" style="height:30px;padding:0 10px;flex:none" data-a="gndel" data-id="${n.id}" aria-label="Delete note from ${esc(fmtD(n.note_date))}">Delete</button>`:''}</div>`).join(''):'<p class="mu">No progress notes yet.</p>'}</div>
  ${own&&pl.noteFor===g.id?`<form data-s="gnote" data-dirty data-id="${g.id}" style="display:flex;flex-direction:column;gap:10px"><div><label for="nd">Date</label><input id="nd" class="fi" type="date" required value="${today()}"></div><div><label for="nb">Note</label><textarea id="nb" class="fi ta" required></textarea></div><div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="gnotecancel">Cancel</button><button class="go">Add note</button></div></form>`:''}
- ${own&&pl.noteFor!==g.id?`<div class="row wrap" style="gap:8px"><button class="no" style="height:32px" data-a="gnoteopen" data-id="${g.id}">Add progress note</button><button class="no" style="height:32px" data-a="gedit" data-id="${g.id}">Edit</button><button class="no" style="height:32px" data-a="gdel" data-id="${g.id}">Delete</button></div>`:''}</article>`;
+ ${pl.noteFor!==g.id&&(own||mng)?`<div class="row wrap" style="gap:8px">${own?`<button class="no" style="height:32px" data-a="gnoteopen" data-id="${g.id}">Add progress note</button>`:''}${(own&&!asg)||mng?`<button class="no" style="height:32px" data-a="gedit" data-id="${g.id}">Edit</button><button class="no" style="height:32px" data-a="gdel" data-id="${g.id}">Delete</button>`:''}</div>`:''}</article>`;
 }
 function journalB(own){
  const gs=[...pl.goals].sort(goalSort);
- return `${own&&!pl.form?'<div class="row" style="justify-content:flex-end;margin-bottom:12px"><button class="go" data-a="gform">Add goal</button></div>':''}${own&&pl.form?goalForm():''}
+ return `${(own||canPick())&&!pl.form?'<div class="row" style="justify-content:flex-end;margin-bottom:12px"><button class="go" data-a="gform">Add goal</button></div>':''}${(own||canPick())&&pl.form?goalForm():''}
  ${gs.length?`<div style="display:flex;flex-direction:column;gap:12px">${gs.map(g=>goalCard(g,own)).join('')}</div>`:`<div class="cd"><p class="mu">${own?'No goals yet. Add your first one.':'No goals yet.'}</p></div>`}`;
 }
 function statsB(){
@@ -369,7 +387,7 @@ async function saveGoal(form){
  const btn=form.querySelector('.go'),row={title:$('#gt').value.trim(),description:$('#gd').value,deadline:$('#gl').value||null,status:$('#gs').value};
  if(!row.title)return toast('Enter a title');
  btn.disabled=true;
- const r=pl.form==='new'?await sb.from('journal_goals').insert({...row,team_id:pl.tid,user_id:me.id}).select().single():await sb.from('journal_goals').update(row).eq('id',pl.form).select().single();
+ const r=pl.form==='new'?await sb.from('journal_goals').insert({...row,team_id:pl.tid,user_id:pl.uid}).select().single():await sb.from('journal_goals').update(row).eq('id',pl.form).select().single();
  btn.disabled=false;
  if(r.error)return toast(pErr(r.error));
  sdirty=false;pl.form=null;await loadPlayer();render();toast('Goal saved');
@@ -458,6 +476,7 @@ const A={
  pover:()=>openPlayer('over'),pjournal:()=>openPlayer('journal'),pstats:()=>openPlayer('stats'),pnotes:()=>openPlayer('notes'),
  phub:()=>openRoster(),
  phopen:d=>{pl={tid:cur.id,uid:d.id,names:{},players:[],fromRoster:true};if(d.p==='sch')return A.pmysch();openPlayer(d.p)},
+ pmine:()=>{pl={tid:cur.id,uid:me.id,names:{},players:[]};openPlayer('journal')},
  gform:()=>{pl.form='new';render()},
  gedit:d=>{pl.form=d.id;render()},
  gcancel:()=>{pl.form=null;render()},
@@ -515,7 +534,7 @@ const A={
   for(const p of fm.people){const email=p.email.trim().toLowerCase();if(email&&p.roles.length){const r=await assign(email,t.id,p.roles);if(r.error)toast(email+': '+r.error.message)}}
   fm=null;view='teamsV';await load();toast('Team created')}
 };
-const LEAVE=new Set(['go','open','out','savename','sdash','sback','sform','sedit','scancel','sopen','schcancel','updnow','schedule','pmysch','pover','pjournal','pstats','pnotes','phub','phopen','gform','gedit','gcancel','gnoteopen','gnotecancel']),leaveOk=()=>!sdirty||(confirm('You have unsaved changes. Leave without saving?')&&!(sdirty=false));
+const LEAVE=new Set(['go','open','out','savename','sdash','sback','sform','sedit','scancel','sopen','schcancel','updnow','schedule','pmysch','pover','pjournal','pstats','pnotes','pmine','phub','phopen','gform','gedit','gcancel','gnoteopen','gnotecancel']),leaveOk=()=>!sdirty||(confirm('You have unsaved changes. Leave without saving?')&&!(sdirty=false));
 document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a]&&(!LEAVE.has(b.dataset.a)||leaveOk()))A[b.dataset.a](b.dataset,b)});
 window.addEventListener('beforeunload',e=>{if(sdirty){e.preventDefault();e.returnValue=''}});
 document.addEventListener('input',e=>{if(e.target.closest('[data-dirty]'))sdirty=true;if(e.target.dataset.c==='hex'){const v=normHex(e.target.value);if(v){fm.color=v;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v));$('#lp').innerHTML=tile({color:v,name:$('#tn').value||'?'},56)}}if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
