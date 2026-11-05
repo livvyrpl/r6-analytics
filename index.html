@@ -44,7 +44,9 @@ label,.lb{display:block;margin:0 0 6px;font-size:13px;color:#a59dad}
 .c:hover{border-color:var(--pk);background:linear-gradient(135deg,rgba(var(--pk-rgb),.14),var(--cd) 70%);box-shadow:0 0 30px rgba(var(--pk-rgb),.18)}
 .ic{width:42px;height:42px;border-radius:10px;border:1px solid var(--bd2);display:flex;align-items:center;justify-content:center;color:var(--pk);flex:none}
 .c b{display:block;font-weight:600;font-size:15px}.c small{display:block;margin-top:3px;font-size:12.5px;color:var(--mu)}
-.soon{margin-left:auto;font-size:11px;color:var(--mu);border:1px solid var(--bd2);border-radius:999px;padding:2px 8px}
+.soon{margin-left:auto;flex:none;font-size:11px;font-weight:600;color:var(--pk-lt);border:1px solid var(--pk);border-radius:999px;padding:2px 8px;background:rgba(var(--pk-rgb),.14);text-shadow:0 0 8px rgba(var(--pk-rgb),.9);box-shadow:0 0 12px rgba(var(--pk-rgb),.6);animation:soonGlow 2.4s ease-in-out infinite}
+@keyframes soonGlow{50%{box-shadow:0 0 20px rgba(var(--pk-rgb),.95)}}
+@media(prefers-reduced-motion:reduce){.soon{animation:none}}
 h2.hh{font-size:15px;font-weight:600;margin:26px 0 12px}h2.hh:first-of-type{margin-top:0}
 .lt{width:var(--s,36px);height:var(--s,36px);flex:none;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;overflow:hidden;border:1px solid}
 .lt img{width:100%;height:100%;object-fit:cover}
