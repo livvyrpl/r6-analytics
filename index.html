@@ -910,12 +910,16 @@ function homeCards(){
  rows.forEach(t=>{if(!regs.includes(t.region))regs.includes(t.region||OTHER_REGION)||regs.push(t.region)});
  return regs.map(r=>{const l=rows.filter(t=>(t.region||OTHER_REGION)===r);return `<h2 class="hh" style="margin-top:16px">${esc(r)} (${l.length})</h2><div class="g" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr))">${l.map(t=>`<button class="c" data-a="sopp" data-id="${t.id}">${tile(t,44)}<span style="min-width:0"><b style="overflow-wrap:anywhere">${esc(t.name)}</b><small style="overflow-wrap:anywhere">${esc(t.league||'No league')} · ${plural(scCount(t),'game')}</small></span></button>`).join('')}</div>`}).join('');
 }
+// the page title inside a team's Liquipedia link; '' when it is not one
+const lpTeamOf=u=>{const m=/^https?:\/\/(?:www\.)?liquipedia\.net\/rainbowsix\/([^?#]+)/i.exec(String(u).trim());if(!m)return '';try{return decodeURIComponent(m[1]).split('/')[0].replace(/_/g,' ').trim()}catch{return ''}};
+const lpLinkOf=n=>n?'https://liquipedia.net/rainbowsix/'+encodeURI(n.replace(/ /g,'_')):'';
 function soForm(){
  const t=sco.form.id?sco.teams.find(x=>x.id===sco.form.id):null,half='flex:1;min-width:180px',regs=[...REG,OTHER_REGION];
  return `<form class="cd" data-s="sopp" data-dirty style="max-width:720px;margin-bottom:16px"><h2 style="font-size:17px;font-weight:600;overflow-wrap:anywhere">${t?'Settings for '+esc(t.name):'Add opponent'}</h2>
  ${t?'':`<div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:2;min-width:200px"><label for="son">Name</label><input id="son" class="fi" required maxlength="120" value="${esc(sco.form.name||'')}"></div><div style="${half}"><label for="sos">Short name</label><input id="sos" class="fi" maxlength="20"></div></div>`}
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="sor">Region</label><select id="sor" class="fi">${regs.map(r=>`<option${(t?.region||REG[0])===r?' selected':''}>${esc(r)}</option>`).join('')}</select></div><div style="${half}"><label for="sol">League</label><input id="sol" class="fi" maxlength="80" value="${esc(t?.league||'')}"></div></div>
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:2;min-width:200px"><label for="sou">Logo link (https)</label><input id="sou" class="fi" inputmode="url" value="${esc(t?.logo_url||'')}" placeholder="https://…"></div><div style="${half}"><label for="soc">Color (hex code)</label><input id="soc" class="fi" maxlength="7" value="${esc(t?.color||'#e07cc0')}"></div></div>
+ <div><label for="solp">Liquipedia link</label><input id="solp" class="fi" inputmode="url" value="${esc(lpLinkOf(t?.source_ids?.liquipedia||''))}" placeholder="https://liquipedia.net/rainbowsix/Cloud9"><p class="mu" style="font-size:12.5px;margin-top:4px">Used by Pull everything, so this team's name here doesn't have to match Liquipedia.</p></div>
  ${t?`<div><label for="sop">Players, one per line</label><textarea id="sop" class="fi ta">${esc((t.players||[]).join('\n'))}</textarea></div>`:''}
  <div class="row wrap" style="justify-content:space-between"><span>${t?'<button type="button" class="no" data-a="sodel">Stop tracking</button>':''}</span><span class="row"><button type="button" class="no" data-a="socancel">Cancel</button><button class="go">${t?'Save changes':'Add opponent'}</button></span></div></form>`;
 }
@@ -924,6 +928,10 @@ async function saveSo(form){
  if(!color)return toast('Enter a hex color like #e07cc0');
  if(logo&&!/^https:\/\//i.test(logo))return toast('The logo link must start with https://');
  row.color=color;
+ const lpRaw=$('#solp').value.trim(),lpName=lpTeamOf(lpRaw);
+ if(lpRaw&&!lpName)return toast('Paste a Liquipedia Rainbow Six team link, like https://liquipedia.net/rainbowsix/Cloud9');
+ const oldIds=id?sco.teams.find(x=>x.id===id)?.source_ids||{}:{};
+ if(id||lpName){const{liquipedia:_,...keep}=oldIds;row.source_ids=lpName?{...keep,liquipedia:lpName}:keep}
  if(id)row.players=$('#sop').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
  else{row.name=$('#son').value.trim();row.short_name=$('#sos').value.trim();if(!row.name)return toast('Enter a name');if(sco.teams.some(t=>norm(t.name)===norm(row.name)))return toast('This opponent is already tracked');row.owner_team_id=sco.tid}
  btn.disabled=true;
@@ -1311,7 +1319,7 @@ async function lpRunTeam(t){
  const l=sco.lp={team:t.id,step:'run',running:true,stop:false,fails:[],pages:[],on:new Set(),teams:[],tOn:new Set(),sum:{events:0,teams:0,matches:0,vetoes:0,skipped:0,replays:0,checked:0,ok:0,flagged:0},prog:{i:0,n:3,label:'Starting…'}};lpDraw();
  const d=new Date();d.setMonth(d.getMonth()-12);const from=new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10),years=[];for(let y=+from.slice(0,4);y<=new Date().getFullYear();y++)years.push(String(y));
  let name=t.source_ids?.liquipedia||t.name,aliases=[],ok=false;
- await lpStep(l,`Finding ${t.name} on Liquipedia`,async()=>{const r=await lpCall({action:'find',part:'team',name,opp_id:t.id});name=r.name;aliases=r.aliases||[];ok=true},t.name);
+ await lpStep(l,`Finding ${t.name} on Liquipedia`,async()=>{try{const r=await lpCall({action:'find',part:'team',name,opp_id:t.id});name=r.name;aliases=r.aliases||[];ok=true}catch(e){throw new Error(/no page called/i.test(e.message)?`Liquipedia has no page called ${name}. Add this team's Liquipedia link in Settings.`:e.message)}},t.name);
  if(!ok)return lpReload(l);
  const found=new Set();
  for(const part of ['results','matches'])await lpStep(l,'Finding every event they played in, about 30 seconds',async()=>{(await lpCall({action:'find',part,name})).titles.forEach(x=>found.add(x))},'Event list');
