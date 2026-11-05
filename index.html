@@ -76,6 +76,9 @@ body.upd main{padding-bottom:88px}body.upd #toast{bottom:72px}
 footer{max-width:1180px;margin:0 auto;padding:0 24px 24px;font-size:11.5px;color:var(--mu)}
 .stv{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:20px;align-items:start}.stc{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.stc.one{grid-template-columns:minmax(0,1fr)}@media(max-width:640px){.stc{grid-template-columns:minmax(0,1fr)}}.stf{display:block;width:100%;aspect-ratio:16/10;min-height:220px;border:1px solid var(--bd);border-radius:12px;background:var(--cd)}
 @media(max-width:900px){.stv{grid-template-columns:minmax(0,1fr)}}
+.opph{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:20px;border:1px solid;border-radius:16px;margin-bottom:14px}
+.fm{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;font-size:12px;font-weight:700;color:#0b0a0e}.fW{background:#4fc9a8}.fL{background:#ff8a8a}.fD{background:#a59dad}
+.vod{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;background:#1a73e8;color:#fff;font-size:12px;font-weight:600;text-decoration:none}.vod:hover{background:#3b8bf0}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -89,13 +92,13 @@ const R={coach:'Coach',assistant_coach:'Assistant Coach',analyst:'Analyst',playe
 const REG=['North America','South America','Europe','Asia Pacific'],COL=['#e07cc0','#7cc0e0','#e0c07c','#9ae07c','#c07ce0','#e07c7c','#7ce0c0','#ece8f0'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=s=>document.querySelector(s),ico=p=>`<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
-let me=null,teams=[],mem={},allMem=[],profs=[],invs=[],cur=null,view='dash',viewing=false,fm=null,sel=null,mode='in',scr=null,sch=null,pl=null,ros=null,an=null,stra=null,cov=null,sdirty=false;
+let me=null,teams=[],mem={},allMem=[],profs=[],invs=[],cur=null,view='dash',viewing=false,fm=null,sel=null,mode='in',scr=null,sch=null,pl=null,ros=null,an=null,stra=null,cov=null,sco=null,rost=null,sdirty=false;
 const staff=()=>me&&['owner','admin'].includes(me.site_role),owner=()=>me&&me.site_role==='owner';
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3500)}
 const tile=(t,s=36)=>{const c=esc(t?.color||'#e07cc0');return `<span class="lt" style="--s:${s}px;color:${c};border-color:${c};background:${c}22">${t?.logo_url?`<img src="${esc(t.logo_url)}" alt="">`:esc((t?.name||'?').slice(0,2).toUpperCase())}</span>`};
 async function load(){
  const{data:{session}}=await sb.auth.getSession();
- if(!session){me=null;view='dash';viewing=false;scr=null;sch=null;pl=null;ros=null;an=null;stra=null;cov=null;sdirty=false;return render()}
+ if(!session){me=null;view='dash';viewing=false;scr=null;sch=null;pl=null;ros=null;an=null;stra=null;cov=null;sco=null;rost=null;sdirty=false;return render()}
  const uid=session.user.id;
  me=(await sb.from('profiles').select('*').eq('id',uid).maybeSingle()).data;
  if(!me||me.suspended)return render();
@@ -126,8 +129,9 @@ function render(){
  ${mine.length>1?`<select class="tb" data-c="sw" aria-label="Switch team">${mine.map(t=>`<option value="${t.id}"${cur&&t.id===cur.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`:''}
  <button class="tb" data-a="go" data-v="dash">Dashboard</button><button class="tb" data-a="settings">Settings</button><button class="tb" data-a="profile">Profile</button></header>
  ${viewing&&view==='dash'&&cur?`<div class="bar"><span>Viewing ${esc(cur.name)} as ${me.site_role}</span><button class="no" data-a="go" data-v="teamsV">Back to teams</button></div>`:''}
- <main>${({dash:dashV,admin:adminV,teamsV,users:usersV,create:createV,scrims:scrimsV,schedule:scheduleV,player:playerV,roster:rosterV,analyst:analystV,strats:stratsV,cover:coverV})[view]()}</main><footer>Map and operator images © Ubisoft. Liv Analytics is not affiliated with Ubisoft.</footer>`;
+ <main>${({dash:dashV,admin:adminV,teamsV,users:usersV,create:createV,scrims:scrimsV,schedule:scheduleV,player:playerV,roster:rosterV,analyst:analystV,strats:stratsV,cover:coverV,sc:scoutV,tset:teamSetV})[view]()}</main><footer>Map and operator images © Ubisoft. Some data from Liquipedia, CC-BY-SA. Liv Analytics is not affiliated with Ubisoft.</footer>`;
  if(view==='analyst')drawCharts();
+ if(view==='sc')scDraw();
 }
 function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analytics"><form class="cd" data-s="auth">
  <div><label for="em">Email</label><input id="em" class="fi" type="email" required autocomplete="email"></div>
@@ -135,15 +139,15 @@ function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analyt
  <button class="go" style="height:48px">${mode==='in'?'Sign in':'Create account'}</button>
  <button type="button" class="no" style="border:0" data-a="mode">${mode==='in'?'Invited? Create your account':'I already have an account'}</button></form>
  <p class="mu">Access is by invitation. Ask your team owner to add you.</p></div>`}
-const HUBS=[['Scouting',['coach','assistant_coach','analyst'],'<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>',[['Scouting','operator bans by opponent, from scrims','scout'],['Match Library','all teams, every game'],['Round Library','all teams, every round'],['Vetoes','bans and picks per team'],['Export to Sheets','pick league and teams, then copy']]],
-['Coach Deck',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches','cover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Player Hub','stats, journals, off days for every player','phub']]],
+const HUBS=[['Scouting',['coach','assistant_coach','analyst'],'<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>',[['Scouting','tracked opponents by region and league','sct'],['Match Library','all teams, every game','slm'],['Round Library','all teams, every round','slr'],['Vetoes','bans and picks per team','slv'],['Export to Sheets','pick league and teams, then export','sx']]],
+['Coach Deck',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches','cover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Player Hub','stats, journals, off days for every player','phub'],['Team Settings','name, region, league, color, logo','tset']]],
 ['Analyst Deck',['analyst','coach','assistant_coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary','aover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Stats','your team and opponents','astats'],['Import','replays and scrims','aimport']]],
 ['Player Deck',['player'],'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>',[['Overview','your week at a glance','pover'],['My Schedule','team schedule, add off days','pmysch'],['Journal','goals with deadlines','pjournal'],['My Stats','KOST, K/D, operators','pstats'],['Strats','open slides in the site','strats']]]];
 function dashV(){
  if(!cur)return `<div class="cd"><h2 class="serif" style="font-size:28px">No team yet</h2><p class="mu">${staff()?'Create a team in Admin, or open one from the Teams list.':'Ask the owner to add you to a team.'}</p></div>`;
  const roles=staff()?ALL:(mem[cur.id]||[]);
  const badge=[...(staff()?[me.site_role]:[]),...(mem[cur.id]||[]).map(r=>R[r])].join(', '),seen=new Set();
- return `<div class="row wrap" style="margin-bottom:24px;gap:14px">${tile(cur,48)}<h1 class="serif" style="font-size:34px;color:var(--pk)">${esc(cur.name)}</h1><span class="badge">${esc(badge)}</span>${staff()?'<button class="no" style="height:32px" data-a="tcolor">Team color</button>':''}</div>`+
+ return `<div class="row wrap" style="margin-bottom:24px;gap:14px">${tile(cur,48)}<h1 class="serif" style="font-size:34px;color:var(--pk)">${esc(cur.name)}</h1><span class="badge">${esc(badge)}</span></div>`+
  HUBS.filter(h=>h[1].some(r=>roles.includes(r))).map(h=>`<h2 class="hh">${h[0]}</h2><div class="g">${h[3].filter(c=>!c[2]||(!seen.has(c[2])&&seen.add(c[2]))).map(c=>`<button class="c" data-a="${c[2]||'soon'}"><span class="ic">${ico(h[2])}</span><span><b>${c[0]}</b><small>${c[1]}</small></span>${c[2]?'':'<span class="soon">Soon</span>'}</button>`).join('')}</div>`).join('');
 }
 const hasR=l=>staff()||(cur&&(mem[cur.id]||[]).some(r=>l.includes(r))),canSeeS=()=>hasR(['coach','assistant_coach','analyst']),canEditS=()=>hasR(['coach','assistant_coach','analyst']);
@@ -332,13 +336,14 @@ async function openPlayer(page){
 }
 async function loadPlayer(){
  const s=pl,uid=s.uid,tid=s.tid,ids=[...new Set([...allMem.filter(m=>m.team_id===tid&&m.roles.includes('player')).map(m=>m.user_id),...(uid?[uid]:[])])];
- const none={data:[]},[p,g,n,e,r,sn]=await Promise.all([
+ const none={data:[]},[p,g,n,e,r,sn,lk]=await Promise.all([
   ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none,
   uid?sb.from('journal_goals').select('*').eq('team_id',tid).eq('user_id',uid):none,
   uid?sb.from('journal_notes').select('*').eq('team_id',tid).eq('user_id',uid):none,
   sb.from('schedule_entries').select('*').eq('team_id',tid),
-  uid?sb.from('round_stats').select('*').eq('team_id',tid).eq('user_id',uid):none,
-  uid&&canPick()?sb.from('scrim_player_notes').select('scrim_id,notes').eq('team_id',tid).eq('user_id',uid):none]);
+  uid?sb.from('round_stats').select('*').eq('team_id',tid):none,
+  uid&&canPick()?sb.from('scrim_player_notes').select('scrim_id,notes').eq('team_id',tid).eq('user_id',uid):none,
+  uid?sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid):none]);
  const sc=(sn.data||[]).length?await sb.from('scrims').select('id,opponent,scrim_date').in('id',sn.data.map(x=>x.scrim_id)):none;
  const by=[...new Set((g.data||[]).map(x=>x.assigned_by).filter(Boolean))],bp=by.length?await sb.from('profiles').select('id,display_name').in('id',by):none;
  if(pl!==s||s.uid!==uid)return;
@@ -347,7 +352,7 @@ async function loadPlayer(){
  s.players=ids.filter(i=>allMem.some(m=>m.team_id===tid&&m.user_id===i&&m.roles.includes('player'))).map(i=>({id:i,name:s.names[i]||'Player'})).sort((a,b)=>a.name.localeCompare(b.name));
  const bad=[g,n,r,e,sn,sc].find(x=>x.error);
  s.snotes=(sn.data||[]).map(x=>({...((sc.data||[]).find(c=>c.id===x.scrim_id)||{opponent:'Unknown',scrim_date:'2000-01-01'}),...x})).sort((a,b)=>b.scrim_date.localeCompare(a.scrim_date));
- s.err=bad?pErr(bad.error):'';s.goals=g.data||[];s.notes=n.data||[];s.events=e.data||[];s.stats=r.data||[];
+ s.err=bad?pErr(bad.error):'';s.goals=g.data||[];s.notes=n.data||[];s.events=e.data||[];s.linked=(lk.data||[]).filter(x=>x.linked_user_id===uid).map(x=>x.name);{const nk=new Set(s.linked.map(norm));s.stats=(r.data||[]).filter(x=>x.user_id===uid||nk.has(norm(x.player_username)))}
 }
 function playerV(){
  if(!cur||!pl||pl.tid!==cur.id)return `<div class="cd"><p>Open the Player Deck from a team's dashboard.</p><div>${backDash}</div></div>`;
@@ -398,7 +403,7 @@ function statsB(){
  const fmt=(v,p)=>p?Math.round(v*100)+'%':v.toFixed(2),st=(l,v)=>`<div class="stat"><span class="mu">${l}</span><b>${v}</b></div>`;
  const ops=Object.values(r.reduce((m,x)=>{const o=m[x.operator]||(m[x.operator]={op:x.operator,n:0,k:0,d:0,q:0});o.n++;o.k+=x.kills;o.d+=+x.died;o.q+=+x.kost_point;return m},{})).sort((a,b)=>b.n-a.n||a.op.localeCompare(b.op));
  return `<div class="tiles">${st('KOST',sl.kost)}${st('K/D',sl.kd)}${st('Headshot %',sl.hs)}</div>
- ${n?'':'<div class="cd" style="margin-top:16px"><p>No replays imported yet. Stats appear here once your analyst imports matches.</p></div>'}
+ ${n?'':`<div class="cd" style="margin-top:16px"><p>No replays imported yet. Stats appear here once your analyst imports matches.</p>${(pl.linked||[]).length?'':`<p class="mu">${ownP()?'Your coach also needs to link your in-game name to your account in Team Settings.':'This player has no in-game name linked yet. Link one in Team Settings.'}</p>`}</div>`}
  <div class="cd" style="margin-top:16px;gap:10px"><h2 style="font-size:15px;font-weight:600">Operators played</h2><div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col">Operator</th><th scope="col" class="num">Rounds</th><th scope="col" class="num">Kills</th><th scope="col" class="num">Deaths</th><th scope="col" class="num">K/D</th><th scope="col" class="num">KOST</th></tr></thead><tbody>${ops.length?ops.map(o=>`<tr><td><span class="opr">${opIcon(o.op)}${esc(o.op)}</span></td><td class="num">${o.n}</td><td class="num">${o.k}</td><td class="num">${o.d}</td><td class="num">${fmt(o.d?o.k/o.d:o.k)}</td><td class="num">${fmt(o.q/o.n,1)}</td></tr>`).join(''):'<tr><td colspan="6" class="mu">No operators yet.</td></tr>'}</tbody></table></div></div>`;
 }
 async function saveGoal(form){
@@ -425,11 +430,11 @@ async function openRoster(){
  view='roster';ros={tid:cur.id,rows:null,err:'',off:[],late:[]};render();
  if(!canPick())return;
  const s=ros,tid=s.tid,t=today(),ids=[...new Set(allMem.filter(m=>m.team_id===tid&&m.roles.includes('player')).map(m=>m.user_id))],none={data:[]};
- const[p,g,r,e]=await Promise.all([ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none,sb.from('journal_goals').select('*').eq('team_id',tid),sb.from('round_stats').select('*').eq('team_id',tid),sb.from('schedule_entries').select('*').eq('team_id',tid)]);
+ const[p,g,r,e,lk]=await Promise.all([ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none,sb.from('journal_goals').select('*').eq('team_id',tid),sb.from('round_stats').select('*').eq('team_id',tid),sb.from('schedule_entries').select('*').eq('team_id',tid),sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid)]);
  if(ros!==s)return;
  const bad=[g,r,e].find(x=>x.error);if(bad){s.err=pErr(bad.error);s.rows=[];if(view==='roster')render();return}
  const nm=Object.fromEntries((p.data||[]).map(x=>[x.id,x.display_name||x.email])),off=(e.data||[]).filter(x=>x.kind==='off_day'&&schLocal(x).d>=t).sort((a,b)=>schKey(a).localeCompare(schKey(b)));
- s.rows=ids.map(i=>{const gs=g.data.filter(x=>x.user_id===i&&x.status!=='done');return{id:i,name:nm[i]||'Player',stat:statLine(r.data.filter(x=>x.user_id===i)),active:gs.length,late:gs.filter(x=>x.deadline&&daysTo(x.deadline)<0).length,off:off.find(x=>x.user_id===i)}}).sort((a,b)=>a.name.localeCompare(b.name));
+ s.rows=ids.map(i=>{const gs=g.data.filter(x=>x.user_id===i&&x.status!=='done');return{id:i,name:nm[i]||'Player',stat:statLine(r.data.filter(x=>x.user_id===i||(lk.data||[]).some(l=>l.linked_user_id===i&&norm(l.name)===norm(x.player_username)))),active:gs.length,late:gs.filter(x=>x.deadline&&daysTo(x.deadline)<0).length,off:off.find(x=>x.user_id===i)}}).sort((a,b)=>a.name.localeCompare(b.name));
  s.off=off.slice(0,8).map(x=>({d:schLocal(x).d,title:x.title,who:x.user_id?nm[x.user_id]||'Team member':'Whole team'}));
  s.late=g.data.filter(x=>x.status!=='done'&&x.deadline&&daysTo(x.deadline)<0&&ids.includes(x.user_id)).sort((a,b)=>a.deadline.localeCompare(b.deadline)).map(x=>({...x,who:nm[x.user_id]||'Player'}));
  if(view==='roster')render();
@@ -460,7 +465,19 @@ const canAn=()=>hasR(['analyst','coach','assistant_coach']);
 const aErr=e=>/started_on|'score' column|'split' column/i.test(e.message)?'The map details update is not set up yet. Paste stage6.sql into the Supabase SQL Editor and run it.':/scrim_map_results/i.test(e.message)?'The stats database table is not set up yet. Paste stage5.sql into the Supabase SQL Editor and run it.':sErr(e);
 const roundScore=r=>{const sc=parseScore(r.score);if(sc)return sc;const a=(r.atk_won||0)+(r.def_won||0),b=(r.atk_lost||0)+(r.def_lost||0);return a+b>0?{a,b}:null};
 const hasRounds=r=>!!roundScore(r);
-const sideOf=r=>{const sc=parseScore(r.score),h=parseScore(r.split);if(r.started_on&&sc&&h&&h.a<=sc.a&&h.b<=sc.b){const f={w:h.a,l:h.b},t={w:sc.a-h.a,l:sc.b-h.b},[x,y]=r.started_on==='attack'?[f,t]:[t,f];return{aw:x.w,al:x.l,dw:y.w,dl:y.l}}const o={aw:r.atk_won||0,al:r.atk_lost||0,dw:r.def_won||0,dl:r.def_lost||0};return o.aw+o.al+o.dw+o.dl>0?o:null};
+const sideOf=r=>{const sc=parseScore(r.score),h=parseScore(r.split);
+ if(r.started_on&&sc&&h&&h.a<=sc.a&&h.b<=sc.b){
+  const atk=r.started_on==='attack',total=sc.a+sc.b,inOT=total>12&&h.a+h.b===6&&sc.a>=6&&sc.b>=6;
+  const second=inOT?{w:6-h.a,l:6-h.b}:{w:sc.a-h.a,l:sc.b-h.b};
+  const out=atk?{aw:h.a,al:h.b,dw:second.w,dl:second.l}:{aw:second.w,al:second.l,dw:h.a,dl:h.b};
+  if(inOT){ // sides swap each overtime round; the sheet does not say who won which, so wins are shared as evenly as the rounds allow
+   const w=sc.a-6,l=sc.b-6,n=w+l,otAtk=r.ot_side?r.ot_side==='attack':true,aN=otAtk?Math.ceil(n/2):Math.floor(n/2),dN=n-aN;
+   let aw=Math.min(aN,Math.ceil(w/2));if(w-aw>dN)aw=w-dN;
+   out.aw+=aw;out.al+=aN-aw;out.dw+=w-aw;out.dl+=dN-(w-aw);
+  }
+  return out;
+ }
+ const o={aw:r.atk_won||0,al:r.atk_lost||0,dw:r.def_won||0,dl:r.def_lost||0};return o.aw+o.al+o.dw+o.dl>0?o:null};
 const anRows=s=>{const ms=new Set(s.maps.map(norm));return an.res.filter(r=>r.scrim_id===s.id&&ms.has(norm(r.map)))};
 const mapOuts=s=>{const rows=anRows(s).filter(hasRounds);if(rows.length)return rows.map(r=>{const q=roundScore(r);return{map:r.map,a:q.a,b:q.b,r}});const sc=parseScore(s.score);return s.maps.length===1&&sc?[{map:s.maps[0],a:sc.a,b:sc.b}]:[]};
 const scrimRes=s=>{const sc=parseScore(s.score);if(sc)return resOf(sc.a,sc.b);const m=anRows(s).filter(hasRounds).map(r=>{const q=roundScore(r);return resOf(q.a,q.b)});return m.length?resOf(m.filter(x=>x==='W').length,m.filter(x=>x==='L').length):null};
@@ -488,7 +505,7 @@ function analystV(){
  if(!canAn())return `<div class="cd"><p>This page is for this team's analysts, coaches and assistant coaches.</p><div>${backDash}</div></div>`;
  const T={over:'Overview',stats:'Stats',import:'Import',scout:'Scouting'}[an.page];
  const tabs=`<div class="row wrap" style="gap:8px;margin-bottom:20px" role="group" aria-label="Analyst pages">${[['aover','Overview','over'],['astats','Stats','stats'],['aimport','Import','import']].map(x=>`<button class="ch" data-a="${x[0]}" aria-pressed="${x[2]===an.page}">${x[1]}</button>`).join('')}</div>`;
- const head=`<div class="row wrap" style="margin-bottom:16px">${tile(cur,48)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px">${T}</h1><p class="mu">${esc(cur.name)}</p></div>${backDash}</div>${an.page==='scout'?'':tabs}`;
+ const head=`<div class="row wrap" style="margin-bottom:16px">${tile(cur,48)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px">${T}</h1><p class="mu">${esc(cur.name)}</p></div><div class="row wrap">${an.page==='scout'?'<button class="no" data-a="sct">All scouting</button>':''}${backDash}</div></div>${an.page==='scout'?'':tabs}`;
  if(an.page==='import')return head+importB();
  const body=!an.list?'<p class="mu">Loading…</p>':an.err?`<div class="cd"><p>${esc(an.err)}</p></div>`:an.page==='stats'?aStatsB():an.page==='scout'?scoutB():aOverB();
  return head+body;
@@ -618,7 +635,7 @@ const mapPhoto=(n,cls='')=>{const p=n&&mapPath(n);return p?`<img class="ph ${cls
 const OPS=[["Noor",0,"6DHgKOCoB9bcrQJiOjvQad/8b60ed79e3ce1dd3a352a0d1018cc604/r6s-operators-badge-noor.png"],["Solid Snake",1,"7l8uzV1767cot7GpTcnK7t/9be16729f34b76e97dbcbbd0a81bd74c/r6s-operators-badge-solidsnake.png"],["Denari",0,"17XNHqqrkLQ7lYFqciEwmP/21d50fb6c296d26a47f8dd84dd19298b/r6s-operators-badge-denari.png"],["Rauora",1,"T2BrSyMgBBSjM7rs8T53b/0f8d6842d4440fc06d450789c273381b/r6s-operators-badge-rauora.png"],["Skopós",0,"k0AOat3ISkt7WMR6X4dJg/aa4596095d3861f7de24e007730e3f89/r6s-operators-badge-skopos.png"],["Striker",1,"2ZC6qMkmnam9bLc1fZJJ0C/fd0719a5b03789e65aa7f41e7c2dc49c/r6s-operators-badge-striker.png"],["Sentry",0,"3RhB8rT969t71r0b3iiiQo/3bf85d17ade85b4e5943712b664b6166/r6s-operators-badge-sentry.png"],["Deimos",1,"18uYWtYnEjmMQBTTdkIfWF/ba8c07729ff3c6de5872ffbcdc7956fb/r6s-operators-badge-deimos.png"],["Tubarão",0,"43VtYmfmTtLwwKDGhalSCO/9673bb50e981ba2684cd649534f00de7/r6s-operators-badge-tubarao.png"],["Ram",1,"3YQiStwC1Qo4wKWmgK6XCH/ac8a0fea30f2996f96ca31b17a0039fa/r6s-operators-badge-ram.png"],["Fenrir",0,"4vtvBhY56S2slW3y0eKsMp/6a0f41807549ad1aa503112d4ad05a52/r6s-operators-badge-fenrir.png"],["Brava",1,"1JTzualMKZVGfdROg4XKh8/7989454e62b7972bfd88f09097cc148f/r6s-operators-badge-brava.png"],["Solis",0,"6YOBUP5JMskklFx9nDJQ49/d9d4b0968f581597feaa0ef4ec0891f3/r6s-operators-badge-solis.png"],["Grim",1,"5VoAYPvRZXIwjcwTD3PWaZ/b9748f007c0c116ca1bcd77b0f91e766/r6s-operators-badge-grim.png"],["Sens",1,"7pqZFaPgQwaLi1pFKuAv7e/d3d9af214737fe6a069e5346c50bfd20/r6s-operators-badge-sens.png"],["Azami",0,"7KWTXHTk8rxLS5qtyX4Xu4/b51f8691b932fd2b83260ef3fbcd1154/r6s-operators-badge-azami.png"],["Thorn",0,"1pzBJsbL1vQT8is7B0Xjxz/440335c080e54ca28eba24858361a03a/r6s-operators-badge-thorn.png"],["Osa",1,"5tt27EFHYjiDLo2qbYEgXG/2f1acbb8209e45b136ca7b0e2e5eb1f9/r6s-operators-badge-osa.png"],["Thunderbird",0,"YQfDJ42B2IKcKnb0lRaXq/0cedb53c439b0fe448be95713a836b29/r6s-operators-badge-thunderbird.png"],["Flores",1,"75vqJXXKCM2EDO0iiNqRDe/d6289dc9a4fed72ef72b9c1e11738456/Y6S1_BADGE_Flores_L.png"],["Aruni",0,"5rOLCYQOh5HH0Nv6NHe38H/29681f901ff71ae5decb5ccb1b9f8a29/Y5S4_BADGE_Aruni_L.png"],["Zero",1,"4ZbzOZt1Sur77RZTFwYVJ4/30037e84b2948449652547f06df146e0/Y5S3_BADGE_Zero_L.png"],["Ace",1,"dgG7GmXY1HgfeEE2gI1H9/06bd3917c8fc19f61654490019ef25fb/Y5S2_BADGE_Ace_L.png"],["Melusi",0,"74H52a9GMql8wamIy6WqH5/9fddba49258152835da7cdac8c566663/Y5S2_BADGE_Melusi_L.png"],["Oryx",0,"7mLA8GY9ZKlUfDXrfo9Nek/e3dfd0759414f36866a8c80b61a67722/Y5S1_BADGE_Oryx_L.png"],["Iana",1,"6deSi1vse5iJTkErFksrGq/75bf1038e9698b6b2be75aa0493b092d/Y5S1_BADGE_Iana_L.png"],["Wamai",0,"1vQZ4WsAjhc6M7qNOS4ahQ/92fc4d89632fb87aec0f102d7adbfe26/Y4S4_BADGE_Wamai_L.png"],["Kali",1,"6r1hk1EunQirF1IcY4TG8T/0d3fbb7508a7747fd51249b1b8ea9779/Y4S4_BADGE_Kali_L.png"],["Amaru",1,"2K1uxROLvHGxOIOMpNRFeU/7b4afc5ded3d1b9a937d1b504b5d4d0d/Y4S3_BADGE_Amaru_L.png"],["Goyo",0,"6AAY4FZt5piHdabOdDokE4/f7f8bd90c20b8a429c78a08684b75aca/Y4S3_BADGE_Goyo_L.png"],["Nøkk",1,"2qfSHHTdCRVhx9EWycVDNr/9e361e73fb91e571f7470de21edf5c7a/Y4S2_BADGE_Nokk_L.png"],["Warden",0,"hx1Ljf1qIWbjpgCNmfJbu/2217283b569ef316dc12b93e86649f8f/Y4S2_BADGE_Warden_L.png"],["Mozzie",0,"15hUu2PsypX2c1LIJFQNUT/8538c52057420dbf3995cf3117b155c5/Y4S1_BADGE_Mozzie_L.png"],["Gridlock",1,"5LIyheUROsdMDkX6o0zh6R/f201ce65af771459c374ef71c89827b4/Y4S1_BADGE_Gridlock_LL.png"],["Nomad",1,"UxfU1gJDoZGDrzT3iBsIp/b1aa522cc08e4631b9a857b52afa4f99/Y3S4_BADGE_Nomad_L.png"],["Kaid",0,"5Qblb1ZqAqkN3Wa0Qw5qBq/05630c80672105a1195282d276e8eb05/Y3S4_BADGE_L.png"],["Clash",0,"7G4lGl5HPLFTTUdcZW8UOK/3901b44cf2a9423486ffd78531e42f87/Y3S3_BADGE_Clash_L.png"],["Maverick",1,"3DXiYgVT71qGscYmFMgayj/d6c40a7dabdfecb92b637bec83003a58/Y3S3_BADGE_Maverick_L.png"],["Maestro",0,"XK43imgD0tc0xrk0tgTCQ/0402cc95cbd525debafa1aab0fdd8385/Y3S2_BADGE_Maestro_L.png"],["Alibi",0,"3DgGV3hETnXiEvVFOYZrbm/55a6be47761b5cf2c7ff8aaa7991cc7f/Y3S2_BADGE_Alibi_L.png"],["Lion",1,"3gfdjXFezusaerCakMpfQ2/4565b28edd241b7fd3b0eba9c97d54f2/Y3S1_BADGE_Lion_L.png"],["Finka",1,"6CzQHWePD3Mi8HE5bdx5ic/2a6b5a6cc653ebf99d062725368eae2a/Y3S1_BADGE_Finka_L.png"],["Vigil",0,"56A3hXhWZdwO623g3ejeku/a40a0582a7841abfeed723d8fbe238d3/Y2S4_BADGE_Vigil_L.png"],["Dokkaebi",1,"aoQeHLohcuqvubBoyrzsM/d4a230ecba495c58c5521e10d5d84baa/Y2S4_BADGE_Dokkaebi_L.png"],["Zofia",1,"1k09nbCCu2avlIWpK3cJz9/35d60746d67750230f2a020a7be78795/Y2S3_BADGE_Zofia_L.png"],["Ela",0,"7zbkJJWMCOj04DNhYDz994/d2cba213d30d7b8cf2ba8cd568c78f20/Y2S3_BADGE_Ela_L.png"],["Ying",1,"6ZVB1OJxNgs0pR0Fd7Kzt0/74721fe9fd743167508f98dc280a17a3/Y2S2_BADGE_Ying_L.png"],["Lesion",0,"2CWYSySnPAhsOHdq2OLSjv/f9e54debcfa0c8fe76012d9097b98e6e/Y2S2_BADGE_Lesion_L.png"],["Mira",0,"u1KR6aogjLncAtaVOciTc/ba730583f9c20cad6d3ca996d366a707/Y2S1_BADGE_Mira_L.png"],["Jackal",1,"28k7LKWK70lxib7CimPJaZ/f34b2065811df8f0339838922f8c94b1/Y2S1_BADGE_Jackal_L.png"],["Hibana",1,"1TSA4pMR58vgfrEai69REl/f82b1eba6694b4aa77259d3d0fe8cc08/Y1S4_BADGE_Hibana_L.png"],["Echo",0,"3MRqAdUybJ7GR9gX4wPAI4/992938a70a4e53b91478358634e77ca7/Y1S4_BADGE_Echo_L.png"],["Caveira",0,"4H1dOkcdZIKblKkAWjD390/10e57f4829eabda30f4aa1044e49893d/Y1S3_BADGE_Caveira_L.png"],["Capitão",1,"73R4IrWJyn0xdkJ0fjOODA/fc70d200a7530dccae2847ab7962e394/Y1S3_BADGE_Capitao_L.png"],["Blackbeard",1,"4BTbmcs1EtoUbnpk5Am22Y/b7bd4d0708245c78b98455505c0d51a8/Y1S2_BADGE_Blackbeard_L.png"],["Valkyrie",0,"44qXJmZmAwaD4w44JnPuOx/c54c8b9d3a6813ab8ce3e3f1dd4ef408/Y1S2_BADGE_Valkyrie_L.png"],["Buck",1,"2oZZBEZzVLFpRY7Mp85MWq/f62287872dd61b4e0697a93d703b2beb/Y1S1_BADGE_Buck_L.png"],["Frost",0,"1OWFtfiEXleLSENciCSQQR/8fcced59c0125073e506f2dee0201015/Y1S1_BADGE_Frost_L.png"],["Mute",0,"3exeHnxH1tmUmQTequWRKa/e1b6c6f057eb24722dd7860af0276316/Y0R6_BADGE_Mute_L.png"],["Sledge",1,"4lgK1mOTVAoBhoj5qjYuyd/83c83d56e977f96ac0e9621c0d1c07d2/Y0R6_BADGE_Sledge_L.png"],["Smoke",0,"6mOMxoc3t27R9Gr9wFtt6T/f5f90a6be6a6710bee686ce69df29906/Y0R6_BADGE_Smoke_L.png"],["Thatcher",1,"5NbqTdEPmYy9qOZmN9StVT/38b3b2a70cfb4ffbfe6e8a6bd8654d1d/r6s-operators-badge-thatcher.png"],["Ash",1,"58Y4Q2x7msL8uQUoiA7LGM/b204acc9c5a015029140723ef2e435bb/Y0R6_BADGE_Ash_L.png"],["Castle",0,"kzznLctjOsXJZAg0F2HPB/dea28fa008515d6ddaa0d2659f4dc253/Y0R6_BADGE_Castle_L.png"],["Pulse",0,"ChAeJzdmwxuvhZTrV81rK/8c16116f4c719a3df864df6639e2f52e/Y0R6_BADGE_Pulse_L.png"],["Thermite",1,"6tow5mqLao5TrJVL52csSc/46aa934c9f3f02189e9c04df0114a081/Y0R6_BADGE_Thermite_L.png"],["Montagne",1,"7qWONT0mrNYtUZVTVVT8Yj/e0da552d6bb6548ddf74cf4cc44d75c5/Y0R6_BADGE_Montagne_L.png"],["Twitch",1,"3YgCpOSM2R4SDgExstxm7P/ff84e6ac53bd9f690deee78870f9c23b/Y0R6_BADGE_Twitch_L.png"],["Doc",0,"71Nl3v0LqHyo9eXV6xTFQd/1ba4f057b6acad3ec700ca9e60b53d6c/Y0R6_BADGE_Doc_L.png"],["Rook",0,"3Yk1noMd9re0RLlrXJSWtR/7a55e80593c487827293a114835dba63/Y0R6_BADGE_Rook_L.png"],["Jäger",0,"1cCvTmKwnnovVmpZmDyPkA/b064f5ad6b9e7398d820d9ea90ff9366/Y0R6_BADGE_Jager_L.png"],["Bandit",0,"4Vasjq82J1TNjNE38J7LmV/e1725f8d9ea2b85565e40b54faac85b8/Y0R6_BADGE_Bandit_L.png"],["Blitz",1,"2YTGfm1Df9PtldLcGodcTV/9a235b550cdf5066d686cef750eba090/Y0R6_BADGE_Blitz_L.png"],["IQ",1,"4xnVj2iZB8Otchiw7j69UO/13c864a4e2eb976c1978dc79411b450c/Y0R6_BADGE_IQ_L.png"],["Fuze",1,"1wkdQ0viuTEguji14qXMJG/5858418baa8cca04a6e42a2d6256c093/Y0R6_BADGE_Fuze_L.png"],["Glaz",1,"5UAZVgyOutPh6bLTV3fGXf/c59d484fd599d09a947ec423b2119620/Y0R6_BADGE_Glaz_L.png"],["Tachanka",0,"7hpI2mcmvyjC2vG6ieltLo/f217b1dc449c0514b55e471193a38c91/Y0R6_BADGE_Tachanka_L.png"],["Kapkan",0,"797q7C5YA89eFqw4RB40ka/f9435d1b4d13d41472e22d305c961cb9/Y0R6_BADGE_Kapkan_L.png"]];
 const opKey=n=>norm(n).replace(/ø/g,'o').normalize('NFD').replace(/[̀-ͯ]/g,'');
 const OPS_ATK=OPS.filter(o=>o[1]).map(o=>o[0]).sort((a,b)=>a.localeCompare(b)),OPS_DEF=OPS.filter(o=>!o[1]).map(o=>o[0]).sort((a,b)=>a.localeCompare(b));
-const opIcon=n=>{const o=OPS.find(x=>opKey(x[0])===opKey(n));return o?`<img class="opi" src="${UBI}${o[2]}?imwidth=64" alt="" loading="lazy">`:'<span class="opi" aria-hidden="true"></span>'};
+const opIcon=n=>{const k=opKey(n)==='snake'?'solid snake':opKey(n),o=OPS.find(x=>opKey(x[0])===k);return o?`<img class="opi" src="${UBI}${o[2]}?imwidth=64" alt="" loading="lazy">`:'<span class="opi" aria-hidden="true"></span>'};
 const mapOptions=sel=>{const names=MAP_POOL.map(m=>m[0]);if(sel&&!names.some(n=>norm(n)===norm(sel)))names.push(sel);return `<option value="">Choose a map</option>${names.map(n=>`<option value="${esc(n)}"${sel&&norm(n)===norm(sel)?' selected':''}>${esc(n)}</option>`).join('')}`};
 const fmtPair=p=>p.a+'-'+p.b;
 function mapBlock(m,o,form,ro=''){
@@ -626,7 +643,7 @@ function mapBlock(m,o,form,ro=''){
  const st=o?.started_on||'';
  return `<div class="mapd" data-map="${esc(m||'')}"><div class="mph">${mapPhoto(m)}</div>
  ${form?`<div class="row" style="gap:8px"><select class="fi" data-c="mapsel" aria-label="Map">${mapOptions(m)}</select><button type="button" class="no" data-a="fmaprm">Remove</button></div>`:`<b class="mpn">${esc(m)}</b>`}
- <div class="mr">${f('split','Split','e.g. 4-2')}${f('score','Score','e.g. 7-5')}<div><label>Started on<select class="fi" data-f="started_on"${ro?' disabled':''}><option value="">Choose</option><option value="attack"${st==='attack'?' selected':''}>Attack</option><option value="defense"${st==='defense'?' selected':''}>Defense</option></select></label></div></div>
+ <div class="mr">${f('split','Split (after 6 rounds)','e.g. 4-2')}${f('score','Score','e.g. 7-5')}<div><label>Started on<select class="fi" data-f="started_on"${ro?' disabled':''}><option value="">Choose</option><option value="attack"${st==='attack'?' selected':''}>Attack</option><option value="defense"${st==='defense'?' selected':''}>Defense</option></select></label></div></div>
  <div class="bans">${BANS.map(x=>`<div><span class="lb">${x[1]}</span><div class="ban3">${[0,1,2].map(i=>`<input class="fi" list="${x[2]}" data-b="${x[0]}" maxlength="40" aria-label="${x[1]}, ban ${i+1}" value="${esc(o?.[x[0]]?.[i]||'')}"${ro}>`).join('')}</div></div>`).join('')}</div></div>`;
 }
 function readBlocks(){
@@ -642,6 +659,7 @@ function readBlocks(){
   if(val('score')&&!sc)err=err||`Enter the ${map} score like 7-5`;
   if(val('split')&&!sp)err=err||`Enter the ${map} split like 4-2`;
   if(sc&&sp&&(sp.a>sc.a||sp.b>sc.b))err=err||`The ${map} split cannot be more than its score`;
+  if(sp&&sp.a+sp.b!==6)err=err||`The ${map} split is the score after 6 rounds, so it should add up to 6`;
   if(sc)v.score=fmtPair(sc);if(sp)v.split=fmtPair(sp);
   rows.push({map,any,v});
  });
@@ -767,6 +785,353 @@ function coverV(){
  ${card('Recently opened strats','strats',cov.rec.length?cov.rec.map(x=>`<button class="u" data-a="stropen" data-id="${x.id}" style="padding:8px 10px">${mapPhoto(x.map,'t')}<span style="min-width:0"><b style="display:block;font-weight:600;overflow-wrap:anywhere">${esc(x.title)}</b><span class="mu" style="font-size:12.5px;overflow-wrap:anywhere">${SIDE[x.side]} · ${esc(x.map)}</span></span></button>`).join(''):'<p class="mu">Strats you open will show here.</p>',cov.stErr)}
  </div>`;
 }
+const banF=(p,n=4)=>Array.from({length:n},(_,i)=>[`${p}_ban_${i+1}`,`${p.toUpperCase()} Ban ${i+1}`]);
+const LIB={
+ m:{table:'scout_matches',title:'Match Library',date:'match_date',conflict:'owner_team_id,match_date,dedupe_key',req:['match_date','opponent','map'],
+  cols:[['match_date','Date'],['team','Team 1'],['opponent','Team 2'],['map','Map'],['league','League'],['phase','Phase'],['start_side','Starting Side'],['picked_by','Map Picked By'],['our_atk_ban','T1 ATK Ban'],['our_def_ban','T1 DEF Ban'],['opp_atk_ban','T2 ATK Ban'],['opp_def_ban','T2 DEF Ban'],['split_score','Split'],['round_score','Score'],['total_rounds','Total Rd'],['ot_start','OT Side'],['result','Win/Loss'],['vod_link','VOD']],
+  extra:[['source_name','Source'],['replay_status','Replay'],['source_link','Source link']],show:['source_name','replay_status'],
+  alias:{rounds:'round_score',result:'result',wl:'result',winloss:'result',teamname:'team',roundscore:'round_score',round:'round_score',score:'round_score',splitscore:'split_score',start:'start_side',startside:'start_side',startingside:'start_side',pickedby:'picked_by',mappickedby:'picked_by',atkban:'our_atk_ban',defban:'our_def_ban',oppatkban:'opp_atk_ban',oppdefban:'opp_def_ban',total:'total_rounds',totalrd:'total_rounds',totalrounds:'total_rounds',otstart:'ot_start',otside:'ot_start'},
+  key:r=>[r.match_date,...[norm(r.team),norm(r.opponent)].sort(),norm(r.map),norm(r.phase)].join('|')},
+ v:{table:'scout_vetoes',title:'Vetoes',date:'veto_date',conflict:'owner_team_id,veto_date,dedupe_key',req:['veto_date','opponent'],
+  cols:[['veto_date','Date'],['team','Team Name'],['opponent','Opponent'],['league','League'],['phase','Phase'],...banF('t1'),...banF('t2'),['t1_pick','T1 Pick'],['t2_pick','T2 Pick'],['decider','Decider'],['t1_pick_2','T1 Pick 2'],['t2_pick_2','T2 Pick 2'],['format','Format'],['check','Check']],
+  extra:[['source','Source']],show:['source'],alias:{team:'team'},key:r=>[r.veto_date,norm(r.team),norm(r.opponent),norm(r.phase)].join('|')},
+ r:{table:'scout_rounds',title:'Round Library',date:'round_date',conflict:'owner_team_id,round_number,dedupe_key',req:['round_number'],
+  cols:[['match_id','Match ID'],['map','Map'],['round_number','Round #'],['team','Team'],['opponent','Opponent Name'],['ban_1','Ban 1'],['ban_2','Ban 2'],['side','Side'],['site','Site'],['result','Result'],['operator_1','Operator 1'],['operator_2','Operator 2'],['operator_3','Operator 3'],['operator_4','Operator 4'],['operator_5','Operator 5'],['operators','Operators'],['opponent_operators','Opp. Operators']],
+  extra:[['round_date','Date'],['league','League']],show:[],alias:{opponent:'opponent',round:'round_number',roundnumber:'round_number',oppoperators:'opponent_operators',opponentoperators:'opponent_operators'},key:r=>[r.round_number,norm(r.match_id),norm(r.team)].join('|')}
+};
+const opCanon=n=>{const k=opKey(n)==='snake'?'solid snake':opKey(n),o=OPS.find(x=>opKey(x[0])===k);return o?o[0]:String(n).trim()};
+// A cell can hold several operators, like "Ace Montagne Maverick"
+const opNames=v=>{const p=String(v||'').split(/[,;\s]+/).filter(Boolean),out=[];for(let i=0;i<p.length;i++){if(norm(p[i])==='solid'&&norm(p[i+1]||'')==='snake'){out.push('Solid Snake');i++}else out.push(opCanon(p[i]))}return out};
+const idSlug=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');
+const matchId=r=>[String(r.match_date).replace(/-/g,''),...[idSlug(r.team),idSlug(r.opponent)].sort(),idSlug(r.map),idSlug(r.phase)].filter(Boolean).join('-');
+const vetoMaps=r=>[1,2,3,4].flatMap(i=>[r['t1_ban_'+i],r['t2_ban_'+i]]).concat(r.t1_pick,r.t2_pick,r.t1_pick_2,r.t2_pick_2,r.decider).filter(Boolean);
+const vetoFormat=r=>r.format||(r.t1_pick_2||r.t2_pick_2?'Bo5':r.t1_pick||r.t2_pick?'Bo3':'Bo1');
+const libVal=(r,c)=>c==='operators'?[1,2,3,4,5].map(i=>r['operator_'+i]).filter(Boolean).join(' '):c==='check'?'':c==='format'?vetoFormat(r):c==='match_ref'?matchId(r):c==='total_rounds'?(r.total_rounds??(p=>p?p.a+p.b:'')(parseScore(r.round_score))):r[c]??'';
+const hdrKey=h=>String(h).toLowerCase().replace(/[^a-z0-9]/g,'');
+const OTHER_REGION='Other';
+function parseCsv(text){
+ text=text.replace(/^﻿/,'');
+ const first=text.split(/\r?\n/,1)[0]||'',d=first.includes('\t')&&!first.includes(',')?'\t':',',rows=[];let row=[],f='',q=false;
+ for(let i=0;i<text.length;i++){const c=text[i];
+  if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+  else if(c==='"'&&f==='')q=true;
+  else if(c===d){row.push(f);f=''}
+  else if(c==='\n'||c==='\r'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(f);f='';rows.push(row);row=[]}
+  else f+=c}
+ if(f!==''||row.length){row.push(f);rows.push(row)}
+ return rows.filter(r=>r.some(x=>x.trim()!==''));
+}
+function parseDate(s){
+ s=String(s).trim();let m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s),y,mo,d;
+ if(m)[y,mo,d]=[+m[1],+m[2],+m[3]];else if((m=/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(s)))[mo,d,y]=[+m[1],+m[2],+m[3]<100?2000+ +m[3]:+m[3]];else return null;
+ const t=new Date(Date.UTC(y,mo-1,d));
+ return t.getUTCFullYear()===y&&t.getUTCMonth()===mo-1&&t.getUTCDate()===d?`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`:null;
+}
+function csvPreview(kind,text){
+ const L=LIB[kind],all=parseCsv(text);
+ const known=new Set([...L.cols,...L.extra].flatMap(c=>[hdrKey(c[0]),hdrKey(c[1])]).concat(Object.keys(L.alias))),hi=Math.max(0,all.slice(0,6).findIndex(r=>r.filter(h=>known.has(hdrKey(h))).length>=3)),rows=all.slice(hi).filter((r,i)=>!i||r.filter(x=>x.trim()).length>1);
+ if(rows.length<2)return{error:'This file has no rows to import.'};
+ if(rows.length>5001)return{error:'This file has more than 5,000 rows. Split it into smaller files.'};
+ const fields=new Map();[...L.cols,...L.extra].filter(c=>c[0]!=='check').forEach(c=>{if(c[0]!=='operators'||kind==='r')fields.set(hdrKey(c[1]),c[0]);fields.set(hdrKey(c[0]),c[0])});Object.entries(L.alias).forEach(([a,f])=>fields.set(a,f));
+ const heads=rows[0].map(h=>fields.get(hdrKey(h))||null),ignored=rows[0].filter((h,i)=>!heads[i]&&h.trim()&&hdrKey(h)!=='check');
+ const missing=L.req.filter(f=>!heads.includes(f)).map(f=>[...L.cols,...L.extra].find(c=>c[0]===f)[1]);
+ if(missing.length)return{error:`This file is missing the column${missing.length>1?'s':''}: ${missing.join(', ')}.`};
+ const have=new Set((sco[kind]||[]).map(L.key)),seen=new Set(),games=new Map();let lastBase='',lastRound=0;
+ // rounds with no Match ID: a new game starts when the teams or map change, or the round number drops, and it takes the ID of the matching game in the Match Library
+ const gameId=r=>{const pair=[norm(r.team),norm(r.opponent)].sort().join('|'),base=pair+'|'+norm(r.map),n=+r.round_number||0;if(base!==lastBase||n<lastRound)games.set(base,(games.get(base)||0)+1);lastBase=base;lastRound=n;const idx=games.get(base),m=sco.m.filter(x=>[norm(x.team),norm(x.opponent)].sort().join('|')===pair&&norm(x.map)===norm(r.map)).sort((a,b)=>a.match_date.localeCompare(b.match_date))[idx-1];return m?matchId(m):['R',...[idSlug(r.team),idSlug(r.opponent)].sort(),idSlug(r.map),idx].join('-')};
+ const out=rows.slice(1).map((vals,n)=>{
+  const r={},errs=[];heads.forEach((f,i)=>{if(f)r[f]=(vals[i]??'').trim()});
+  if(kind==='r'&&r.operators){const ops=opNames(r.operators);for(let i=0;i<5;i++)if(!r[`operator_${i+1}`])r[`operator_${i+1}`]=ops[i]||''}
+  delete r.operators;
+  if(r.team===undefined||r.team==='')r.team=cur.name;
+  if(kind==='r'&&!r.match_id)r.match_id=gameId(r);
+  L.req.forEach(f=>{if(!r[f])errs.push(`${[...L.cols,...L.extra].find(c=>c[0]===f)[1]} is empty`)});
+  if(L.date&&r[L.date]!==undefined&&r[L.date]!==''){const d=parseDate(r[L.date]);if(d)r[L.date]=d;else errs.push(`"${r[L.date]}" is not a date`)}else if(L.date&&kind==='r')r[L.date]=null;
+  if(kind==='m'&&r.total_rounds!==undefined){if(r.total_rounds==='')r.total_rounds=null;else if(/^\d+$/.test(r.total_rounds))r.total_rounds=+r.total_rounds;else errs.push('Total is not a number')}
+  if(kind==='r'&&r.round_number!==undefined&&r.round_number!==''){if(/^[1-9]\d*$/.test(r.round_number))r.round_number=+r.round_number;else errs.push('Round # is not a number')}
+  if(kind==='m'){const sp=r.split_score&&parseScore(r.split_score),sc=r.round_score&&parseScore(r.round_score);
+   if(r.split_score&&!sp)errs.push(`Split "${r.split_score}" is not a score like 4-2`);else if(sp&&sp.a+sp.b!==6)errs.push('Split should add up to 6');
+   if(r.round_score&&!sc)errs.push(`Score "${r.round_score}" is not a score like 7-5`);
+   if(sc&&(r.total_rounds===undefined||r.total_rounds===null))r.total_rounds=sc.a+sc.b;
+   if(r.vod_link&&!/^https?:\/\//i.test(r.vod_link))r.vod_link=''}
+  if(kind==='m'&&r.result){const v=normRes(r.result);if(v)r.result=v;else errs.push(`"${r.result}" is not W, L or D`)}
+  let status=errs.length?'error':'new';
+  if(status==='new'){const k=L.key(r);if(have.has(k)||seen.has(k))status='dup';seen.add(k)}
+  return{line:n+hi+2,r,errs,status};
+ });
+ return{kind,rows:out,ignored,fresh:out.filter(x=>x.status==='new').length,dups:out.filter(x=>x.status==='dup').length,bad:out.filter(x=>x.status==='error').length};
+}
+const normRes=s=>{const k=norm(s);return['w','win','won'].includes(k)?'W':['l','loss','lost'].includes(k)?'L':['d','draw','tie','t'].includes(k)?'D':''};
+const safeLink=(u,l)=>/^https?:\/\//i.test(u||'')?`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer" style="color:var(--pk)">${esc(l)}</a>`:esc(l===u?'':l);
+const canSc=()=>canAn();
+const scErr=e=>/schema cache|does not exist/i.test(e.message)?'The scouting database tables are not set up yet. Paste stage8.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
+async function openSc(page,kind,oppId){
+ view='sc';
+ if(!sco||sco.tid!==cur.id)sco={tid:cur.id,league:'',q:'',f:{}};
+ Object.assign(sco,{page,kind:kind||sco.kind,form:null,imp:null,loaded:false,err:'',tab:'over'});if(oppId)sco.oppId=oppId;
+ render();
+ if(!canSc())return;
+ const s=sco,tid=s.tid,q=t=>sb.from(t).select('*').eq('owner_team_id',tid),[t,m,v,r,c,x]=await Promise.all([q('scout_teams'),q('scout_matches'),q('scout_vetoes'),q('scout_rounds'),sb.from('scrims').select('*').eq('team_id',tid),sb.from('scrim_map_results').select('*').eq('team_id',tid)]);
+ if(sco!==s)return;
+ const bad=t.error||m.error||v.error||r.error;
+ Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
+ if(!an||an.tid!==tid)an={tid,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,page:'over'};
+ an.list=c.data||[];an.res=x.data||[];
+ if(view==='sc')render();
+}
+const scKeys=t=>new Set([norm(t.name),norm(t.short_name)].filter(Boolean));
+const scCount=t=>{const k=scKeys(t);return sco.m.filter(r=>k.has(norm(r.team))||k.has(norm(r.opponent))).length};
+function scoutV(){
+ if(!cur||!sco||sco.tid!==cur.id)return `<div class="cd"><p>Open Scouting from a team's dashboard.</p><div>${backDash}</div></div>`;
+ if(!canSc())return `<div class="cd"><p>Scouting is for this team's coaches, assistant coaches and analysts.</p><div>${backDash}</div></div>`;
+ const wait='<p class="mu">Loading…</p>';
+ const head=(t,sub,btn='')=>`<div class="row wrap" style="margin-bottom:16px">${tile(cur,48)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px">${t}</h1><p class="mu">${sub}</p></div><div class="row wrap">${backDash}${btn}</div></div>`;
+ if(sco.page==='lib'){const L=LIB[sco.kind];return head(L.title,`${esc(cur.name)}'s scouting data`)+libTabs()+(!sco.loaded?wait:sco.err?`<div class="cd"><p>${esc(sco.err)}</p></div>`:libB())}
+ if(sco.page==='opp'){if(!sco.loaded)return head('Scouting',esc(cur.name))+wait;const t=(sco.teams||[]).find(x=>x.id===sco.oppId);return t?oppB2(t):head('Scouting',esc(cur.name))+'<div class="cd"><p>This opponent is no longer tracked.</p></div>'}
+ const btns=sco.loaded&&!sco.err?`<button class="no" data-a="xopen">Copy to Sheets…</button><button class="go" data-a="soadd">Add opponent</button>`:'';
+ return head('Scouting',`Opponents ${esc(cur.name)} is tracking. Each team has its own separate copy.`,btns)+libTabs()+(!sco.loaded?wait:sco.err?`<div class="cd"><p>${esc(sco.err)}</p></div>`:sco.form?soForm():homeB());
+}
+const libTabs=()=>`<div class="row wrap" style="gap:8px;margin-bottom:16px" role="group" aria-label="Scouting pages">${[['sct','Opponents',sco.page==='home'],['slm','Match Library',sco.page==='lib'&&sco.kind==='m'],['slr','Round Library',sco.page==='lib'&&sco.kind==='r'],['slv','Vetoes',sco.page==='lib'&&sco.kind==='v']].map(x=>`<button class="ch" data-a="${x[0]}" aria-pressed="${x[2]}">${x[1]}</button>`).join('')}</div>`;
+function homeB(){
+ const leagues=[...new Set(sco.teams.map(t=>t.league).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+ const chips=`<div class="row wrap" style="gap:8px;margin-bottom:12px" role="group" aria-label="League"><button class="ch" data-a="scleague" data-l="" aria-pressed="${!sco.league}">All (${sco.teams.length})</button>${leagues.map(l=>`<button class="ch" data-a="scleague" data-l="${esc(l)}" aria-pressed="${sco.league===l}">${esc(l)} (${sco.teams.filter(t=>t.league===l).length})</button>`).join('')}</div>`;
+ const tracked=new Set(sco.teams.flatMap(t=>[...scKeys(t)]));
+ const untracked=topCount(anPlayed().map(s=>s.opponent)).filter(x=>norm(x.name)!=='tbd'&&!tracked.has(norm(x.name)));
+ const extra=`<section class="cd" style="gap:10px;margin-top:16px"><div class="row wrap" style="justify-content:space-between"><h2 style="font-size:15px;font-weight:600">From your scrims</h2><button class="no" style="height:32px" data-a="scout">Bans from your scrims</button></div>${untracked.length?`<div class="row wrap" style="gap:8px">${untracked.map(x=>`<button class="no" style="height:32px" data-a="soadd" data-n="${esc(x.name)}" aria-label="Track ${esc(x.name)}">+ ${esc(x.name)}</button>`).join('')}</div>`:'<p class="mu">Everyone you have scrimmed is already tracked.</p>'}</section>`;
+ if(!sco.teams.length)return `<div class="cd"><p>No opponents tracked yet. Add your first one to start scouting them.</p></div>${extra}`;
+ return `${chips}<div style="margin-bottom:12px"><input class="fi" type="search" style="height:38px" data-c="scq" aria-label="Search opponents" placeholder="Search opponents" value="${esc(sco.q)}"></div><div id="scl">${homeCards()}</div>${extra}`;
+}
+function homeCards(){
+ const q=norm(sco.q),rows=sco.teams.filter(t=>(!sco.league||t.league===sco.league)&&(!q||norm(t.name+' '+t.short_name+' '+t.region+' '+t.league).includes(q)));
+ if(!rows.length)return '<div class="cd"><p class="mu">No opponents match.</p></div>';
+ const regs=[...REG,OTHER_REGION].filter(r=>rows.some(t=>(t.region||OTHER_REGION)===r));
+ rows.forEach(t=>{if(!regs.includes(t.region))regs.includes(t.region||OTHER_REGION)||regs.push(t.region)});
+ return regs.map(r=>{const l=rows.filter(t=>(t.region||OTHER_REGION)===r);return `<h2 class="hh" style="margin-top:16px">${esc(r)} (${l.length})</h2><div class="g" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr))">${l.map(t=>`<button class="c" data-a="sopp" data-id="${t.id}">${tile(t,44)}<span style="min-width:0"><b style="overflow-wrap:anywhere">${esc(t.name)}</b><small style="overflow-wrap:anywhere">${esc(t.league||'No league')} · ${plural(scCount(t),'game')}</small></span></button>`).join('')}</div>`}).join('');
+}
+function soForm(){
+ const t=sco.form.id?sco.teams.find(x=>x.id===sco.form.id):null,half='flex:1;min-width:180px',regs=[...REG,OTHER_REGION];
+ return `<form class="cd" data-s="sopp" data-dirty style="max-width:720px;margin-bottom:16px"><h2 style="font-size:17px;font-weight:600;overflow-wrap:anywhere">${t?'Settings for '+esc(t.name):'Add opponent'}</h2>
+ ${t?'':`<div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:2;min-width:200px"><label for="son">Name</label><input id="son" class="fi" required maxlength="120" value="${esc(sco.form.name||'')}"></div><div style="${half}"><label for="sos">Short name</label><input id="sos" class="fi" maxlength="20"></div></div>`}
+ <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="sor">Region</label><select id="sor" class="fi">${regs.map(r=>`<option${(t?.region||REG[0])===r?' selected':''}>${esc(r)}</option>`).join('')}</select></div><div style="${half}"><label for="sol">League</label><input id="sol" class="fi" maxlength="80" value="${esc(t?.league||'')}"></div></div>
+ <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:2;min-width:200px"><label for="sou">Logo link (https)</label><input id="sou" class="fi" inputmode="url" value="${esc(t?.logo_url||'')}" placeholder="https://…"></div><div style="${half}"><label for="soc">Color (hex code)</label><input id="soc" class="fi" maxlength="7" value="${esc(t?.color||'#e07cc0')}"></div></div>
+ ${t?`<div><label for="sop">Players, one per line</label><textarea id="sop" class="fi ta">${esc((t.players||[]).join('\n'))}</textarea></div>`:''}
+ <div class="row wrap" style="justify-content:space-between"><span>${t?'<button type="button" class="no" data-a="sodel">Stop tracking</button>':''}</span><span class="row"><button type="button" class="no" data-a="socancel">Cancel</button><button class="go">${t?'Save changes':'Add opponent'}</button></span></div></form>`;
+}
+async function saveSo(form){
+ const btn=form.querySelector('.go'),id=sco.form.id,color=normHex($('#soc').value),logo=$('#sou').value.trim(),row={region:$('#sor').value,league:$('#sol').value.trim(),logo_url:logo};
+ if(!color)return toast('Enter a hex color like #e07cc0');
+ if(logo&&!/^https:\/\//i.test(logo))return toast('The logo link must start with https://');
+ row.color=color;
+ if(id)row.players=$('#sop').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ else{row.name=$('#son').value.trim();row.short_name=$('#sos').value.trim();if(!row.name)return toast('Enter a name');if(sco.teams.some(t=>norm(t.name)===norm(row.name)))return toast('This opponent is already tracked');row.owner_team_id=sco.tid}
+ btn.disabled=true;
+ const r=id?await sb.from('scout_teams').update(row).eq('id',id).select().single():await sb.from('scout_teams').insert(row).select().single();
+ btn.disabled=false;
+ if(r.error)return toast(scErr(r.error));
+ sdirty=false;
+ const i=sco.teams.findIndex(t=>t.id===r.data.id);if(i>=0)sco.teams[i]=r.data;else sco.teams.push(r.data);
+ sco.teams.sort((a,b)=>a.name.localeCompare(b.name));
+ sco.form=null;sco.page='opp';sco.oppId=r.data.id;sco.tab=sco.tab||'over';render();toast('Opponent saved');
+}
+const flipPair=s=>{const p=parseScore(s);return p?p.b+'-'+p.a:''};
+const startNorm=s=>{const k=norm(s);return k.startsWith('a')?'attack':k.startsWith('d')?'defense':''};
+function oppRows(t){
+ const k=scKeys(t);
+ return sco.m.filter(r=>k.has(norm(r.team))||k.has(norm(r.opponent))).map(r=>{const same=k.has(norm(r.team)),res=normRes(r.result),st=startNorm(r.start_side);return{r,same,date:r.match_date,map:r.map,foe:same?r.opponent:r.team,res:same?res:res==='W'?'L':res==='L'?'W':res,score:same?r.round_score:flipPair(r.round_score),split:same?r.split_score:flipPair(r.split_score),start:same?st:st==='attack'?'defense':st==='defense'?'attack':'',ot:same?startNorm(r.ot_start):{attack:'defense',defense:'attack'}[startNorm(r.ot_start)]||'',atk:same?r.our_atk_ban:r.opp_atk_ban,def:same?r.our_def_ban:r.opp_def_ban}}).sort((a,b)=>b.date.localeCompare(a.date));
+}
+const oppSide=x=>sideOf({score:x.score,split:x.split,started_on:x.start,ot_side:x.ot});
+function oppMaps(rows){
+ const by=new Map();
+ rows.forEach(x=>{const k=norm(x.map),e=by.get(k)||{name:x.map.trim(),W:0,L:0,D:0,g:0,aw:0,al:0,dw:0,dl:0};e.name=betterName(e.name,x.map);if(x.res){e[x.res]++;e.g++}const si=oppSide(x);if(si){e.aw+=si.aw;e.al+=si.al;e.dw+=si.dw;e.dl+=si.dl}by.set(k,e)});
+ return[...by.values()];
+}
+const pctS=(w,l)=>w+l?Math.round(w/(w+l)*100)+'%':'—';
+const scTbl=(heads,rows,num=[])=>`<div style="overflow-x:auto"><table class="tbl"><thead><tr>${heads.map((h,i)=>`<th scope="col"${num.includes(i)?' class="num"':''}>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${num.includes(i)?' class="num"':''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+function oppBans(t,rows){
+ const k=scKeys(t),scr=anPlayed().filter(s=>k.has(norm(s.opponent))).flatMap(anRows);
+ return{atk:topCount([...rows.flatMap(x=>opNames(x.atk)),...scr.flatMap(r=>r.their_atk_bans||[])]),def:topCount([...rows.flatMap(x=>opNames(x.def)),...scr.flatMap(r=>r.their_def_bans||[])])};
+}
+function oppB2(t){
+ const c=normHex(t.color)||'#e07cc0',rows=oppRows(t),tabs=[['over','Overview'],['games','Games'],['maps','Maps'],['ranks','Map ranks'],['lib','Match library'],['vet','Vetoes'],['ops','Operators'],['pl','Players'],['notes','Coach notes']];
+ const head=`<div class="opph" style="border-color:${c};background:linear-gradient(135deg,${c}55,${c}14 60%,var(--cd))">${tile(t,64)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px;overflow-wrap:anywhere">${esc(t.name)}</h1><p class="mu" style="color:var(--tx);overflow-wrap:anywhere">${esc([t.short_name,t.region,t.league].filter(Boolean).join(' · ')||'Tracked opponent')}</p></div><div class="row wrap"><button class="no" data-a="sct">All opponents</button><button class="no" data-a="soedit">Settings</button></div></div>`;
+ const bar=`<div class="row" style="gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px" role="group" aria-label="Opponent pages">${tabs.map(x=>`<button class="ch" style="flex:none" data-a="sotab" data-t="${x[0]}" aria-pressed="${sco.tab===x[0]}">${x[1]}</button>`).join('')}</div>`;
+ if(sco.form)return head+soForm();
+ const fn={over:oTabOver,games:oTabGames,maps:oTabMaps,ranks:oTabRanks,lib:oTabLib,vet:oTabVet,ops:oTabOps,pl:oTabPl,notes:oTabNotes}[sco.tab]||oTabOver;
+ return head+bar+fn(t,rows);
+}
+const none2=m=>`<div class="cd"><p class="mu">${m}</p></div>`;
+function oTabOver(t,rows){
+ const sc2=rows.filter(x=>x.res),n={W:0,L:0,D:0};sc2.forEach(x=>n[x.res]++);
+ const maps=oppMaps(rows),s={aw:0,al:0,dw:0,dl:0};maps.forEach(e=>{s.aw+=e.aw;s.al+=e.al;s.dw+=e.dw;s.dl+=e.dl});
+ const b=oppBans(t,rows),tile2=(l,v)=>`<div class="stat"><span class="mu">${l}</span><b>${esc(v)}</b></div>`;
+ sco.d={n,maps:maps.filter(e=>e.g).sort((a,c)=>c.g-a.g||a.name.localeCompare(c.name))};
+ const form=sc2.slice(0,10).reverse();
+ return `<div class="tiles" style="margin-bottom:16px;grid-template-columns:repeat(auto-fit,minmax(min(46%,130px),1fr))">${tile2('Win Rate',sc2.length?Math.round(n.W/sc2.length*100)+'%':'—')}${tile2('Map Record',sc2.length?n.W+'-'+n.L+(n.D?'-'+n.D:''):'—')}${tile2('Attack WR',pctS(s.aw,s.al))}${tile2('Defense WR',pctS(s.dw,s.dl))}</div>
+ ${rows.length?'':`<div class="cd" style="margin-bottom:16px"><p>No matches for ${esc(t.name)} yet. Import a CSV into the Match Library to see their stats.</p></div>`}
+ <div class="ov">
+ <section class="cd" style="gap:10px"><h2 style="font-size:15px;font-weight:600">Recent form</h2>${form.length?`<div class="row wrap" style="gap:6px" aria-label="Recent results, oldest to newest">${form.map(x=>`<span class="fm f${x.res}" title="${esc(fmtD(x.date))} vs ${esc(x.foe)}">${x.res}</span>`).join('')}</div>`:'<p class="mu">No results yet.</p>'}</section>
+ ${sco.d.n.W+sco.d.n.L+sco.d.n.D&&!sco.chartFail?'<section class="cd" style="gap:10px"><h2 style="font-size:15px;font-weight:600">Wins and losses</h2><div style="position:relative;height:190px"><canvas id="scWL" role="img" aria-label="Wins and losses"></canvas></div></section>':''}
+ ${sco.d.maps.length&&!sco.chartFail?`<section class="cd" style="gap:10px"><h2 style="font-size:15px;font-weight:600">Map win rates</h2><div style="position:relative;height:${Math.max(120,44+sco.d.maps.length*34)}px"><canvas id="scMaps" role="img" aria-label="Map win rates"></canvas></div></section>`:''}
+ <section class="cd" style="gap:12px"><h2 style="font-size:15px;font-weight:600">Most banned operators</h2>${b.atk.length||b.def.length?`<div class="ov" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">${banCol('Attackers',b.atk.slice(0,6),ATK)}${banCol('Defenders',b.def.slice(0,6),DEF)}</div>`:'<p class="mu">No bans recorded yet.</p>'}</section>
+ <section class="cd" style="gap:6px"><h2 style="font-size:15px;font-weight:600">Match history</h2>${rows.length?rows.slice(0,10).map(x=>`<div class="row" style="justify-content:space-between;padding:6px 0;border-top:1px solid var(--bd)"><span style="min-width:0;overflow-wrap:anywhere"><b style="font-weight:600">vs ${esc(x.foe)}</b><span class="mu" style="display:block;font-size:12.5px">${esc(fmtD(x.date))} · ${esc(x.map)}</span></span><span style="flex:none">${esc(x.score||'—')}${x.res?` <span class="fm f${x.res}">${x.res}</span>`:''}</span></div>`).join(''):'<p class="mu">No matches yet.</p>'}</section>
+ </div>`;
+}
+function oTabGames(t){
+ const k=scKeys(t),l=anPlayed().filter(s=>k.has(norm(s.opponent)));
+ return l.length?`<section class="cd" style="gap:6px"><h2 style="font-size:15px;font-weight:600">Our scrims against ${esc(t.name)}</h2>${l.map(s=>{const r=scrimRes(s);return `<button class="u" data-a="asopen" data-id="${s.id}" style="padding:8px;justify-content:space-between"><span class="mu" style="min-width:0">${esc(fmtD(s.scrim_date))}${s.maps.length?' · '+esc(s.maps.join(', ')):''}</span><span style="flex:none">${esc(s.score||'—')}${r?' · '+resWord[r]:''}</span></button>`}).join('')}</section>`:none2(`No scrims logged against ${esc(t.name)} yet.`);
+}
+function oTabMaps(t,rows){
+ const m=oppMaps(rows).sort((a,b)=>b.g-a.g||a.name.localeCompare(b.name));
+ return m.length?`<div class="mg">${m.map(e=>`<section class="cd" style="gap:6px;padding:14px">${mapPhoto(e.name,'w')}<b style="font-weight:600;overflow-wrap:anywhere">${esc(e.name)}</b><span class="mu">${plural(e.g,'game')} · ${e.W}-${e.L}${e.D?'-'+e.D:''} · ${pctS(e.W,e.L+e.D)} win rate</span><span class="mu">Attack ${pctS(e.aw,e.al)} · Defense ${pctS(e.dw,e.dl)}</span></section>`).join('')}</div>`:none2('No map data yet.');
+}
+function oTabRanks(t,rows){
+ const m=oppMaps(rows).filter(e=>e.g).sort((a,b)=>b.W/b.g-a.W/a.g||b.g-a.g||a.name.localeCompare(b.name));
+ return m.length?`<section class="cd" style="gap:6px"><h2 style="font-size:15px;font-weight:600">Their best to worst maps</h2>${scTbl(['#','Map','Played','Record','Win rate'],m.map((e,i)=>[i+1,`<span class="opr">${mapPhoto(e.name,'t')}${esc(e.name)}</span>`,e.g,e.W+'-'+e.L+(e.D?'-'+e.D:''),Math.round(e.W/e.g*100)+'%']),[0,2,3,4])}</section>`:none2('No results to rank yet.');
+}
+const vodCell=(r,v)=>{const ok=/^https?:\/\//i.test(v||'');return `<span class="row" style="gap:6px;flex-wrap:nowrap">${ok?`<a class="vod" href="${esc(v)}" target="_blank" rel="noopener noreferrer">VOD</a>`:''}<button class="no" style="height:24px;padding:0 8px;font-size:12px" data-a="scvod" data-id="${r.id}" aria-label="${ok?'Edit':'Add'} VOD link">${ok?'Edit':'+ VOD'}</button></span>`};
+const libCell=(r,c)=>{const v=libVal(r,c);return c==='vod_link'?vodCell(r,v):c==='source_name'&&r.source_link?safeLink(r.source_link,v||'Source'):esc(v??'')};
+function oTabLib(t,rows){return rows.length?`<section class="cd" style="gap:6px">${scTbl(LIB.m.cols.map(c=>c[1]),rows.map(x=>LIB.m.cols.map(c=>libCell(x.r,c[0]))))}</section>`:none2('No matches yet. Import a CSV into the Match Library.')}
+function oTabVet(t){const k=scKeys(t),l=sco.v.filter(r=>k.has(norm(r.team))||k.has(norm(r.opponent))).sort((a,b)=>b.veto_date.localeCompare(a.veto_date));return l.length?`<section class="cd" style="gap:6px">${scTbl(LIB.v.cols.filter(c=>c[0]!=='check').map(c=>c[1]),l.map(r=>LIB.v.cols.filter(c=>c[0]!=='check').map(c=>libCell(r,c[0]))))}</section>`:none2('No vetoes yet. Import a CSV into Vetoes.')}
+function oTabOps(t,rows){
+ const k=scKeys(t),b=oppBans(t,rows),played=topCount(sco.r.filter(r=>k.has(norm(r.team))).flatMap(r=>[1,2,3,4,5].flatMap(i=>opNames(r['operator_'+i]))));
+ const scr=anPlayed().filter(s=>k.has(norm(s.opponent))).flatMap(anRows),by=new Map();
+ rows.forEach(x=>{const m=norm(x.map),e=by.get(m)||{name:x.map.trim(),a:[],d:[]};e.a.push(...opNames(x.atk));e.d.push(...opNames(x.def));by.set(m,e)});
+ scr.forEach(r=>{const m=norm(r.map),e=by.get(m)||{name:r.map.trim(),a:[],d:[]};e.name=betterName(e.name,r.map);e.a.push(...(r.their_atk_bans||[]));e.d.push(...(r.their_def_bans||[]));by.set(m,e)});
+ const maps=[...by.values()].filter(e=>e.a.length||e.d.length).sort((a,b2)=>a.name.localeCompare(b2.name));
+ const two=(a,d)=>`<div class="ov" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">${banCol('Attackers',a,ATK)}${banCol('Defenders',d,DEF)}</div>`;
+ if(!b.atk.length&&!b.def.length&&!played.length)return none2('No operator data yet. Bans come from the Match Library and your scrims. Operators played come from the Round Library.');
+ return `<div style="display:flex;flex-direction:column;gap:16px"><section class="cd" style="gap:12px"><h2 style="font-size:15px;font-weight:600">Bans on all maps</h2>${two(b.atk,b.def)}</section>
+ ${played.length?`<section class="cd" style="gap:8px"><h2 style="font-size:15px;font-weight:600">Operators played</h2>${scTbl(['Operator','Rounds'],played.map(x=>[`<span class="opr">${opIcon(x.name)}${esc(x.name)}</span>`,x.n]),[1])}</section>`:''}
+ ${maps.map(e=>`<section class="cd" style="gap:12px">${mapPhoto(e.name)}<h3 style="font-size:15px;font-weight:600;overflow-wrap:anywhere">${esc(e.name)}</h3>${two(topCount(e.a),topCount(e.d))}</section>`).join('')}</div>`;
+}
+function oTabPl(t){return (t.players||[]).length?`<div class="g" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr))">${t.players.map(p=>`<div class="tr"><div class="row"><span class="av">${esc(p[0].toUpperCase())}</span><b style="min-width:0;overflow-wrap:anywhere">${esc(p)}</b></div></div>`).join('')}</div>`:none2('No players added yet. Add them in Settings.')}
+function oTabNotes(t){return `<section class="cd" data-dirty style="gap:10px"><label for="scn" style="font-size:15px;font-weight:600;color:var(--tx);margin:0">Coach notes</label><p class="mu">Only your team's staff can see these.</p><textarea id="scn" class="fi ta" style="min-height:200px">${esc(t.coach_notes||'')}</textarea><div class="row" style="justify-content:flex-end"><button class="go" data-a="scnote">Save notes</button></div></section>`}
+function scDraw(){
+ if(sco?.page!=='opp'||sco.tab!=='over'||sco.form||sco.chartFail||!sco.d||!$('main canvas'))return;
+ if(!window.Chart){
+  chartLoad=chartLoad||new Promise((ok,no)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js';s.onload=ok;s.onerror=no;document.head.appendChild(s)});
+  chartLoad.then(()=>{if(view==='sc')render()},()=>{chartLoad=null;if(sco){sco.chartFail=true;if(view==='sc')render()}});
+  return;
+ }
+ const css=getComputedStyle(document.documentElement),pk=css.getPropertyValue('--pk').trim(),mu=css.getPropertyValue('--mu').trim(),grid=css.getPropertyValue('--bd').trim(),font={family:'Inter,sans-serif',size:12},el=id=>document.getElementById(id);
+ const tip={backgroundColor:'#1d1923',borderColor:grid,borderWidth:1,titleColor:'#ece8f0',bodyColor:'#ece8f0',padding:10,displayColors:false,cornerRadius:8};
+ const{n,maps}=sco.d;
+ if(el('scWL'))charts.push(new Chart(el('scWL'),{type:'doughnut',data:{labels:['Wins','Losses','Draws'],datasets:[{data:[n.W,n.L,n.D],backgroundColor:[pk,'#6f6880','#3b3646'],borderColor:'#131118',borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,animation:false,cutout:'68%',plugins:{legend:{position:'right',labels:{color:mu,font,usePointStyle:true,pointStyle:'circle',boxWidth:8,boxHeight:8}},tooltip:tip}}}));
+ if(el('scMaps'))charts.push(new Chart(el('scMaps'),{type:'bar',data:{labels:maps.map(e=>e.name),datasets:[{label:'Win rate',data:maps.map(e=>Math.round(e.W/e.g*100)),backgroundColor:pk,borderRadius:4,borderSkipped:'start',barThickness:14,minBarLength:3}]},options:{responsive:true,maintainAspectRatio:false,animation:false,indexAxis:'y',scales:{x:{min:0,max:100,ticks:{color:mu,font,callback:v=>v+'%'},grid:{color:grid},border:{display:false}},y:{ticks:{color:mu,font,autoSkip:false},grid:{display:false},border:{color:grid}}},plugins:{legend:{display:false},tooltip:{...tip,callbacks:{label:i=>{const e=maps[i.dataIndex];return `${i.raw}% win rate · ${e.W}-${e.L}${e.D?'-'+e.D:''} in ${plural(e.g,'game')}`}}}}}}));
+}
+function libRows(){
+ const L=LIB[sco.kind],f=sco.f[sco.kind]||{},on=norm(f.opp||''),mp=norm(f.map||'');
+ return (sco[sco.kind]||[]).filter(r=>{
+  if(on&&norm(r.team)!==on&&norm(r.opponent)!==on)return false;
+  if(f.league&&norm(r.league)!==norm(f.league))return false;
+  if(mp){const ms=sco.kind==='v'?vetoMaps(r):[r.map];if(!ms.some(x=>norm(x)===mp))return false}
+  const d=r[L.date];if(f.from&&(!d||d<f.from))return false;if(f.to&&(!d||d>f.to))return false;
+  return true;
+ }).sort((a,b)=>sco.kind==='r'?String(a.match_id).localeCompare(String(b.match_id))||a.round_number-b.round_number:String(b[L.date]).localeCompare(String(a[L.date])));
+}
+function libB(){
+ const k=sco.kind,L=LIB[k],all=sco[k],f=sco.f[k]||{},rows=libRows();
+ const uniq=a=>[...new Set(a.filter(Boolean).map(x=>x.trim()))].sort((x,y)=>x.localeCompare(y));
+ const opps=uniq([...all.flatMap(r=>[r.team,r.opponent]),...sco.teams.map(t=>t.name)]),leagues=uniq(all.map(r=>r.league)),maps=uniq(k==='v'?all.flatMap(r=>vetoMaps(r)):all.map(r=>r.map));
+ const sel=(id,key,lab,o,any)=>`<div style="flex:1 1 130px;min-width:130px"><label for="${id}">${lab}</label><select id="${id}" class="fi" style="height:38px" data-c="scf" data-k="${key}"><option value="">${any}</option>${o.map(x=>`<option${x===f[key]?' selected':''}>${esc(x)}</option>`).join('')}</select></div>`;
+ const dat=(id,key,lab)=>`<div style="flex:1 1 130px;min-width:130px"><label for="${id}">${lab}</label><input id="${id}" class="fi" type="date" style="height:38px" data-c="scf" data-k="${key}" value="${esc(f[key]||'')}"></div>`;
+ const bar=`<div class="row wrap" style="gap:8px;margin-bottom:12px"><button class="go" data-a="scpick">Import CSV</button><button class="no" data-a="xopen">Copy to Sheets…</button><input id="sccsv" type="file" accept=".csv,text/csv" data-c="sccsv" hidden aria-label="Choose a CSV file"></div>`;
+ const filt=`<div class="row wrap" style="gap:12px;align-items:flex-end;margin-bottom:12px">${sel('scfo','opp','Opponent',opps,'All opponents')}${sel('scfl','league','League',leagues,'All leagues')}${sel('scfm','map','Map',maps,'All maps')}${dat('scff','from','From')}${dat('scft','to','To')}${Object.values(f).some(Boolean)?'<button class="no" style="height:38px" data-a="scfclear">Clear filters</button>':''}</div>`;
+ const heads=[...(k==='m'?[['match_ref','Match ID']]:[]),...L.cols.filter(c=>c[0]!=='check'),...L.extra.filter(c=>L.show.includes(c[0]))],show=rows.slice(0,200);
+ const body=!all.length?`<div class="cd"><p>No ${esc(L.title.toLowerCase())} data yet. Click Import CSV to add some.</p></div>`:!rows.length?'<div class="cd"><p class="mu">No rows match these filters.</p></div>':`<section class="cd" style="gap:8px;padding:14px"><p class="mu">${plural(rows.length,'row')}${rows.length>200?', showing the first 200. Use filters or Copy to Sheets to see the rest.':''}</p>${scTbl([...heads.map(c=>c[1]),''],show.map(r=>[...heads.map(c=>libCell(r,c[0])),`<button class="no" style="height:28px;padding:0 10px" data-a="scrow" data-id="${r.id}" aria-label="Delete this row">Delete</button>`]))}</section>`;
+ return bar+(sco.imp?impB():'')+filt+body;
+}
+function impB(){
+ const p=sco.imp;
+ if(p.error)return `<div class="cd" style="margin-bottom:16px"><p>${esc(p.error)}</p><div><button class="no" data-a="scimpx">Close</button></div></div>`;
+ const L=LIB[p.kind],hs=[...L.cols,...L.extra].filter(c=>!['operators','check'].includes(c[0])).slice(0,8),label={new:'New',dup:'Duplicate, skipped',error:'Error, skipped'};
+ return `<section class="cd" style="gap:10px;margin-bottom:16px;border-color:var(--pk)"><h2 style="font-size:15px;font-weight:600">Import preview: ${esc(p.file||'CSV')}</h2><p>Saving to <b style="font-weight:600">${esc(cur.name)}</b>: ${plural(p.fresh,'new row')}, ${plural(p.dups,'duplicate')} skipped, ${plural(p.bad,'row')} with errors skipped.</p>${p.ignored.length?`<p class="mu">Ignored columns: ${esc(p.ignored.join(', '))}</p>`:''}
+ ${scTbl(['Line','Status',...hs.map(c=>c[1])],p.rows.slice(0,100).map(x=>[x.line,x.status==='error'?`<span class="over">${esc(x.errs.join('; '))}</span>`:label[x.status],...hs.map(c=>esc(x.r[c[0]]??''))]))}
+ ${p.rows.length>100?`<p class="mu">Showing the first 100 of ${p.rows.length} rows.</p>`:''}
+ <div class="row" style="justify-content:flex-end"><button class="no" data-a="scimpx">Cancel</button><button class="go" data-a="scimpgo"${p.fresh?'':' disabled'}>Import ${plural(p.fresh,'row')}</button></div></section>`;
+}
+function xDraw(){
+ const x=sco.x,d=$('#dlg'),top=d.scrollTop,leagues=[...new Set(sco.teams.map(t=>t.league).filter(Boolean))].sort((a,b)=>a.localeCompare(b)),regs=[...new Set(sco.teams.map(t=>t.region||OTHER_REGION))].sort((a,b)=>a.localeCompare(b));
+ d.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:12px">Copy to Sheets</h2>
+ <span class="lb">Leagues</span><div class="row wrap" style="gap:8px;margin-bottom:12px">${leagues.length?leagues.map(l=>`<button type="button" class="ch" data-a="xleague" data-l="${esc(l)}" aria-pressed="${sco.teams.filter(t=>t.league===l).every(t=>x.teams.has(t.id))}">${esc(l)}</button>`).join(''):'<span class="mu">No leagues set yet.</span>'}</div>
+ <span class="lb">Opponents</span><div style="max-height:220px;overflow-y:auto;margin-bottom:12px">${sco.teams.length?regs.map(r=>`<b style="display:block;font-weight:600;margin:6px 0 2px">${esc(r)}</b>${sco.teams.filter(t=>(t.region||OTHER_REGION)===r).map(t=>`<label class="row" style="gap:8px;color:var(--tx);margin:0;padding:3px 0;font-size:14px"><input type="checkbox" data-c="xteam" data-id="${t.id}"${x.teams.has(t.id)?' checked':''}><span style="overflow-wrap:anywhere;min-width:0">${esc(t.name)}</span></label>`).join('')}`).join(''):'<p class="mu">No opponents tracked yet.</p>'}</div>
+ <span class="lb">Include</span><div style="margin-bottom:14px">${Object.keys(LIB).map(k=>`<label class="row" style="gap:8px;color:var(--tx);margin:0;padding:3px 0;font-size:14px"><input type="checkbox" data-c="xlib" data-k="${k}"${x.libs.has(k)?' checked':''}>${LIB[k].title}</label>`).join('')}</div>
+ <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="close">Cancel</button><button type="button" class="go" data-a="xgo">Export</button></div>`;
+ d.scrollTop=top;
+}
+let xlsxLoad=null;
+const loadXlsx=()=>window.XLSX?Promise.resolve():xlsxLoad=xlsxLoad||new Promise((ok,no)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';s.onload=ok;s.onerror=()=>{xlsxLoad=null;no()};document.head.appendChild(s)});
+const flipSide=s=>{const k=startNorm(s);return k==='attack'?'Defense':k==='defense'?'Attack':s};
+const flipMatch=r=>{const v=normRes(r.result);return{...r,team:r.opponent,opponent:r.team,start_side:flipSide(r.start_side),our_atk_ban:r.opp_atk_ban,our_def_ban:r.opp_def_ban,opp_atk_ban:r.our_atk_ban,opp_def_ban:r.our_def_ban,split_score:flipPair(r.split_score)||r.split_score,round_score:flipPair(r.round_score)||r.round_score,result:v==='W'?'L':v==='L'?'W':r.result}};
+const flipVeto=r=>{const o={...r,team:r.opponent,opponent:r.team};for(const f of ['ban_1','ban_2','ban_3','ban_4','pick','pick_2']){o['t1_'+f]=r['t2_'+f];o['t2_'+f]=r['t1_'+f]}return o};
+const flipRound=r=>{const mine=opNames(r.opponent_operators),o={...r,team:r.opponent,opponent:r.team,ban_1:r.ban_2,ban_2:r.ban_1,side:flipSide(r.side),result:{w:'L',l:'W',win:'L',loss:'W'}[norm(r.result)]||r.result,opponent_operators:[1,2,3,4,5].map(i=>r['operator_'+i]).filter(Boolean).join(' ')};for(let i=0;i<5;i++)o['operator_'+(i+1)]=mine[i]||'';return o};
+function xRows(k,keys){return sco[k].filter(r=>keys.has(norm(r.team))||keys.has(norm(r.opponent))).map(r=>keys.has(norm(r.team))?r:k==='m'?flipMatch(r):k==='v'?flipVeto(r):flipRound(r)).sort((a,b)=>k==='r'?String(a.match_id).localeCompare(String(b.match_id))||a.round_number-b.round_number:String(a[LIB[k].date]).localeCompare(String(b[LIB[k].date])))}
+async function xExport(b){
+ const x=sco.x;
+ if(!x.teams.size)return toast('Tick at least one opponent');
+ if(!x.libs.size)return toast('Tick at least one library');
+ const keys=new Set(sco.teams.filter(t=>x.teams.has(t.id)).flatMap(t=>[...scKeys(t)]));
+ b.disabled=true;
+ try{await loadXlsx()}catch{b.disabled=false;return toast('The spreadsheet tool could not load. Check your connection and try again.')}
+ const wb=XLSX.utils.book_new();
+ ['m','r','v'].filter(k=>x.libs.has(k)).forEach(k=>{const L=LIB[k],aoa=[L.cols.map(c=>c[1]),...xRows(k,keys).map(r=>L.cols.map(c=>{const v=libVal(r,c[0]);return c[0]==='vod_link'&&/^https?:\/\//i.test(v)?{t:'s',v:'VOD',l:{Target:v,Tooltip:'Watch the VOD'},s:{font:{color:{rgb:'1155CC'},underline:true}}}:v}))];XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),L.title)});
+ XLSX.writeFile(wb,`liv-scouting-${cur.name.replace(/[^A-Za-z0-9]+/g,'-')}-${today()}.xlsx`);
+ b.disabled=false;$('#dlg').close();toast('Spreadsheet downloaded');
+}
+function teamSetV(){
+ if(rost&&cur&&rost.tid!==cur.id)rost=null;
+ if(!cur)return `<div class="cd"><p>Open Team Settings from a team's dashboard.</p><div>${backDash}</div></div>`;
+ if(!canEditSch())return `<div class="cd"><p>Team Settings is for this team's coaches and assistant coaches.</p><div>${backDash}</div></div>`;
+ const c=normHex(cur.color)||COL[0],half='flex:1;min-width:180px';
+ return `<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:34px">Team Settings</h1><p class="mu" style="overflow-wrap:anywhere">${esc(cur.name)}</p></div>${backDash}</div>
+ <form class="cd" data-s="tset" data-dirty style="max-width:720px">
+ <div><label for="tsn">Team name</label><input id="tsn" class="fi" required maxlength="120" value="${esc(cur.name)}"></div>
+ <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="tsr">Region</label><select id="tsr" class="fi">${[...new Set([...REG,...(cur.region?[cur.region]:[])])].map(r=>`<option${cur.region===r?' selected':''}>${esc(r)}</option>`).join('')}</select></div><div style="${half}"><label for="tsl">League</label><input id="tsl" class="fi" maxlength="80" value="${esc(cur.league||'')}"></div></div>
+ <div><span class="lb">Team color</span><div class="row wrap" style="gap:10px">${COL.map(x=>`<button type="button" class="sw" data-a="tsw" data-c="${x}" style="background:${x}" aria-label="Color ${x}" aria-pressed="${x===c}"></button>`).join('')}</div><div style="margin-top:12px;max-width:220px"><label for="tsx">Or enter a hex code</label><input id="tsx" class="fi" data-c="tsx" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c)}"></div></div>
+ <div><label for="tsf">Logo (PNG or SVG, up to 2 MB)</label><div class="row wrap"><span id="tsp">${tile(cur,56)}</span><input id="tsf" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" data-c="tsf" style="min-width:0;max-width:100%"></div>${cur.logo_url?'<label class="row" style="gap:8px;margin-top:8px;color:var(--tx)"><input id="tsd" type="checkbox">Remove the current logo</label>':''}</div>
+ <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="sdash">Cancel</button><button class="go">Save changes</button></div></form>
+ <section class="cd" id="rosc" style="max-width:720px;margin-top:16px">${rostInner()}</section>`;
+}
+function rostInner(){
+ const head='<div><h2 style="font-size:17px;font-weight:600">Roster</h2><p class="mu">In-game names, used when replays are parsed. These are separate from player accounts. Link a name to a player\'s account so they can see their stats.</p></div>';
+ if(!rost||rost.tid!==cur?.id||!rost.list)return head+'<p class="mu">Loading roster…</p>';
+ if(rost.err)return head+`<p>${esc(rost.err)}</p>`;
+ const opts=v=>`<option value="">Not linked</option>${rost.players.map(p=>`<option value="${p.id}"${p.id===v?' selected':''}>${esc(p.name)}</option>`).join('')}${v&&!rost.players.some(p=>p.id===v)?`<option value="${esc(v)}" selected>Former player</option>`:''}`;
+ return head+`${rost.list.length?rost.list.map(r=>`<div class="row wrap" style="gap:8px;padding:8px 0;border-top:1px solid var(--bd)"><b style="flex:1 1 140px;min-width:0;font-weight:600;overflow-wrap:anywhere">${esc(r.name)}</b><select class="fi" style="flex:1 1 170px;width:auto;height:36px;padding:0 10px" data-c="rlink" data-id="${r.id}" aria-label="Player account for ${esc(r.name)}">${opts(r.linked_user_id)}</select><button type="button" class="no" style="height:36px" data-a="rosdel" data-id="${r.id}" aria-label="Remove ${esc(r.name)}">Remove</button></div>`).join(''):'<p class="mu">No names on the roster yet.</p>'}
+ <form data-s="rost" class="row" style="gap:8px"><input id="rosn" class="fi" style="flex:1;min-width:0" maxlength="60" aria-label="In-game name" placeholder="In-game name"><button class="go" style="flex:none">Add</button></form>`;
+}
+async function openTset(){
+ view='tset';rost={tid:cur.id,list:null,players:[],err:''};render();
+ if(!canEditSch())return;
+ const s=rost,tid=s.tid,ids=[...new Set(allMem.filter(m=>m.team_id===tid&&m.roles.includes('player')).map(m=>m.user_id))],[r,p]=await Promise.all([sb.from('team_roster').select('*').eq('team_id',tid),ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):{data:[]}]);
+ if(rost!==s)return;
+ s.err=r.error?(/schema cache|does not exist/i.test(r.error.message)?'The roster table is not set up yet. Paste stage9.sql into the Supabase SQL Editor and run it.':r.error.message):'';
+ s.list=(r.data||[]).sort((a,b)=>a.name.localeCompare(b.name));
+ s.players=(p.data||[]).map(x=>({id:x.id,name:x.display_name||x.email})).sort((a,b)=>a.name.localeCompare(b.name));
+ const c=$('#rosc');if(view==='tset'&&c)c.innerHTML=rostInner();
+}
+async function addRoster(form){
+ const inp=form.querySelector('#rosn'),name=inp.value.trim();
+ if(!name)return toast('Enter an in-game name');
+ if(rost.list.some(r=>norm(r.name)===norm(name)))return toast('This name is already on the roster');
+ const r=await sb.from('team_roster').insert({team_id:rost.tid,name}).select().single();
+ if(r.error)return toast(r.error.code==='PGRST116'||/row-level security/i.test(r.error.message)?'You do not have permission to change the roster.':r.error.message);
+ rost.list.push(r.data);rost.list.sort((a,b)=>a.name.localeCompare(b.name));$('#rosc').innerHTML=rostInner();$('#rosn')?.focus();
+}
+async function saveTeamSet(form){
+ const btn=form.querySelector('.go'),row={name:$('#tsn').value.trim(),region:$('#tsr').value,league:$('#tsl').value.trim()||null,color:normHex($('#tsx').value)},f=$('#tsf').files[0];
+ if(!row.name)return toast('Enter a team name');
+ if(!row.color)return toast('Enter a hex code like #e07cc0');
+ if(f&&f.size>2097152)return toast('The logo must be 2 MB or smaller');
+ btn.disabled=true;
+ if(f){const path=crypto.randomUUID()+'.'+(f.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,''),up=await sb.storage.from('logos').upload(path,f,{contentType:f.type});if(up.error){btn.disabled=false;return toast(/row-level security/i.test(up.error.message)?'You do not have permission to upload a logo.':up.error.message)}row.logo_url=sb.storage.from('logos').getPublicUrl(path).data.publicUrl}
+ else if($('#tsd')?.checked)row.logo_url=null;
+ const r=await sb.from('teams').update(row).eq('id',cur.id).select().single();
+ btn.disabled=false;
+ if(r.error)return toast(r.error.code==='PGRST116'||/row-level security/i.test(r.error.message)?'You do not have permission to make that change. If you are a coach, paste stage8.sql into the Supabase SQL Editor and run it.':r.error.message);
+ Object.assign(cur,r.data);const t=teams.find(x=>x.id===cur.id);if(t)Object.assign(t,r.data);
+ sdirty=false;render();toast('Team saved');
+}
 const adminCards=[['Manage Users','find people, assign teams and roles','users','<circle cx="9" cy="9" r="3"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5"/>'],['Teams','all teams, open any dashboard','teamsV','<path d="M4 11l8-7 8 7v9H4z"/>'],['Create team','name, logo, color, players','create','<path d="M12 5v14M5 12h14"/>'],['Roles and Permissions','','',''],['Invites','','',''],['Data Pulls','','',''],['Activity Log','','',''],['Site Settings','owner only','',''],['Backups and Export','owner only','','']];
 function adminV(){return `<div class="row wrap" style="margin-bottom:24px"><div><h1 class="serif" style="font-size:34px">Admin panel</h1><p class="mu">Owner and admins only.</p></div></div><div class="g">${adminCards.map(c=>`<button class="c" data-a="${c[2]?'go':'soon'}" data-v="${c[2]}"><span class="ic">${ico(c[3]||'<circle cx="12" cy="12" r="3"/>')}</span><span><b>${c[0]}</b><small>${c[1]}</small></span>${c[2]?'':'<span class="soon">Soon</span>'}</button>`).join('')}</div>`}
 const srch=ph=>`<input class="fi" type="search" data-c="filter" aria-label="${ph}" placeholder="${ph}">`;
@@ -810,6 +1175,34 @@ const A={
  pmysch:()=>openSch(pl?.tid===cur.id&&pl.uid?pl.uid:isPl()?me.id:'',true),
  pover:()=>openPlayer('over'),pjournal:()=>openPlayer('journal'),pstats:()=>openPlayer('stats'),pnotes:()=>openPlayer('notes'),
  phub:()=>openRoster(),
+ tset:()=>openTset(),
+ rosdel:d=>{const r=rost.list.find(x=>x.id===d.id);askDel('Remove '+r.name+' from the roster?','Stats already saved under this name stay, but the linked player will no longer see them.','rosdelyes',d.id)},
+ rosdelyes:async(d,b)=>{b.disabled=true;const r=await sb.from('team_roster').delete().eq('id',d.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast('You do not have permission to change the roster.');rost.list=rost.list.filter(x=>x.id!==d.id);$('#rosc').innerHTML=rostInner()},
+ tsw:(d,b)=>{sdirty=true;$('#tsx').value=d.c;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x===b))},
+ sct:()=>openSc('home'),slm:()=>openSc('lib','m'),slr:()=>openSc('lib','r'),slv:()=>openSc('lib','v'),
+ sx:async()=>{await openSc('home');if(sco?.loaded&&!sco.err)A.xopen()},
+ sopp:d=>{sco.page='opp';sco.oppId=d.id;sco.tab='over';sco.form=null;render()},
+ sotab:d=>{sco.tab=d.t;render()},
+ soadd:d=>{sco.form={name:d.n||''};render()},
+ soedit:()=>{sco.form={id:sco.oppId};render()},
+ socancel:()=>{sco.form=null;render()},
+ sodel:()=>{const t=sco.teams.find(x=>x.id===sco.form.id);askDel('Stop tracking this opponent?',t.name+' is removed from your opponents. Imported matches, rounds and vetoes stay in your libraries.','sodelyes',t.id)},
+ sodelyes:async(d,b)=>{b.disabled=true;const r=await sb.from('scout_teams').delete().eq('id',d.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast(r.error?scErr(r.error):'You do not have permission to make that change.');sdirty=false;sco.teams=sco.teams.filter(t=>t.id!==d.id);sco.form=null;sco.page='home';render();toast('Opponent removed')},
+ scnote:async(d,b)=>{b.disabled=true;const v=$('#scn').value,r=await sb.from('scout_teams').update({coach_notes:v}).eq('id',sco.oppId).select().single();b.disabled=false;if(r.error)return toast(scErr(r.error));sco.teams.find(t=>t.id===sco.oppId).coach_notes=v;sdirty=false;toast('Notes saved')},
+ scleague:d=>{sco.league=d.l;render()},
+ scfclear:()=>{sco.f[sco.kind]={};render()},
+ scpick:()=>$('#sccsv').click(),
+ scimpx:()=>{sco.imp=null;render()},
+ scimpgo:async(d,b)=>{const p=sco.imp,L=LIB[p.kind],rows=p.rows.filter(x=>x.status==='new').map(x=>({...x.r,owner_team_id:sco.tid}));b.disabled=true;
+  for(let i=0;i<rows.length;i+=500){const r=await sb.from(L.table).upsert(rows.slice(i,i+500),{onConflict:L.conflict,ignoreDuplicates:true});if(r.error){b.disabled=false;return toast(scErr(r.error))}}
+  const f=await sb.from(L.table).select('*').eq('owner_team_id',sco.tid);if(!f.error)sco[p.kind]=f.data;const msg='Added '+plural(rows.length,'row')+', skipped '+plural(p.dups,'duplicate')+(p.bad?' and '+plural(p.bad,'row')+' with errors':'');sco.imp=null;render();toast(msg)},
+ scvod:d=>{const r=sco.m.find(x=>x.id===d.id),g=$('#dlg');g.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:6px">VOD link</h2><p class="mu" style="margin-bottom:12px;overflow-wrap:anywhere">${esc(fmtD(r.match_date))}: ${esc(r.team)} vs ${esc(r.opponent)}, ${esc(r.map)}</p><label for="vodu">VOD link</label><input id="vodu" class="fi" inputmode="url" value="${esc(r.vod_link||'')}" placeholder="https://…"><div class="row" style="margin-top:16px;justify-content:flex-end"><button class="no" data-a="close">Cancel</button><button class="go" data-a="scvodsave" data-id="${r.id}">Save</button></div>`;g.showModal()},
+ scvodsave:async(d,b)=>{const v=$('#vodu').value.trim();if(v&&!/^https?:\/\/\S+$/i.test(v))return toast('Paste a full link starting with https://, or leave it empty to remove the VOD');b.disabled=true;const r=await sb.from('scout_matches').update({vod_link:v}).eq('id',d.id).select().single();b.disabled=false;if(r.error)return toast(scErr(r.error));Object.assign(sco.m.find(x=>x.id===d.id),r.data);$('#dlg').close();render();toast('VOD saved')},
+ scrow:d=>askDel('Delete this row?','This permanently removes it from your '+LIB[sco.kind].title+'.','scrowyes',d.id),
+ scrowyes:async(d,b)=>{b.disabled=true;const r=await sb.from(LIB[sco.kind].table).delete().eq('id',d.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast(r.error?scErr(r.error):'You do not have permission to make that change.');sco[sco.kind]=sco[sco.kind].filter(x=>x.id!==d.id);render();toast('Row deleted')},
+ xopen:()=>{sco.x=sco.x||{teams:new Set(),libs:new Set(['m','r','v'])};xDraw();$('#dlg').showModal()},
+ xleague:d=>{const l=sco.teams.filter(t=>t.league===d.l),all=l.every(t=>sco.x.teams.has(t.id));l.forEach(t=>all?sco.x.teams.delete(t.id):sco.x.teams.add(t.id));xDraw()},
+ xgo:(d,b)=>xExport(b),
  cover:()=>openCover(),
  strats:()=>openStrats(),
  stropen:async d=>{await openStrats();A.stview(d)},
@@ -841,8 +1234,6 @@ const A={
  gndel:d=>askDel('Delete this note?','This permanently removes the progress note.','gndelyes',d.id),
  gdelyes:async(d,b)=>{b.disabled=true;const r=await sb.from('journal_goals').delete().eq('id',d.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast(r.error?pErr(r.error):'You do not have permission to make that change.');await loadPlayer();render();toast('Goal deleted')},
  gndelyes:async(d,b)=>{b.disabled=true;const r=await sb.from('journal_notes').delete().eq('id',d.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast(r.error?pErr(r.error):'You do not have permission to make that change.');await loadPlayer();render();toast('Note deleted')},
- tcolor:()=>{const d=$('#dlg');d.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:14px">Team color</h2><label for="hxd">Hex code</label><input id="hxd" class="fi" value="${esc(cur.color)}" maxlength="7" spellcheck="false" autocomplete="off" placeholder="#e07cc0"><div class="row" style="margin-top:16px"><button class="go" data-a="tcolorsave">Save</button><button class="no" data-a="close">Cancel</button></div>`;d.showModal()},
- tcolorsave:async(d,b)=>{const c=normHex($('#hxd').value);if(!c)return toast('Enter a hex code like #e07cc0');b.disabled=true;const r=await sb.from('teams').update({color:c}).eq('id',cur.id).select().single();b.disabled=false;if(r.error)return toast(r.error.code==='PGRST116'?'You do not have permission to make that change.':r.error.message);Object.assign(cur,r.data);$('#dlg').close();render();toast('Team color saved')},
  schcal:d=>{sch.cal=d.v;render()},
  schnav:d=>{const n=+d.n,t=today();if(sch.cal==='month'){const a=new Date(+sch.anchor.slice(0,4),+sch.anchor.slice(5,7)-1+n,1),ym=a.getFullYear()+'-'+String(a.getMonth()+1).padStart(2,'0');sch.anchor=ym===t.slice(0,7)?t:ym+'-01'}else sch.anchor=addD(sch.anchor,sch.cal==='week'?7*n:n);render()},
  schtoday:()=>{sch.anchor=today();render()},
@@ -894,12 +1285,18 @@ const A={
   for(const p of fm.people){const email=p.email.trim().toLowerCase();if(email&&p.roles.length){const r=await assign(email,t.id,p.roles);if(r.error)toast(email+': '+r.error.message)}}
   fm=null;view='teamsV';await load();toast('Team created')}
 };
-const LEAVE=new Set(['go','open','out','savename','sdash','sback','sform','sedit','scancel','sopen','schcancel','updnow','schedule','pmysch','pover','pjournal','pstats','pnotes','pmine','aover','astats','aimport','asopen','scout','cover','strats','stropen','stadd','stedit','stcancel','stback','stview','phub','phopen','gform','gedit','gcancel','gnoteopen','gnotecancel']),leaveOk=()=>!sdirty||(confirm('You have unsaved changes. Leave without saving?')&&!(sdirty=false));
+const LEAVE=new Set(['go','open','out','savename','sdash','sback','sform','sedit','scancel','sopen','schcancel','updnow','schedule','pmysch','pover','pjournal','pstats','pnotes','pmine','aover','astats','aimport','asopen','scout','tset','sct','slm','slr','slv','sx','sopp','sotab','soadd','soedit','socancel','cover','strats','stropen','stadd','stedit','stcancel','stback','stview','phub','phopen','gform','gedit','gcancel','gnoteopen','gnotecancel']),leaveOk=()=>!sdirty||(confirm('You have unsaved changes. Leave without saving?')&&!(sdirty=false));
 document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a]&&(!LEAVE.has(b.dataset.a)||leaveOk()))A[b.dataset.a](b.dataset,b)});
 window.addEventListener('beforeunload',e=>{if(sdirty){e.preventDefault();e.returnValue=''}});
-document.addEventListener('input',e=>{if(e.target.closest('[data-dirty]'))sdirty=true;if(e.target.dataset.c==='stq'){stra.q=e.target.value;const l=$('#stl');if(l)l.innerHTML=stratCards()}if(e.target.dataset.c==='hex'){const v=normHex(e.target.value);if(v){fm.color=v;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v));$('#lp').innerHTML=tile({color:v,name:$('#tn').value||'?'},56)}}if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
-document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='sw'){if(!leaveOk()){e.target.value=cur.id;return}cur=teams.find(t=>t.id===e.target.value);viewing=false;if(view==='scrims')return A.scrims();if(view==='schedule')return openSch(sch?.forUser===me.id?me.id:'',false);if(view==='player')return openPlayer(pl.page);if(view==='roster')return openRoster();if(view==='analyst')return openAnalyst(an.page);if(view==='strats')return openStrats();if(view==='cover')return openCover();render()}
+document.addEventListener('input',e=>{if(e.target.closest('[data-dirty]'))sdirty=true;if(e.target.dataset.c==='tsx'){const v=normHex(e.target.value);document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v))}if(e.target.dataset.c==='scq'){sco.q=e.target.value;const l=$('#scl');if(l)l.innerHTML=homeCards()}if(e.target.dataset.c==='stq'){stra.q=e.target.value;const l=$('#stl');if(l)l.innerHTML=stratCards()}if(e.target.dataset.c==='hex'){const v=normHex(e.target.value);if(v){fm.color=v;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===v));$('#lp').innerHTML=tile({color:v,name:$('#tn').value||'?'},56)}}if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
+document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='sw'){if(!leaveOk()){e.target.value=cur.id;return}cur=teams.find(t=>t.id===e.target.value);viewing=false;if(view==='scrims')return A.scrims();if(view==='schedule')return openSch(sch?.forUser===me.id?me.id:'',false);if(view==='player')return openPlayer(pl.page);if(view==='roster')return openRoster();if(view==='analyst')return openAnalyst(an.page);if(view==='strats')return openStrats();if(view==='cover')return openCover();if(view==='tset')return openTset();if(view==='sc')return openSc(sco.page==='opp'?'home':sco.page,sco.kind);render()}
  if(c==='mapsel'){const box=e.target.closest('.mapd');box.dataset.map=e.target.value;box.querySelector('.mph').innerHTML=mapPhoto(e.target.value)}
+ if(c==='tsf'&&e.target.files[0]){$('#tsp').innerHTML=`<span class="lt" style="--s:56px;border-color:var(--pk)"><img src="${URL.createObjectURL(e.target.files[0])}" alt=""></span>`}
+ if(c==='rlink'){const row=rost.list.find(x=>x.id===e.target.dataset.id),v=e.target.value||null;sb.from('team_roster').update({linked_user_id:v}).eq('id',row.id).select().single().then(r=>{if(r.error){e.target.value=row.linked_user_id||'';return toast('That link could not be saved. The name can only link to a player on this team.')}row.linked_user_id=v;toast('Roster saved')})}
+ if(c==='scf'){const f=sco.f[sco.kind]=sco.f[sco.kind]||{};f[e.target.dataset.k]=e.target.value;const id=e.target.id;render();document.getElementById(id)?.focus()}
+ if(c==='xteam'){e.target.checked?sco.x.teams.add(e.target.dataset.id):sco.x.teams.delete(e.target.dataset.id);xDraw()}
+ if(c==='xlib'){e.target.checked?sco.x.libs.add(e.target.dataset.k):sco.x.libs.delete(e.target.dataset.k)}
+ if(c==='sccsv'&&e.target.files[0]){const f=e.target.files[0],k=sco.kind;if(f.size>5242880){sco.imp={error:'This file is larger than 5 MB. Split it into smaller files.'};render();return}f.text().then(t=>{sco.imp={...csvPreview(k,t),file:f.name};render()},()=>{sco.imp={error:'This file could not be read.'};render()})}
  if(c==='stf'){stra[e.target.dataset.k]=e.target.value;const l=$('#stl');if(l)l.innerHTML=stratCards()}
  if(c==='afilter'){an[e.target.dataset.k]=e.target.value;const id=e.target.id;render();document.getElementById(id)?.focus()}
  if(c==='recs'){addRecs([...e.target.files].map(f=>({name:f.name,path:f.webkitRelativePath||f.name,size:f.size})));e.target.value=''}
@@ -908,7 +1305,7 @@ document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='sw'){i
  if(c==='gstat'){const g=pl.goals.find(x=>x.id===e.target.dataset.id);if(!leaveOk()){e.target.value=g.status;return}sb.from('journal_goals').update({status:e.target.value}).eq('id',g.id).select().single().then(async r=>{if(r.error){toast(pErr(r.error));e.target.value=g.status;return}Object.assign(pl,{form:null,noteFor:null});await loadPlayer();render()})}
  if(c==='shk')$('#shgame').hidden=!['scrim','gameday'].includes(e.target.value);
  if(c==='logo'&&e.target.files[0]){const u=URL.createObjectURL(e.target.files[0]);$('#lp').innerHTML=`<span class="lt" style="--s:56px;border-color:${esc(fm.color)}"><img src="${u}" alt=""></span>`}});
-document.addEventListener('submit',async e=>{if(e.target.dataset.s==='scrim'){e.preventDefault();return saveScrim(e.target)}if(e.target.dataset.s==='sched'){e.preventDefault();return saveSch(e.target)}if(e.target.dataset.s==='goal'){e.preventDefault();return saveGoal(e.target)}if(e.target.dataset.s==='gnote'){e.preventDefault();return saveNote(e.target)}if(e.target.dataset.s==='strat'){e.preventDefault();return saveStrat(e.target)}if(e.target.dataset.s!=='auth')return;e.preventDefault();
+document.addEventListener('submit',async e=>{if(e.target.dataset.s==='scrim'){e.preventDefault();return saveScrim(e.target)}if(e.target.dataset.s==='sched'){e.preventDefault();return saveSch(e.target)}if(e.target.dataset.s==='goal'){e.preventDefault();return saveGoal(e.target)}if(e.target.dataset.s==='gnote'){e.preventDefault();return saveNote(e.target)}if(e.target.dataset.s==='strat'){e.preventDefault();return saveStrat(e.target)}if(e.target.dataset.s==='sopp'){e.preventDefault();return saveSo(e.target)}if(e.target.dataset.s==='tset'){e.preventDefault();return saveTeamSet(e.target)}if(e.target.dataset.s==='rost'){e.preventDefault();return addRoster(e.target)}if(e.target.dataset.s!=='auth')return;e.preventDefault();
  const email=$('#em').value.trim(),password=$('#pw').value;
  if(mode==='in'){const{error}=await sb.auth.signInWithPassword({email,password});if(error)toast('Wrong email or password')}
  else{const{data,error}=await sb.auth.signUp({email,password});if(error)toast(/invited|Database error/i.test(error.message)?'This email has not been invited yet.':error.message);else if(!data.session)toast('Check your email to confirm, then sign in')}});
