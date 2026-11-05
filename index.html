@@ -173,8 +173,8 @@ async function saveScrim(form){
 }
 const KIND={scrim:'Scrim',gameday:'Gameday',off_day:'Off day',other:'Other'};
 const schE=e=>/schema cache|does not exist/i.test(e.message)?'The schedule database tables are not set up yet. Paste stage2.sql into the Supabase SQL Editor and run it.':/schedule_entries_kind|check constraint/i.test(e.message)?'The schedule update is not set up yet. Paste stage2.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
-const canSeeSch=()=>staff()||!!mem[cur?.id],canEditSch=()=>hasR(['coach','assistant_coach']),isPlayerHere=()=>(mem[cur?.id]||[]).includes('player');
-const canDelEntry=e=>canEditSch()||(e.kind==='off_day'&&e.user_id===me.id&&isPlayerHere());
+const canSeeSch=()=>staff()||!!mem[cur?.id],canEditSch=()=>hasR(['coach','assistant_coach']),canOwnOff=()=>(mem[cur?.id]||[]).some(r=>r==='player'||r==='analyst');
+const canDelEntry=e=>canEditSch()||(e.kind==='off_day'&&e.user_id===me.id&&canOwnOff());
 const shiftYm=(ym,n)=>{const d=new Date(+ym.slice(0,4),+ym.slice(5)-1+n,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
 const monthName=ym=>new Date(+ym.slice(0,4),+ym.slice(5)-1,1).toLocaleDateString(undefined,{month:'long',year:'numeric'});
 const fmtT=t=>new Date('2000-01-01T'+t).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
@@ -184,7 +184,7 @@ const schKey=e=>{const l=schLocal(e);return l.d+' '+l.t};
 function scheduleV(){
  if(!cur||!sch||sch.tid!==cur.id)return `<div class="cd"><p>Open Schedule from a team's dashboard.</p><div>${backDash}</div></div>`;
  if(!canSeeSch())return `<div class="cd"><p>The schedule is for members of this team.</p><div>${backDash}</div></div>`;
- return sch.st==='form'&&(canEditSch()||isPlayerHere())?schForm():schList();
+ return sch.st==='form'&&(canEditSch()||canOwnOff())?schForm():schList();
 }
 function schRow(e){
  const off=e.kind==='off_day',who=e.user_id?sch.names[e.user_id]||'Former member':'Whole team',time=e.starts_at?new Date(e.starts_at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit',timeZoneName:'short'}):e.entry_time?fmtT(e.entry_time)+' (time zone not set)':off?'All day':'';
@@ -193,7 +193,7 @@ function schRow(e){
 }
 function schList(){
  const ready=sch.list&&!sch.err,t=today(),items=(sch.list||[]).filter(e=>schLocal(e).d.slice(0,7)===sch.month).sort((a,b)=>schKey(a).localeCompare(schKey(b))),days=[...new Set(items.map(e=>schLocal(e).d))];
- const add=!ready?'':canEditSch()?'<button class="go" data-a="schadd">Add to schedule</button>':isPlayerHere()?'<button class="go" data-a="schadd">Add off day</button>':'';
+ const add=!ready?'':canEditSch()?'<button class="go" data-a="schadd">Add to schedule</button>':canOwnOff()?'<button class="go" data-a="schadd">Add off day</button>':'';
  const col='display:flex;flex-direction:column;gap:10px';
  const nav=`<div class="row" style="margin-bottom:12px"><button class="no" style="flex:none" data-a="schmonth" data-n="-1" aria-label="Previous month">‹ Prev</button><h2 class="serif" style="flex:1 1 0;min-width:0;text-align:center;font-size:26px;line-height:1.1" aria-live="polite">${esc(monthName(sch.month))}</h2><button class="no" style="flex:none" data-a="schmonth" data-n="1" aria-label="Next month">Next ›</button></div>${sch.month===t.slice(0,7)?'':'<div style="text-align:center;margin-bottom:12px"><button class="no" style="height:32px" data-a="schthis">This month</button></div>'}`;
  const body=!sch.list?'<p class="mu">Loading schedule…</p>':sch.err?`<div class="cd"><p>${esc(sch.err)}</p></div>`:nav+(days.length?days.map(d=>`<h3 style="font-size:15px;font-weight:600;margin:20px 0 10px">${esc(new Date(d+'T00:00').toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'}))}${d===t?' <span style="color:var(--pk)">· Today</span>':''}</h3><div style="${col}">${items.filter(e=>schLocal(e).d===d).map(schRow).join('')}</div>`).join(''):`<div class="cd"><p class="mu">Nothing scheduled in ${esc(monthName(sch.month))}.</p></div>`);

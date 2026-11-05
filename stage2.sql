@@ -108,10 +108,11 @@ create or replace function public.can_edit_schedule(t uuid) returns boolean lang
 $$ select public.is_staff() or exists(select 1 from team_members tm join profiles p on p.id = tm.user_id
    where tm.team_id = t and tm.user_id = auth.uid() and not p.suspended
    and tm.roles && array['coach','assistant_coach']) $$;
-create or replace function public.is_team_player(t uuid) returns boolean language sql security definer stable set search_path = public as
+-- players and analysts can mark their own off days
+create or replace function public.can_mark_own_off_day(t uuid) returns boolean language sql security definer stable set search_path = public as
 $$ select exists(select 1 from team_members tm join profiles p on p.id = tm.user_id
    where tm.team_id = t and tm.user_id = auth.uid() and not p.suspended
-   and tm.roles && array['player']) $$;
+   and tm.roles && array['player','analyst']) $$;
 
 -- WHO CAN SEE AND CHANGE WHAT
 
@@ -137,14 +138,15 @@ create policy schedule_read on public.schedule_entries for select to authenticat
 drop policy if exists schedule_write on public.schedule_entries;
 create policy schedule_write on public.schedule_entries for all to authenticated
   using (public.can_edit_schedule(team_id)) with check (public.can_edit_schedule(team_id));
--- players can add and delete only their own off days
+-- players and analysts can add and delete only their own off days
 drop policy if exists schedule_own_off_add on public.schedule_entries;
 create policy schedule_own_off_add on public.schedule_entries for insert to authenticated
-  with check (kind = 'off_day' and user_id = auth.uid() and public.is_team_player(team_id));
+  with check (kind = 'off_day' and user_id = auth.uid() and public.can_mark_own_off_day(team_id));
 drop policy if exists schedule_own_off_edit on public.schedule_entries;
 drop policy if exists schedule_own_off_remove on public.schedule_entries;
 create policy schedule_own_off_remove on public.schedule_entries for delete to authenticated
-  using (kind = 'off_day' and user_id = auth.uid() and public.is_team_player(team_id));
+  using (kind = 'off_day' and user_id = auth.uid() and public.can_mark_own_off_day(team_id));
+drop function if exists public.is_team_player(uuid);
 
 grant select, insert, update, delete on public.scrims, public.scrim_player_notes, public.schedule_entries to authenticated;
 
