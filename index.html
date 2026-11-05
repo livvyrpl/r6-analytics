@@ -9,7 +9,7 @@
 <style>
 :root{--pk:#e07cc0;--bg:#0b0a0e;--cd:#131118;--bd:#231f2b;--bd2:#2a2532;--tx:#ece8f0;--mu:#9a93a6}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse 70% 40% at 50% 0%,rgba(224,124,192,.09),transparent 70%),var(--bg);color:var(--tx);font:400 14px Inter,sans-serif;min-height:100vh}
-h1,h2,h3,p{margin:0}button,input,select{font:inherit}
+h1,h2,h3,p{margin:0}button,input,select,textarea{font:inherit}
 .serif{font-family:'Cormorant Garamond',serif;font-weight:600}
 header{display:flex;align-items:center;gap:12px;padding:12px 24px;border-bottom:1px solid #1d1923;flex-wrap:wrap}
 header img{height:52px}header .brand{font-size:26px;letter-spacing:.02em}.sp{flex:1}
@@ -22,6 +22,9 @@ main{max-width:1180px;margin:0 auto;padding:28px 24px}
 .ch[aria-pressed=true]{border-color:var(--pk);background:rgba(224,124,192,.16);color:#f3c2e3}
 .fi{width:100%;height:44px;padding:0 14px;border-radius:10px;border:1px solid var(--bd2);background:#0f0d13;color:var(--tx)}
 .fi:focus,button:focus-visible,a:focus-visible{outline:2px solid var(--pk);outline-offset:2px}
+.ta{display:block;height:auto;min-height:110px;padding:10px 14px;line-height:1.5;resize:vertical}
+input[type=date]{color-scheme:dark}
+.facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}.facts b{display:block;margin-top:2px;font-weight:500;overflow-wrap:anywhere}
 label,.lb{display:block;margin:0 0 6px;font-size:13px;color:#a59dad}
 .cd{padding:22px;border-radius:16px;background:var(--cd);border:1px solid var(--bd);display:flex;flex-direction:column;gap:16px}
 .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
@@ -60,13 +63,13 @@ const R={coach:'Coach',assistant_coach:'Assistant Coach',analyst:'Analyst',playe
 const REG=['North America','South America','Europe','Asia Pacific'],COL=['#e07cc0','#7cc0e0','#e0c07c','#9ae07c','#c07ce0','#e07c7c','#7ce0c0','#ece8f0'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=s=>document.querySelector(s),ico=p=>`<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
-let me=null,teams=[],mem={},allMem=[],profs=[],invs=[],cur=null,view='dash',viewing=false,fm=null,sel=null,mode='in';
+let me=null,teams=[],mem={},allMem=[],profs=[],invs=[],cur=null,view='dash',viewing=false,fm=null,sel=null,mode='in',scr=null,sdirty=false;
 const staff=()=>me&&['owner','admin'].includes(me.site_role),owner=()=>me&&me.site_role==='owner';
 function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',3500)}
 const tile=(t,s=36)=>{const c=esc(t?.color||'#e07cc0');return `<span class="lt" style="--s:${s}px;color:${c};border-color:${c};background:${c}22">${t?.logo_url?`<img src="${esc(t.logo_url)}" alt="">`:esc((t?.name||'?').slice(0,2).toUpperCase())}</span>`};
 async function load(){
  const{data:{session}}=await sb.auth.getSession();
- if(!session){me=null;return render()}
+ if(!session){me=null;view='dash';viewing=false;scr=null;sdirty=false;return render()}
  const uid=session.user.id;
  me=(await sb.from('profiles').select('*').eq('id',uid).maybeSingle()).data;
  if(!me||me.suspended)return render();
@@ -86,7 +89,7 @@ function render(){
  ${mine.length>1?`<select class="tb" data-c="sw" aria-label="Switch team">${mine.map(t=>`<option value="${t.id}"${cur&&t.id===cur.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`:''}
  <button class="tb" data-a="go" data-v="dash">Dashboard</button><button class="tb" data-a="settings">Settings</button><button class="tb" data-a="profile">Profile</button></header>
  ${viewing&&view==='dash'&&cur?`<div class="bar"><span>Viewing ${esc(cur.name)} as ${me.site_role}</span><button class="no" data-a="go" data-v="teamsV">Back to teams</button></div>`:''}
- <main>${({dash:dashV,admin:adminV,teamsV,users:usersV,create:createV})[view]()}</main>`;
+ <main>${({dash:dashV,admin:adminV,teamsV,users:usersV,create:createV,scrims:scrimsV})[view]()}</main>`;
 }
 function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analytics"><form class="cd" data-s="auth">
  <div><label for="em">Email</label><input id="em" class="fi" type="email" required autocomplete="email"></div>
@@ -95,15 +98,78 @@ function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analyt
  <button type="button" class="no" style="border:0" data-a="mode">${mode==='in'?'Invited? Create your account':'I already have an account'}</button></form>
  <p class="mu">Access is by invitation. Ask your team owner to add you.</p></div>`}
 const HUBS=[['Scouting',['coach','analyst'],'<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>',[['Scouting','teams by region and league'],['Match Library','all teams, every game'],['Round Library','all teams, every round'],['Vetoes','bans and picks per team'],['Export to Sheets','pick league and teams, then copy']]],
-['Coaches hub',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches'],['Scrims','import, notes per player'],['Schedule','scrims, gamedays, off days'],['Strats','open slides in the site']]],
-['Analyst hub',['analyst','coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary'],['Stats','your team and opponents'],['Import','replays and scrims']]],
+['Coaches hub',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days'],['Strats','open slides in the site']]],
+['Analyst hub',['analyst','coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary'],['Scrims','results, bans, notes per player','scrims'],['Stats','your team and opponents'],['Import','replays and scrims']]],
 ['Player hub',['player','coach'],'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>',[['Overview','your week at a glance'],['My Schedule','add off days'],['Journal','goals with deadlines'],['My Stats','KOST, K/D, operators']]]];
 function dashV(){
  if(!cur)return `<div class="cd"><h2 class="serif" style="font-size:28px">No team yet</h2><p class="mu">${staff()?'Create a team in Admin, or open one from the Teams list.':'Ask the owner to add you to a team.'}</p></div>`;
  const roles=viewing||(staff()&&!mem[cur.id])?ALL:(mem[cur.id]||[]);
- const badge=(staff()&&!mem[cur.id]?[me.site_role]:roles.map(r=>R[r])).join(', ');
+ const badge=(staff()&&!mem[cur.id]?[me.site_role]:roles.map(r=>R[r])).join(', '),seen=new Set();
  return `<div class="row wrap" style="margin-bottom:24px;gap:14px">${tile(cur,48)}<h1 class="serif" style="font-size:34px;color:${esc(cur.color)}">${esc(cur.name)}</h1><span class="badge">${esc(badge)}</span></div>`+
- HUBS.filter(h=>h[1].some(r=>roles.includes(r))).map(h=>`<h2 class="hh">${h[0]}</h2><div class="g">${h[3].map(c=>`<button class="c" data-a="soon"><span class="ic">${ico(h[2])}</span><span><b>${c[0]}</b><small>${c[1]}</small></span><span class="soon">Soon</span></button>`).join('')}</div>`).join('');
+ HUBS.filter(h=>h[1].some(r=>roles.includes(r))).map(h=>`<h2 class="hh">${h[0]}</h2><div class="g">${h[3].filter(c=>!c[2]||(!seen.has(c[2])&&seen.add(c[2]))).map(c=>`<button class="c" data-a="${c[2]||'soon'}"><span class="ic">${ico(h[2])}</span><span><b>${c[0]}</b><small>${c[1]}</small></span>${c[2]?'':'<span class="soon">Soon</span>'}</button>`).join('')}</div>`).join('');
+}
+const hasR=l=>staff()||(cur&&(mem[cur.id]||[]).some(r=>l.includes(r))),canSeeS=()=>hasR(['coach','assistant_coach','analyst']),canEditS=()=>hasR(['coach','analyst']);
+const toList=s=>s.split(',').map(x=>x.trim()).filter(Boolean),fact=(k,v)=>`<div><span class="mu">${k}</span><b>${esc(v)||'—'}</b></div>`;
+const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)},fmtD=s=>new Date(s+'T00:00').toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
+const sErr=e=>/schema cache|does not exist/i.test(e.message)?'The scrims database tables are not set up yet. Paste scrims.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to change scrims for this team.':e.message;
+const curScrim=()=>(scr.list||[]).find(x=>x.id===scr.id);
+const backDash=`<button class="no" data-a="sdash">Back to dashboard</button>`;
+function scrimsV(){
+ if(!cur||!scr||scr.tid!==cur.id)return `<div class="cd"><p>Open Scrims from a team's dashboard.</p><div>${backDash}</div></div>`;
+ if(!canSeeS())return `<div class="cd"><p>Scrims are for this team's coaches, assistant coaches and analysts.</p><div>${backDash}</div></div>`;
+ return scr.st==='form'&&canEditS()?scrimForm():scr.st==='detail'?scrimDetail():scrimList();
+}
+function scrimList(){
+ const ready=scr.list&&!scr.err,body=!scr.list?'<p class="mu">Loading scrims…</p>':scr.err?`<div class="cd"><p>${esc(scr.err)}</p></div>`:!scr.list.length?`<div class="cd"><p class="mu">No scrims yet.${canEditS()?' Add the first one.':''}</p></div>`:
+ `<div style="display:flex;flex-direction:column;gap:10px">${scr.list.map(s=>`<button class="c" data-a="sopen" data-id="${s.id}"><span style="flex:1;min-width:0"><b style="overflow-wrap:anywhere">vs ${esc(s.opponent)}</b><small>${fmtD(s.scrim_date)}${s.maps.length?' · '+esc(s.maps.join(', ')):''}</small></span>${s.score?`<span class="badge">${esc(s.score)}</span>`:''}${s.split?`<span class="mu">Split ${esc(s.split)}</span>`:''}</button>`).join('')}</div>`;
+ return `<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div><h1 class="serif" style="font-size:34px">Scrims</h1><p class="mu">${esc(cur.name)}, newest first.</p></div><span class="sp"></span>${backDash}${ready&&canEditS()?'<button class="go" data-a="sform">Add scrim</button>':''}</div>${body}`;
+}
+function scrimForm(){
+ const s=scr.id?curScrim():null,fld=(id,lab,val,ph='',att='')=>`<div><label for="${id}">${lab}</label><input id="${id}" class="fi" value="${esc(val)}" placeholder="${esc(ph)}" ${att}></div>`;
+ return `<div class="row wrap" style="margin-bottom:20px"><h1 class="serif" style="font-size:34px">${s?'Edit scrim':'Add scrim'}</h1></div>
+ <form class="cd" data-s="scrim" data-dirty style="max-width:720px">
+ <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:1;min-width:200px"><label for="sfd">Date</label><input id="sfd" class="fi" type="date" required value="${esc(s?.scrim_date||today())}"></div><div style="flex:2;min-width:200px">${fld('sfo','Opponent',s?.opponent||'','Team name','required maxlength="120"')}</div></div>
+ ${fld('sfm','Map(s), separated by commas',(s?.maps||[]).join(', '),'e.g. Clubhouse, Oregon')}
+ <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:1;min-width:200px">${fld('sfu','Our bans, separated by commas',(s?.our_bans||[]).join(', '))}</div><div style="flex:1;min-width:200px">${fld('sft','Their bans, separated by commas',(s?.their_bans||[]).join(', '))}</div></div>
+ <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:1;min-width:200px">${fld('sfc','Score',s?.score||'','e.g. 7-5')}</div><div style="flex:1;min-width:200px">${fld('sfp','Split',s?.split||'','e.g. 4-2')}</div></div>
+ <div><label for="sfn">General notes</label><textarea id="sfn" class="fi ta">${esc(s?.notes||'')}</textarea></div>
+ <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="scancel">Cancel</button><button class="go">${s?'Save changes':'Add scrim'}</button></div></form>`;
+}
+function scrimDetail(){
+ const s=curScrim();if(!s)return scrimList();
+ const can=canEditS(),ro=can?'':' readonly';
+ const notes=scr.dErr?`<div class="cd"><p>${esc(scr.dErr)}</p></div>`:!scr.people?'<p class="mu">Loading notes…</p>':`<div style="display:flex;flex-direction:column;gap:16px" data-dirty>
+ <div class="cd"><label for="sgen" style="font-size:15px;font-weight:600;color:var(--tx);margin:0">General notes</label><textarea id="sgen" class="fi ta"${ro}>${esc(s.notes)}</textarea></div>
+ <div class="cd"><h2 style="font-size:15px;font-weight:600">Player notes</h2>${scr.people.length?scr.people.map(p=>`<div><label for="spn-${p.id}" class="row" style="gap:10px;color:var(--tx)"><span class="av">${esc(p.name[0].toUpperCase())}</span><span style="overflow-wrap:anywhere">${esc(p.name)}${p.former?' <span class="mu">(no longer a player on this team)</span>':''}</span></label><textarea id="spn-${p.id}" class="fi ta" data-p="${p.id}" aria-label="Notes for ${esc(p.name)}"${ro}>${esc(scr.notes[p.id]||'')}</textarea></div>`).join(''):'<p class="mu">This team has no one with the Player role yet. Add players in Manage Users.</p>'}</div>
+ ${can?'<div class="row" style="justify-content:flex-end"><button class="go" data-a="snotes">Save notes</button></div>':''}</div>`;
+ return `<div class="row wrap" style="margin-bottom:20px"><div style="flex:1 1 280px;min-width:0"><h1 class="serif" style="font-size:34px;overflow-wrap:anywhere">vs ${esc(s.opponent)}</h1><p class="mu">${fmtD(s.scrim_date)}</p></div><div class="row"><button class="no" data-a="sback">Back to scrims</button>${can?'<button class="no" data-a="sedit">Edit</button><button class="no" data-a="sdel">Delete</button>':''}</div></div>
+ <div class="cd facts" style="display:grid;margin-bottom:16px">${fact('Map(s)',s.maps.join(', '))}${fact('Our bans',s.our_bans.join(', '))}${fact('Their bans',s.their_bans.join(', '))}${fact('Score',s.score)}${fact('Split',s.split)}</div>${notes}`;
+}
+async function fetchScrims(){
+ const tid=scr.tid,r=await sb.from('scrims').select('*').eq('team_id',tid).order('scrim_date',{ascending:false}).order('created_at',{ascending:false});
+ if(scr?.tid!==tid)return;
+ scr.err=r.error?sErr(r.error):'';scr.list=r.data||[];
+}
+async function loadDetail(id){
+ const tid=scr.tid,n=await sb.from('scrim_player_notes').select('user_id,notes').eq('scrim_id',id);
+ if(scr?.id!==id)return;
+ if(n.error){scr.dErr=sErr(n.error);return}
+ const pl=allMem.filter(m=>m.team_id===tid&&m.roles.includes('player')).map(m=>m.user_id);
+ const ids=[...new Set([...pl,...n.data.filter(x=>x.notes.trim()).map(x=>x.user_id)])];
+ const p=ids.length?await sb.from('profiles').select('id,email,display_name').in('id',ids):{data:[]};
+ if(scr?.id!==id)return;
+ if(p.error){scr.dErr=sErr(p.error);return}
+ scr.notes=Object.fromEntries(n.data.map(x=>[x.user_id,x.notes]));
+ scr.people=ids.map(i=>{const x=p.data.find(q=>q.id===i);return{id:i,name:x?.display_name||x?.email||'Former player',former:!pl.includes(i)}}).sort((a,b)=>a.former-b.former||a.name.localeCompare(b.name));
+}
+async function saveScrim(form){
+ const btn=form.querySelector('.go'),v=id=>$(id).value,row={scrim_date:v('#sfd'),opponent:v('#sfo').trim(),maps:toList(v('#sfm')),our_bans:toList(v('#sfu')),their_bans:toList(v('#sft')),score:v('#sfc').trim(),split:v('#sfp').trim(),notes:v('#sfn')};
+ if(!row.scrim_date||!row.opponent)return toast('Enter a date and an opponent');
+ btn.disabled=true;
+ const r=scr.id?await sb.from('scrims').update(row).eq('id',scr.id).select().single():await sb.from('scrims').insert({...row,team_id:scr.tid}).select().single();
+ btn.disabled=false;
+ if(r.error)return toast(sErr(r.error));
+ sdirty=false;await fetchScrims();await A.sopen({id:r.data.id});toast('Scrim saved');
 }
 const adminCards=[['Manage Users','find people, assign teams and roles','users','<circle cx="9" cy="9" r="3"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5"/>'],['Teams','all teams, open any dashboard','teamsV','<path d="M4 11l8-7 8 7v9H4z"/>'],['Create team','name, logo, color, players','create','<path d="M12 5v14M5 12h14"/>'],['Roles and Permissions','','',''],['Invites','','',''],['Data Pulls','','',''],['Activity Log','','',''],['Site Settings','owner only','',''],['Backups and Export','owner only','','']];
 function adminV(){return `<div class="row wrap" style="margin-bottom:24px"><div><h1 class="serif" style="font-size:34px">Admin panel</h1><p class="mu">Owner and admins only.</p></div></div><div class="g">${adminCards.map(c=>`<button class="c" data-a="${c[2]?'go':'soon'}" data-v="${c[2]}"><span class="ic">${ico(c[3]||'<circle cx="12" cy="12" r="3"/>')}</span><span><b>${c[0]}</b><small>${c[1]}</small></span>${c[2]?'':'<span class="soon">Soon</span>'}</button>`).join('')}</div>`}
@@ -141,6 +207,20 @@ async function assign(email,tid,roles){
 const A={
  go:d=>{view=d.v;viewing=false;fm=view==='create'?fm:null;render()},
  soon:()=>toast('Coming in the next stage'),
+ scrims:async()=>{view='scrims';scr={tid:cur.id,st:'list',list:null,err:'',id:null,people:null,notes:{},dErr:''};render();if(!canSeeS())return;await fetchScrims();if(view==='scrims')render()},
+ sdash:()=>{view='dash';render()},
+ sback:()=>{scr.st='list';scr.id=null;render()},
+ sform:()=>{scr.st='form';scr.id=null;render()},
+ sedit:()=>{scr.st='form';render()},
+ scancel:()=>{scr.st=scr.id?'detail':'list';render()},
+ sopen:async d=>{Object.assign(scr,{st:'detail',id:d.id,people:null,notes:{},dErr:''});render();await loadDetail(d.id);if(view==='scrims'&&scr?.st==='detail'&&scr.id===d.id)render()},
+ snotes:async(d,b)=>{const s=curScrim(),gen=$('#sgen').value,rows=[...document.querySelectorAll('[data-p]')].filter(t=>t.value!==(scr.notes[t.dataset.p]||'')).map(t=>({scrim_id:s.id,user_id:t.dataset.p,notes:t.value}));
+  b.disabled=true;
+  if(gen!==s.notes){const r=await sb.from('scrims').update({notes:gen}).eq('id',s.id).select().single();if(r.error){b.disabled=false;return toast(sErr(r.error))}s.notes=gen}
+  if(rows.length){const r=await sb.from('scrim_player_notes').upsert(rows);if(r.error){b.disabled=false;return toast(sErr(r.error))}rows.forEach(x=>scr.notes[x.user_id]=x.notes)}
+  b.disabled=false;sdirty=false;toast('Notes saved')},
+ sdel:()=>{const s=curScrim(),d=$('#dlg');d.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:10px">Delete this scrim?</h2><p class="mu" style="overflow-wrap:anywhere">This permanently removes the scrim against ${esc(s.opponent)} and all of its notes.</p><div class="row" style="margin-top:16px"><button class="go" data-a="sdelyes">Delete scrim</button><button class="no" data-a="close">Cancel</button></div>`;d.showModal()},
+ sdelyes:async(d,b)=>{b.disabled=true;const r=await sb.from('scrims').delete().eq('id',scr.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast(r.error?sErr(r.error):'You do not have permission to change scrims for this team.');sdirty=false;scr.st='list';scr.id=null;await fetchScrims();render();toast('Scrim deleted')},
  out:()=>sb.auth.signOut(),
  mode:()=>{mode=mode==='in'?'up':'in';render()},
  open:d=>{cur=teams.find(t=>t.id===d.id);viewing=true;view='dash';render()},
@@ -165,15 +245,17 @@ const A={
   for(const p of fm.people){const email=p.email.trim().toLowerCase();if(email&&p.roles.length){const r=await assign(email,t.id,p.roles);if(r.error)toast(email+': '+r.error.message)}}
   fm=null;view='teamsV';await load();toast('Team created')}
 };
-document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a])A[b.dataset.a](b.dataset,b)});
-document.addEventListener('input',e=>{if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
-document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='sw'){cur=teams.find(t=>t.id===e.target.value);viewing=false;render()}
+const LEAVE=new Set(['go','open','out','savename','sdash','sback','sform','sedit','scancel','sopen']),leaveOk=()=>!sdirty||(confirm('You have unsaved changes. Leave without saving?')&&!(sdirty=false));
+document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b&&A[b.dataset.a]&&(!LEAVE.has(b.dataset.a)||leaveOk()))A[b.dataset.a](b.dataset,b)});
+window.addEventListener('beforeunload',e=>{if(sdirty){e.preventDefault();e.returnValue=''}});
+document.addEventListener('input',e=>{if(e.target.closest('[data-dirty]'))sdirty=true;if(e.target.dataset.c==='filter'){const q=e.target.value.toLowerCase();document.querySelectorAll('[data-s]').forEach(x=>x.hidden=!x.dataset.s.includes(q))}});
+document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='sw'){if(!leaveOk()){e.target.value=cur.id;return}cur=teams.find(t=>t.id===e.target.value);viewing=false;if(view==='scrims')return A.scrims();render()}
  if(c==='logo'&&e.target.files[0]){const u=URL.createObjectURL(e.target.files[0]);$('#lp').innerHTML=`<span class="lt" style="--s:56px;border-color:${esc(fm.color)}"><img src="${u}" alt=""></span>`}});
-document.addEventListener('submit',async e=>{if(e.target.dataset.s!=='auth')return;e.preventDefault();
+document.addEventListener('submit',async e=>{if(e.target.dataset.s==='scrim'){e.preventDefault();return saveScrim(e.target)}if(e.target.dataset.s!=='auth')return;e.preventDefault();
  const email=$('#em').value.trim(),password=$('#pw').value;
  if(mode==='in'){const{error}=await sb.auth.signInWithPassword({email,password});if(error)toast('Wrong email or password')}
  else{const{data,error}=await sb.auth.signUp({email,password});if(error)toast(/invited|Database error/i.test(error.message)?'This email has not been invited yet.':error.message);else if(!data.session)toast('Check your email to confirm, then sign in')}});
-sb.auth.onAuthStateChange((ev)=>{if(['SIGNED_IN','SIGNED_OUT','INITIAL_SESSION'].includes(ev))setTimeout(load,0)});
+sb.auth.onAuthStateChange((ev,s)=>{if(ev==='SIGNED_IN'&&me&&s?.user?.id===me.id)return;if(['SIGNED_IN','SIGNED_OUT','INITIAL_SESSION'].includes(ev))setTimeout(load,0)});
 </script>
 </body>
 </html>
