@@ -109,7 +109,7 @@ function noteWrite(u,o,r){
 }
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{global:{fetch:(u,o)=>fetch(u,o).then(r=>{noteWrite(u,o,r);return r})}});
 const R={coach:'Coach',assistant_coach:'Assistant Coach',analyst:'Analyst',player:'Player'},ALL=Object.keys(R);
-const REG=['North America','South America','Europe','Asia Pacific'],COL=['#e07cc0','#7cc0e0','#e0c07c','#9ae07c','#c07ce0','#e07c7c','#7ce0c0','#ece8f0'];
+const REG=['North America','South America','Europe','Asia Pacific','China'],COL=['#e07cc0','#7cc0e0','#e0c07c','#9ae07c','#c07ce0','#e07c7c','#7ce0c0','#ece8f0'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=s=>document.querySelector(s),ico=p=>`<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
 let allScout=[],me=null,teams=[],mem={},allMem=[],profs=[],invs=[],cur=null,view='dash',viewing=false,fm=null,sel=null,mode='in',scr=null,sch=null,pl=null,ros=null,an=null,stra=null,cov=null,sco=null,rost=null,sdirty=false;
