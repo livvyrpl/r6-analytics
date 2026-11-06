@@ -1970,7 +1970,9 @@ const LIB={
 };
 const opCanonSeen=new Map(),opCanon=n=>{const v=opCanonSeen.get(n);if(v!==undefined)return v;const k=opKey(n)==='snake'?'solid snake':opKey(n),o=OPS.find(x=>opKey(x[0])===k),r=o?o[0]:String(n).trim();opCanonSeen.set(n,r);return r};
 // A cell can hold several operators, like "Ace Montagne Maverick"
-const opNames=v=>{const p=String(v||'').split(/[,;\s]+/).filter(Boolean),out=[];for(let i=0;i<p.length;i++){if(norm(p[i])==='solid'&&norm(p[i+1]||'')==='snake'){out.push('Solid Snake');i++}else if(norm(p[i])==='unknown'&&/^[(][0-9]+[)]$/.test(p[i+1]||'')){out.push(p[i]+' '+p[i+1]);i++}else out.push(opCanon(p[i]))}return out};
+// N/A marks a player who disconnected. It is stored in the operator slot but never counts as an operator anywhere.
+const isNA=o=>/^n\/a$/i.test(String(o||'').trim()),naCount=v=>String(v||'').split(/[,;\s]+/).filter(isNA).length;
+const opNames=v=>{const p=String(v||'').split(/[,;\s]+/).filter(x=>x&&!isNA(x)),out=[];for(let i=0;i<p.length;i++){if(norm(p[i])==='solid'&&norm(p[i+1]||'')==='snake'){out.push('Solid Snake');i++}else if(norm(p[i])==='unknown'&&/^[(][0-9]+[)]$/.test(p[i+1]||'')){out.push(p[i]+' '+p[i+1]);i++}else out.push(opCanon(p[i]))}return out};
 const idSlug=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');
 const matchId=r=>[String(r.match_date).replace(/-/g,''),...[idSlug(r.team),idSlug(r.opponent)].sort(),idSlug(r.map),idSlug(r.phase)].filter(Boolean).join('-');
 const vetoMaps=r=>[1,2,3,4].flatMap(i=>[r['t1_ban_'+i],r['t2_ban_'+i]]).concat(r.t1_pick,r.t2_pick,r.t1_pick_2,r.t2_pick_2,r.decider).filter(Boolean);
@@ -2466,9 +2468,9 @@ function dkSel(t){
 }
 // everything in the selection with something missing: one row per game, plus vetoes and rounds that have no game to belong to
 function dkMissing(s){
- const keysOf=n=>{const f=sco.teams.find(x=>scKeys(x).has(norm(n)));return f?scKeys(f):new Set([norm(n)])},used=new Set(),hasOps=x=>[1,2,3,4,5].flatMap(i=>opNames(x.r['operator_'+i])).length;
+ const keysOf=n=>{const f=sco.teams.find(x=>scKeys(x).has(norm(n)));return f?scKeys(f):new Set([norm(n)])},used=new Set(),hasOps=x=>{const m=roundTeams(x.r)[0];return m.ops.length+m.na};
  const vetoGaps=v=>[![1,2,3,4].some(i=>v['t1_ban_'+i])&&'bans by this team',![1,2,3,4].some(i=>v['t2_ban_'+i])&&'bans by the opponent',!v.decider&&'decider'].filter(Boolean);
- const roundGaps=rs=>{const count=(n,l)=>n?`${plural(n,'round')} with ${l}`:'';return[count(rs.filter(x=>!x.side).length,'no side'),count(rs.filter(x=>!x.site).length,'no site'),count(rs.filter(x=>x.res!=='W'&&x.res!=='L').length,'no result'),count(rs.filter(x=>hasOps(x)<5).length,'fewer than 5 operators'),count(rs.filter(x=>opNames(x.r.opponent_operators).length<5).length,'fewer than 5 opponent operators')].filter(Boolean)};
+ const roundGaps=rs=>{const count=(n,l)=>n?`${plural(n,'round')} with ${l}`:'';return[count(rs.filter(x=>!x.side).length,'no side'),count(rs.filter(x=>!x.site).length,'no site'),count(rs.filter(x=>x.res!=='W'&&x.res!=='L').length,'no result'),count(rs.filter(x=>hasOps(x)<5).length,'fewer than 5 operators'),count(rs.filter(x=>{const o=roundTeams(x.r)[1];return o.ops.length+o.na<5}).length,'fewer than 5 opponent operators')].filter(Boolean)};
  const out=s.games.map(x=>{
   const miss=DK_CELLS.filter(c=>!String(x.r[c[0]]??'').trim()).map(c=>c[1]);
   if(!dkVod(x.r))miss.push('VOD link');
@@ -2802,13 +2804,13 @@ const LP_DEAD=/^siege\.gg \d+: answered 404/;
 const GAP_COLS=[['maps','Maps'],['veto','Veto'],['bans','Op bans'],['board','Scoreboard'],['log','Round log'],['ops','Operators'],['vod','VOD'],['src','Sources']];
 // DATA THAT LOOKS WRONG: things that can't happen in a real game, like one team picking the same operator twice in a round
 const opSide=o=>{const x=OPS.find(y=>y[0]===opCanon(o));return x?(x[1]?'attack':'defense'):''};
-const opDup=l=>{const seen=new Set(),out=[];l.forEach(o=>{const k=norm(opCanon(o));if(!k)return;if(seen.has(k)){if(!out.some(y=>norm(opCanon(y))===k))out.push(o)}else seen.add(k)});return out};
+const opDup=l=>{const seen=new Set(),out=[];l.forEach(o=>{if(isNA(o))return;const k=norm(opCanon(o));if(!k)return;if(seen.has(k)){if(!out.some(y=>norm(opCanon(y))===k))out.push(o)}else seen.add(k)});return out};
 const otherSide=s=>s==='attack'?'defense':s==='defense'?'attack':'';
 const opOptions=(v,side)=>{const grp=(lbl,atk)=>`<optgroup label="${lbl}">${OPS.filter(o=>!!o[1]===atk).map(o=>o[0]).sort((a,b)=>a.localeCompare(b)).map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('')}</optgroup>`,known=!v||OPS.some(o=>o[0]===v);return `<option value=""${v?'':' selected'}>None</option>${known?'':`<option selected>${esc(v)}</option>`}${side==='defense'?grp('Defenders',false)+grp('Attackers',true):grp('Attackers',true)+grp('Defenders',false)}`};
-const roundTeams=r=>{const sd=startNorm(r.side);return[{who:r.team,side:sd,ops:[1,2,3,4,5].flatMap(i=>opNames(r['operator_'+i]))},{who:r.opponent,side:otherSide(sd),ops:opNames(r.opponent_operators)}]};
+const roundTeams=r=>{const sd=startNorm(r.side);return[{who:r.team,side:sd,ops:[1,2,3,4,5].flatMap(i=>opNames(r['operator_'+i])),na:[1,2,3,4,5].reduce((n,i)=>n+naCount(r['operator_'+i]),0)},{who:r.opponent,side:otherSide(sd),ops:opNames(r.opponent_operators),na:naCount(r.opponent_operators)}]};
 function roundWrong(r){
  const out=[];
- roundTeams(r).forEach(t=>{const who=t.who||'A team',d=opDup(t.ops);if(d.length)out.push(`${who} has ${d.join(' and ')} twice`);if(t.ops.length>5)out.push(`${who} has ${t.ops.length} operators`);else if(t.ops.length&&t.ops.length<5)out.push(`${who} has only ${t.ops.length} operator${t.ops.length===1?'':'s'}`);
+ roundTeams(r).forEach(t=>{const who=t.who||'A team',d=opDup(t.ops);if(d.length)out.push(`${who} has ${d.join(' and ')} twice`);const all=t.ops.length+(t.na||0);if(all>5)out.push(`${who} has ${all} operators`);else if(t.ops.length&&all<5)out.push(`${who} has only ${t.ops.length} operator${t.ops.length===1?'':'s'}. If a player disconnected, set the empty slot to N/A in the round`);
   const unk=t.ops.filter(o=>/^Unknown \(\d+\)$/.test(o));if(unk.length)out.push(`${who} has an operator the parser does not know: ${unk.join(', ')}`);if(t.side){const bad=t.ops.filter(o=>{const s=opSide(o);return s&&s!==t.side});if(bad.length)out.push(`${who} is on ${t.side} but has ${bad.join(', ')}`)}});
  return out;
 }
@@ -2856,8 +2858,8 @@ function rdHtml(){
  const f=sco.rd,g=sco.m.find(x=>x.id===f.gid),r=f.id?sco.r.find(x=>x.id===f.id):null;
  const o=r||{team:g.team,opponent:g.opponent,round_number:f.next,side:'',site:'',result:'',opponent_operators:''},tm=roundTeams(o),res=normRes(o.result);
  const sites=[...new Set(sco.r.filter(x=>mapCanon(x.map)===mapCanon(g.map)).map(x=>(x.site||'').trim()).filter(Boolean))].sort();
- const team=(t,i)=>{const sk=l=>l.map(o=>norm(opCanon(o))).sort().join(),all=f.stats.filter(p=>sameName(p.team_name,t.who)),ps=all.length&&sk(all.map(p=>repOp(p.operator)))===sk(t.ops)?all:[],slots=ps.length?ps.map(p=>({label:p.player_username,op:repOp(p.operator),pid:p.id})):[0,1,2,3,4].map(j=>({label:'Operator '+(j+1),op:t.ops[j]||''})),d=new Set(opDup(slots.map(x=>x.op)).map(o=>norm(opCanon(o))));
-  return `<fieldset style="border:1px solid var(--bd);border-radius:10px;padding:8px 10px;min-width:0;margin:0"><legend style="font-weight:600;padding:0 4px;overflow-wrap:anywhere">${esc(t.who)}${t.side?' · '+t.side:''}</legend>${slots.map((x,j)=>{const id='rdo'+i+'_'+j,bad=x.op&&d.has(norm(opCanon(x.op)));return `<div class="row" style="gap:8px;padding:2px 0"><label for="${id}" style="margin:0;color:var(--tx);flex:1 1 80px;min-width:0;font-size:13px;overflow-wrap:anywhere">${esc(x.label)}${bad?' <span class="over">twice</span>':''}</label><select id="${id}" class="fi" style="flex:0 1 170px;min-width:0;height:34px;padding:0 6px${bad?';border-color:#ff8a8a':''}" data-rdo="${i}" data-pid="${x.pid||''}" data-was="${esc(x.op)}">${opOptions(x.op,t.side)}</select></div>`}).join('')}</fieldset>`};
+ const team=(t,i)=>{const sk=l=>l.map(o=>norm(opCanon(o))).sort().join(),all=f.stats.filter(p=>sameName(p.team_name,t.who)),ps=all.length&&sk(all.map(p=>repOp(p.operator)))===sk(t.ops)?all:[],na=Array(t.na||0).fill('N/A'),slots=ps.length?[...ps.map(p=>({label:p.player_username,op:repOp(p.operator),pid:p.id})),...Array(Math.max(0,5-ps.length)).fill(0).map((_,j)=>({label:'Player not in the replay',op:na[j]||''}))]:[0,1,2,3,4].map(j=>({label:'Operator '+(j+1),op:[...t.ops,...na][j]||''})),d=new Set(opDup(slots.map(x=>x.op)).map(o=>norm(opCanon(o))));
+  return `<fieldset style="border:1px solid var(--bd);border-radius:10px;padding:8px 10px;min-width:0;margin:0"><legend style="font-weight:600;padding:0 4px;overflow-wrap:anywhere">${esc(t.who)}${t.side?' · '+t.side:''}</legend>${slots.map((x,j)=>{const id='rdo'+i+'_'+j,bad=x.op&&d.has(norm(opCanon(x.op)));return `<div class="row" style="gap:8px;padding:2px 0"><label for="${id}" style="margin:0;color:var(--tx);flex:1 1 80px;min-width:0;font-size:13px;overflow-wrap:anywhere">${esc(x.label)}${bad?' <span class="over">twice</span>':''}</label><select id="${id}" class="fi" style="flex:0 1 170px;min-width:0;height:34px;padding:0 6px${bad?';border-color:#ff8a8a':''}" data-rdo="${i}" data-pid="${x.pid||''}" data-was="${esc(x.op)}">${opOptions(isNA(x.op)?'':x.op,t.side).replace('>None</option>','>None</option><option value="N/A"'+(isNA(x.op)?' selected':'')+'>N/A (player left)</option>')}</select></div>`}).join('')}</fieldset>`};
  const fx=(id,l,inner)=>`<div style="flex:1 1 140px;min-width:0"><label for="${id}">${l}</label>${inner}</div>`;
  return `<div class="row" style="justify-content:space-between;margin-bottom:6px"><h2 class="serif" style="font-size:20px">${r?'Round '+r.round_number:'Add a round'}</h2><button class="no" style="height:28px" data-a="rdclose">Close</button></div>
  <p class="mu" style="margin-bottom:10px;overflow-wrap:anywhere">${esc(g.team)} vs ${esc(g.opponent)}, ${esc(g.map)}, ${esc(fmtD(g.match_date))}</p>
@@ -2878,7 +2880,7 @@ async function rdSave(b,qt){
  if(w.error){b.disabled=false;return say(qt,w.error.code==='23505'?`Round ${n} is already saved for this game`:scErr(w.error))}
  // the player numbers from the replay follow the change
  const sd=startNorm(side),pside=i=>i===0?sd:otherSide(sd);
- for(const [i,l] of [[0,a],[1,c]])for(const x of l){if(!x.pid)continue;const st=f.stats.find(p=>p.id===x.pid),up={};if(x.op&&x.op!==x.was){up.operator=x.op;up.operator_id=''}if(sd&&st&&st.side!==pside(i))up.side=pside(i);if(Object.keys(up).length){const q=await sb.from('player_round_stats').update(up).eq('id',x.pid);if(q.error){b.disabled=false;return say(qt,scErr(q.error))}if(st)Object.assign(st,up)}}
+ for(const [i,l] of [[0,a],[1,c]])for(const x of l){if(!x.pid)continue;const st=f.stats.find(p=>p.id===x.pid),up={};if(x.op&&!isNA(x.op)&&x.op!==x.was){up.operator=x.op;up.operator_id=''}if(sd&&st&&st.side!==pside(i))up.side=pside(i);if(Object.keys(up).length){const q=await sb.from('player_round_stats').update(up).eq('id',x.pid);if(q.error){b.disabled=false;return say(qt,scErr(q.error))}if(st)Object.assign(st,up)}}
  if(r)Object.assign(r,w.data);else sco.r=[...sco.r,w.data];
  if(qt&&r){b.disabled=false;d.querySelectorAll('[data-rdo]').forEach(x=>x.dataset.was=x.value);rdPaint(g);return{}}
  d.close();rdPaint(g);toast(r?`Round ${n} saved`:`Round ${n} added`);
