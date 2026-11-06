@@ -1093,7 +1093,7 @@ async function recRun(){
   const k=recKey(x);if(key!==null&&k!==key&&p.w){p.w.terminate();p.w=null}key=k; // memory only comes back with a fresh parser
   let f=x.file;if(!f){try{f=await x.load()}catch(err){if(a.rp!==p)break;x.res={ok:false,error:err.message||String(err)};tick();if(an===a)recPaint();continue}if(a.rp!==p)break}
   const res=await parseRec(p,f);f=null;if(a.rp!==p||!res)break;
-  x.res=res;tick();if(an===a)recPaint();
+  (res?.players||[]).forEach(p=>['kills','deaths','assists','headshots','score'].forEach(k=>{if(typeof p[k]==='number')p[k]=i32(p[k])}));x.res=res;tick();if(an===a)recPaint();
   await recCheck(a,k);
   const gk=recGroups().find(y=>y.key===k);if(gk&&(gk.files.every(y=>y.res)||gk.files.filter(y=>y.res).length%4===0))recAutoKey(a,k);
  }
@@ -1165,6 +1165,8 @@ async function recSaveAll(){
  const left=an===a?recGroups().filter(g=>g.files.every(x=>x.res)&&recSummary(g).rounds.length&&!an.rex?.[recSummary(g).id]).length:0;
  actEnd(job,left?'warn':'ok',plural(ok,'match').replace('matchs','matches')+' saved'+(left?' · '+left+' still need a team chosen or an operator fixed':''));
 }
+// replays store some numbers unsigned, so a negative one (like a -10 score from a team kill) reads as 4294967286. Turn it back into the negative number.
+const i32=v=>{v=Number(v)||0;return v>2147483647?v-4294967296:v};
 async function recSave(key,b,quiet,auto){
  const a=an,tid=a.tid,g=recGroups().find(x=>x.key===key);if(!g)return;
  const s=recSummary(g),c=recRc(key);if(recDups(s,c,new Set(a.rex[s.id]?.done||[])).length)return toast('Fix the operator listed twice before saving');b.disabled=true;b.textContent='Saving…';
@@ -1173,13 +1175,13 @@ async function recSave(key,b,quiet,auto){
   const game=await recGame(s,c,tid),t1=game.replay_t1_index??0,t2=t1^1,our=game.our_team_index,mid=matchId(game),done=new Set(a.rex[s.id]?.done||[]),fresh=s.rounds.filter(r=>!done.has(r.roundNumber));
   const side=v=>v==='Attack'?'attack':v==='Defense'?'defense':'';
   const rounds=fresh.map(r=>{const ops=i=>r.players.filter(p=>p.teamIndex===i).map(p=>recOp(c,r,p)),mine=ops(t1),row={owner_team_id:tid,match_id:mid,round_date:game.match_date,map:game.map,round_number:r.roundNumber,team:game.team,opponent:game.opponent,side:r.teams[t1]?.role||'',site:r.site||'',result:r.winningTeam===null?'':r.winningTeam===t1?'W':'L',opponent_operators:ops(t2).join(' ')};[0,1,2,3,4].forEach(i=>row['operator_'+(i+1)]=mine[i]||'');return row});
-  const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:recOp(c,r,p),operator_id:recOp(c,r,p)===repOp(p.operator)?p.operatorId||'':'',side:side(p.role),kills:p.kills,deaths:p.deaths,assists:p.assists,headshots:Math.min(p.headshots,p.kills),match_score:p.score,kost_point:repKost(r,p)})));
+  const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:recOp(c,r,p),operator_id:recOp(c,r,p)===repOp(p.operator)?p.operatorId||'':'',side:side(p.role),kills:i32(p.kills),deaths:i32(p.deaths),assists:i32(p.assists),headshots:Math.min(i32(p.headshots),i32(p.kills)),match_score:i32(p.score),kost_point:repKost(r,p)})));
   const w1=await sb.from('scout_rounds').upsert(rounds,{onConflict:'owner_team_id,round_number,dedupe_key',ignoreDuplicates:true});if(w1.error)throw w1.error;
   const w2=await sb.from('player_round_stats').upsert(stats,{onConflict:'owner_team_id,match_id,round_number,player_key',ignoreDuplicates:true});if(w2.error)throw w2.error;
   a.rlib=null;await recCheck(a,key);ddAdd(g.files.filter(x=>x.res?.ok).map(x=>x.driveKey));
   if(sco&&sco.tid===tid){const[m,r]=await Promise.all([allRows(()=>sb.from('scout_matches').select('*').eq('owner_team_id',tid).order('id')),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',tid).order('id'))]);if(!m.error)sco.m=m.data;if(!r.error)sco.r=r.data;if(a.rteams)sco.teams=a.rteams}
   if(an===a)recPaint();if(!quiet||note)toast((auto?`Saved ${s.names.join(' vs ')}, ${s.map}: ${plural(fresh.length,'round')}.`:'Saved '+plural(fresh.length,'round')+'.')+note);
- }catch(e){b.disabled=false;b.textContent='Save';toast(g.label+': '+repErr(e))}
+ }catch(e){b.disabled=false;b.textContent='Save';toast('Could not save '+g.label+': '+repErr(e))}
 }
 // Adds new teams, saves answers as aliases, and fills in a roster that's empty. Safe to repeat.
 async function recApplyTeams(s,c,a){
