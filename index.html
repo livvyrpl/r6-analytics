@@ -175,7 +175,7 @@ function navPlace(){
  if(view==='sc'&&sco)p.s={page:sco.page,form:!!sco.form,kind:sco.page==='lib'?sco.kind:'',tab:sco.page==='opp'?sco.tab:'',oppId:sco.page==='opp'?sco.oppId:'',matchId:sco.page==='match'?sco.matchId:'',gapTeam:sco.page==='gaps'?sco.gapTeam:''};
  if(view==='analyst'&&an)p.s={page:an.page,opp:an.opp||''};
  if(view==='player'&&pl)p.s={page:pl.page,uid:pl.uid,fromRoster:!!pl.fromRoster};
- if(view==='scrims'&&scr)p.s={st:scr.st,id:scr.id,tab:scr.tab||'over',sort:scr.sort||''};
+ if(view==='scrims'&&scr)p.s={st:scr.st,id:scr.id,tab:scr.tab||'over',sort:scr.sort||'',dr:scr.dr||null};
  if(view==='strats'&&stra)p.s={st:stra.st,id:stra.id};
  if(view==='schedule'&&sch)p.s={st:sch.st,forUser:sch.forUser,fromHub:!!sch.fromHub};
  return p;
@@ -199,7 +199,7 @@ async function navGo(p){
  }
  if(p.view==='analyst'){await openAnalyst(s.page||'over');if(an){an.opp=s.opp||null;render()}return}
  if(p.view==='player'){if(!pl||pl.tid!==cur?.id)pl={tid:cur.id,uid:s.uid,names:{},players:[]};else pl.uid=s.uid;view='player';await openPlayer(s.page||'over');pl.fromRoster=s.fromRoster;render();return}
- if(p.view==='scrims'){await A.scrims();if(scr){scr.tab=s.tab||'over';scr.sort=s.sort||''}if(s.st==='detail'&&s.id)await A.sopen({id:s.id});else render();return}
+ if(p.view==='scrims'){await A.scrims();if(scr){scr.tab=s.tab||'over';scr.sort=s.sort||'';scr.dr=s.dr||null}if(s.st==='detail'&&s.id)await A.sopen({id:s.id});else render();return}
  if(p.view==='strats'){await openStrats();if(s.st==='view'&&s.id)A.stview({id:s.id});return}
  if(p.view==='schedule')return openSch(s.forUser||'',s.fromHub);
  if(p.view==='roster')return openRoster();
@@ -274,7 +274,7 @@ function scrimList(){
  return scrHead()+body;
 }
 function scrOverTab(){
- const played=scr.list.filter(s=>s.scrim_date<=today()),maps=played.flatMap(s=>scrRows(s).map(r=>({s,r,map:mapCanon(r.map),res:scrMapRes(r),side:sideOf(r)}))).filter(x=>x.res||x.side);
+ const r=scr.dr||{},past=scr.list.filter(s=>s.scrim_date<=today()),played=past.filter(s=>(!r.from||s.scrim_date>=r.from)&&(!r.to||s.scrim_date<=r.to)),maps=played.flatMap(s=>scrRows(s).map(r=>({s,r,map:mapCanon(r.map),res:scrMapRes(r),side:sideOf(r)}))).filter(x=>x.res||x.side);
  const t=tally(maps.map(x=>x.res)),sd={aw:0,al:0,dw:0,dl:0};maps.forEach(x=>{if(x.side)['aw','al','dw','dl'].forEach(k=>sd[k]+=x.side[k])});
  const byMap=new Map();maps.forEach(x=>{if(!x.res)return;const e=byMap.get(x.map)||{name:x.map,W:0,L:0,D:0,g:0};e[x.res]++;e.g++;byMap.set(x.map,e)});
  const ranked=[...byMap.values()].map(e=>({...e,rate:Math.round(e.W/e.g*100)})).sort((a,b)=>b.rate-a.rate||b.g-a.g||a.name.localeCompare(b.name));
@@ -282,7 +282,9 @@ function scrOverTab(){
  const byOpp=new Map();played.forEach(s=>{const name=scrTeam(s.opponent)?.name||s.opponent.trim(),e=byOpp.get(norm(name))||{name,s:0,W:0,L:0,D:0};e.s++;scrRows(s).forEach(r=>{const x=scrMapRes(r);if(x)e[x]++});byOpp.set(norm(name),e)});
  const opps=[...byOpp.values()].sort((a,b)=>(b.W+b.L+b.D)-(a.W+a.L+a.D)||b.s-a.s||a.name.localeCompare(b.name));
  const form=maps.filter(x=>x.res).slice(0,10).reverse();
- return `<div class="tiles" style="margin-bottom:8px;grid-template-columns:repeat(auto-fit,minmax(min(46%,120px),1fr))">${anTile('Scrims played',String(played.length))}${anTile('Map win rate',t.rate)}${anTile('Map record',t.n?t.rec:'—')}${anTile('Attack WR',pctS(sd.aw,sd.al))}${anTile('Defense WR',pctS(sd.dw,sd.dl))}</div>
+ const bar=drBar(played.length,past.length,{r,a:'scrdr',word:'scrim',p:'scdr'});
+ if(!played.length)return bar+none2('No scrims in this date range.');
+ return `${bar}<div class="tiles" style="margin-bottom:8px;grid-template-columns:repeat(auto-fit,minmax(min(46%,120px),1fr))">${anTile('Scrims played',String(played.length))}${anTile('Map win rate',t.rate)}${anTile('Map record',t.n?t.rec:'—')}${anTile('Attack WR',pctS(sd.aw,sd.al))}${anTile('Defense WR',pctS(sd.dw,sd.dl))}</div>
  <div class="mas">
  <section class="cd" style="gap:6px"><h2 style="font-size:14px;font-weight:600">Recent form</h2>${form.length?`<div class="row wrap" style="gap:4px" aria-label="Recent maps, oldest to newest">${form.map(x=>`<span class="fm f${x.res}" title="${esc(fmtD(x.s.scrim_date))} vs ${esc(x.s.opponent)}, ${esc(x.map)}">${x.res}</span>`).join('')}</div>`:'<p class="mu">No results yet.</p>'}</section>
  <section class="cd" style="gap:4px"><h2 style="font-size:14px;font-weight:600">Map win rates</h2>${ranked.length?ranked.map(e=>`<div class="mbar"><span style="overflow-wrap:anywhere">${esc(e.name)}</span><span><i style="width:${e.rate}%"></i></span><span class="mu" style="font-variant-numeric:tabular-nums">${e.rate}% · ${e.W}-${e.L}${e.D?'-'+e.D:''}</span></div>`).join(''):'<p class="mu">No map scores yet.</p>'}</section>
@@ -1549,10 +1551,10 @@ function oppB2(t){
 const DR_TABS=new Set(['over','maps','ranks','ops']),DR_PRE=[['','All time'],['30','Last 30 days'],['90','Last 3 months'],['182','Last 6 months'],['365','Last 12 months']];
 const drOn=()=>view==='sc'&&sco?.page==='opp'&&DR_TABS.has(sco.tab||'over')&&!!(sco.dr?.from||sco.dr?.to);
 const inDR=d=>{if(!drOn())return true;if(!d)return false;const{from,to}=sco.dr;return(!from||d>=from)&&(!to||d<=to)};
-function drBar(n,all){
- const r=sco.dr||{},pick=!r.from&&!r.to?'':(DR_PRE.find(p=>p[0]&&!r.to&&r.from===dayShift(today(),-p[0]))||[null])[0];
- const say=drOn()?`Showing ${n} of ${plural(all,'game')}${r.from?' from '+esc(fmtD(r.from)):''}${r.to?' to '+esc(fmtD(r.to)):' to today'}`:`Showing all ${plural(all,'game')}`;
- return `<section class="cd drb"><div class="row wrap" style="gap:6px" role="group" aria-label="Date range">${DR_PRE.map(p=>`<button class="ch" style="height:30px" data-a="sodr" data-k="${p[0]}" aria-pressed="${pick===p[0]}">${p[1]}</button>`).join('')}</div><div class="row wrap" style="gap:10px;align-items:flex-end"><div><label for="sodrf">From</label><input id="sodrf" type="date" class="fi" data-c="sodr" data-k="from" value="${esc(r.from||'')}"></div><div><label for="sodrt">To</label><input id="sodrt" type="date" class="fi" data-c="sodr" data-k="to" value="${esc(r.to||'')}"></div><span class="mu" style="font-size:12.5px;padding-bottom:8px">${say}</span></div></section>`;
+function drBar(n,all,o={}){
+ const r=o.r||sco.dr||{},a=o.a||'sodr',w=o.word||'game',id=o.p||'sodr',on=!!(r.from||r.to),pick=!r.from&&!r.to?'':(DR_PRE.find(p=>p[0]&&!r.to&&r.from===dayShift(today(),-p[0]))||[null])[0];
+ const say=on?`Showing ${n} of ${plural(all,w)}${r.from?' from '+esc(fmtD(r.from)):''}${r.to?' to '+esc(fmtD(r.to)):' to today'}`:`Showing all ${plural(all,w)}`;
+ return `<section class="cd drb"><div class="row wrap" style="gap:6px" role="group" aria-label="Date range">${DR_PRE.map(p=>`<button class="ch" style="height:30px" data-a="${a}" data-k="${p[0]}" aria-pressed="${pick===p[0]}">${p[1]}</button>`).join('')}</div><div class="row wrap" style="gap:10px;align-items:flex-end"><div><label for="${id}f">From</label><input id="${id}f" type="date" class="fi" data-c="${a}" data-k="from" value="${esc(r.from||'')}"></div><div><label for="${id}t">To</label><input id="${id}t" type="date" class="fi" data-c="${a}" data-k="to" value="${esc(r.to||'')}"></div><span class="mu" style="font-size:12.5px;padding-bottom:8px">${say}</span></div></section>`;
 }
 const none2=m=>`<div class="cd"><p class="mu">${m}</p></div>`;
 function oTabOver(t,rows){
@@ -2546,7 +2548,7 @@ const A={
  sodelp:d=>{const t=sco.teams.find(x=>x.id===d.id);if(staff()&&t.site_team_id&&t.site_team_id!==cur.id&&teams.some(x=>x.id===t.site_team_id))return A.tdel({id:t.site_team_id});askDel('Delete this team?',t.name+' is removed from your opponents. Imported matches, rounds and vetoes stay in your libraries.','sodelyes',t.id)},
  rdedit:d=>rdOpen(d.id),rdadd:()=>rdOpen(null),rdsave:(d,b)=>rdSave(b),rddel:(d,b)=>rdDel(b),rdclose:async()=>{await autoFlush();$('#dlg').close()},
  rdscore:async(d,b)=>{const g=sco.m.find(x=>x.id===sco.matchId),t=g&&roundTally(g);if(!t)return;b.disabled=true;const row={round_score:t.w+'-'+t.l,total_rounds:t.w+t.l,result:t.w>t.l?'W':t.w<t.l?'L':'D',check_status:'',check_notes:''};const r=await sb.from('scout_matches').update(row).eq('id',g.id).select().single();if(r.error){b.disabled=false;return toast(scErr(r.error))}Object.assign(g,r.data);sdirty=false;render();toast('Score set to '+row.round_score)},
- scrf:d=>{scr.f=d.k;render()},scrtab:d=>{scr.tab=d.t;scr.st='list';scr.id=null;render()},vbsort:d=>{const o=sco.vbs||{k:'b0',d:-1};sco.vbs=o.k===d.k?{k:d.k,d:-o.d}:{k:d.k,d:d.k==='name'?1:-1};const y=window.scrollY;render();window.scrollTo?.(0,y)},vodclose:()=>$('#vodd')?.close(),simp:()=>simpOpen(),simpback:()=>{scr.st='list';scr.imp=null;render()},simpgo:()=>simpGo(),
+ scrf:d=>{scr.f=d.k;render()},scrdr:d=>{const n=+d.k;scr.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},scrtab:d=>{scr.tab=d.t;scr.st='list';scr.id=null;render()},vbsort:d=>{const o=sco.vbs||{k:'b0',d:-1};sco.vbs=o.k===d.k?{k:d.k,d:-o.d}:{k:d.k,d:d.k==='name'?1:-1};const y=window.scrollY;render();window.scrollTo?.(0,y)},vodclose:()=>$('#vodd')?.close(),simp:()=>simpOpen(),simpback:()=>{scr.st='list';scr.imp=null;render()},simpgo:()=>simpGo(),
  sodr:d=>{const n=+d.k;sco.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},
  sotab:d=>{sco.plr=null;sdirty=false;sco.tab=d.t;sco.oppMap='';sco.oppF='';render()},
  soadd:d=>{sco.form={name:d.n||''};render()},
@@ -2666,7 +2668,8 @@ document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='dkout'
  if(c==='lpev'||c==='lpteam'){const set=c==='lpev'?sco.lp.on:sco.lp.tOn;e.target.checked?set.add(e.target.dataset.id):set.delete(e.target.dataset.id);render()}
  if(c==='lpopt'){sco.lp[e.target.dataset.id]=e.target.checked}
  if(c==='recop'){const cc=recRc(e.target.dataset.k);(cc.ops=cc.ops||{})[e.target.dataset.r+'|'+norm(e.target.dataset.u)]=e.target.value;recPaint();recAutoAll()}
- if(c==='sodr'){const r=sco.dr={...(sco.dr||{}),[e.target.dataset.k]:e.target.value};if(r.from&&r.to&&r.from>r.to)[r.from,r.to]=[r.to,r.from];const id=e.target.id;render();document.getElementById(id)?.focus()}
+ if(c==='scrdr'){const r=scr.dr={...(scr.dr||{}),[e.target.dataset.k]:e.target.value};if(r.from&&r.to&&r.from>r.to)[r.from,r.to]=[r.to,r.from];const id=e.target.id;render();document.getElementById(id)?.focus()}
+if(c==='sodr'){const r=sco.dr={...(sco.dr||{}),[e.target.dataset.k]:e.target.value};if(r.from&&r.to&&r.from>r.to)[r.from,r.to]=[r.to,r.from];const id=e.target.id;render();document.getElementById(id)?.focus()}
  if(c==='sfo'){const w=$('#sfonw');if(w)w.hidden=e.target.value!=='__new';if(e.target.value==='__new')$('#sfon')?.focus()}
  if(c==='scrsort'){scr.sort=e.target.value;render();document.getElementById('scrsort')?.focus()}
  if(c==='simpf'&&e.target.files[0]){e.target.files[0].text().then(t=>simpRead('',t))}
