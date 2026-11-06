@@ -1519,8 +1519,9 @@ function prepRounds(all){
  const t=prepTeam();if(!t)return[];const k=scKeys(t),{from,to}=prep.dr||{},seen=new Map();
  // The same round can be saved twice, e.g. from a replay as "FIVE FEARS" and from a library import as "Five Fears".
  // Same date, map, round number and opponent is the same round: the copy that was logged, came from a replay or has more filled in is kept.
- const logged=new Set(prep.logs.map(l=>l.scout_round_id)),rep=new Set(prep.m.filter(m=>m.replay_match_id).map(m=>matchId(m)));
- const rich=o=>(logged.has(o.r.id)?100:0)+(rep.has(o.r.match_id)?10:0)+(o.site?2:0)+(o.res?1:0)+o.ops.filter(Boolean).length/10+(o.i===0?.05:0);
+ const logged=new Set(prep.logs.map(l=>l.scout_round_id)),games=new Set(prep.m.map(m=>norm(matchId(m)))),rep=new Set(prep.m.filter(m=>m.replay_match_id).map(m=>norm(matchId(m))));
+ // a copy whose game is still in the library beats one left behind under an old game id
+ const rich=o=>(logged.has(o.r.id)?100:0)+(games.has(norm(o.r.match_id))?50:0)+(rep.has(norm(o.r.match_id))?10:0)+(o.site?2:0)+(o.res?1:0)+o.ops.filter(Boolean).length/10+(o.i===0?.05:0);
  for(const r of prep.r){
   const tm=roundTeams(r),i=tm.findIndex(x=>k.has(norm(x.who)));if(i<0)continue;
   const d=r.round_date||'';if(!all&&((from&&(!d||d<from))||(to&&(!d||d>to))))continue;
