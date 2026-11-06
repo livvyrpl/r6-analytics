@@ -97,9 +97,11 @@ footer{max-width:1180px;margin:0 auto;padding:0 24px 24px;font-size:11.5px;color
 dialog.dkw{width:min(760px,92vw)}dialog.ccw{width:min(1080px,94vw);padding:16px}
 .autost{margin:0;font-size:12px;color:var(--mu);text-align:right}.autost.bad{color:#ff8a8a}
 .vbt .tbl th,.vbt .tbl td{padding:3px 8px;font-size:12.5px}.vbt tbody th{text-align:left;font-weight:600}.vbs{border:0;background:none;color:var(--mu);font:inherit;font-size:12px;font-weight:600;padding:0;cursor:pointer;white-space:nowrap}.vbs.on{color:var(--tx)}.vbs:hover{color:var(--pk)}.vbk{background:rgba(var(--pk-rgb),.07)}
-#vodp{position:fixed;top:10px;right:12px;width:var(--vodw,min(44vw,760px));z-index:9;background:var(--cd);border:1px solid var(--bd2);border-radius:12px;padding:8px;box-shadow:0 10px 32px rgba(0,0,0,.55)}.vodf{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:8px;background:#000}.vodsz [aria-pressed=true]{border-color:var(--pk);color:var(--pk)}
+#vodp{position:fixed;top:10px;right:12px;width:var(--vodw,min(44vw,760px));max-height:calc(100vh - 20px);overflow-y:auto;z-index:9;background:var(--cd);border:1px solid var(--bd2);border-radius:12px;padding:8px;box-shadow:0 10px 32px rgba(0,0,0,.55)}.vodf{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:8px;background:#000}.vodsz [aria-pressed=true]{border-color:var(--pk);color:var(--pk)}
 body.vodon{padding-right:calc(var(--vodw,min(44vw,760px)) + 24px)}body.vodon #toast,body.vodon #upd{right:calc(var(--vodw,min(44vw,760px)) + 36px)}
 @media(max-width:900px){#vodp{top:auto;bottom:0;left:0;right:0;width:auto;border-radius:12px 12px 0 0}.vodsz{display:none!important}body.vodon{padding-right:0;padding-bottom:calc(56.25vw + 52px)}body.vodon #toast,body.vodon #upd{right:16px;bottom:calc(56.25vw + 64px)}}
+.vodn{display:flex;flex-direction:column;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--bd)}.vnl{display:flex;flex-direction:column;gap:2px;max-height:30vh;overflow-y:auto}.vni{display:flex;gap:8px;align-items:flex-start;padding:3px 0}.vts{flex:none;min-width:52px;height:22px;padding:0 6px;border-radius:6px;border:1px solid var(--bd2);background:none;color:var(--pk);font:inherit;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}.vts:hover{border-color:var(--pk)}.vnf{display:flex;flex-direction:column;gap:6px}.vnp{display:inline-flex;align-items:center;gap:4px;margin:0;padding:2px 8px;border:1px solid var(--bd2);border-radius:999px;font-size:12px;color:var(--tx);cursor:pointer}.vnp:has(input:checked){border-color:var(--pk);color:var(--pk)}
+@media(max-width:900px){body.vodon{padding-bottom:calc(56.25vw + 52px)}#vodp{max-height:70vh}}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -314,12 +316,12 @@ function scrimDetail(){
  const s=curScrim();if(!s)return scrimList();
  const can=canEditS(),t=scrTeam(s.opponent),res=scrRes(s),mr=scr.mr||[];
  const ops=(l,lab)=>l&&l.length?`<div><span class="mu" style="font-size:12px">${lab}</span><div class="row wrap" style="gap:4px 10px">${l.map(o=>`<span class="opr" style="gap:5px;font-size:13px">${opIcon(o)}${esc(o)}</span>`).join('')}</div></div>`:`<div><span class="mu" style="font-size:12px">${lab}</span><div class="mu" style="font-size:13px">—</div></div>`;
- const card=m=>{const o=mr.find(x=>norm(x.map)===norm(m)),r=o&&scrMapRes(o),sd=o&&sideOf(o),vods=[o?.vod_link,o?.vod_link_2].filter(v=>/^https?:\/\//i.test(v||''));
+ const card=m=>{const o=mr.find(x=>norm(x.map)===norm(m)),r=o&&scrMapRes(o),sd=o&&sideOf(o),vods=[[o?.vod_link,1],[o?.vod_link_2,2]].filter(x=>/^https?:\/\//i.test(x[0]||''));
   return `<section class="cd omap" style="gap:8px"><figure style="margin:0">${mapPhoto(m,'w')}<figcaption>${esc(m)}</figcaption></figure>
   <div class="row wrap" style="justify-content:center;gap:10px"><span style="font-size:24px;font-weight:700;font-variant-numeric:tabular-nums">${esc(o?.score||'No score')}</span>${scrFm(r)}</div>
   <div class="row wrap mu" style="justify-content:center;gap:4px 14px;font-size:13px"><span>Split ${esc(o?.split||'—')}</span><span>Started on ${o?.started_on?esc(o.started_on):'—'}</span>${sd?`<span>Attack ${sd.aw}-${sd.al}</span><span>Defense ${sd.dw}-${sd.dl}</span>`:''}</div>
   <div class="o2"><div style="display:flex;flex-direction:column;gap:6px"><span class="lb" style="margin:0">Our bans</span>${ops(o?.our_atk_bans,'Attack')}${ops(o?.our_def_bans,'Defense')}</div><div style="display:flex;flex-direction:column;gap:6px"><span class="lb" style="margin:0">Their bans</span>${ops(o?.their_atk_bans,'Attack')}${ops(o?.their_def_bans,'Defense')}</div></div>
-  ${vods.length?`<div class="row" style="gap:6px;justify-content:center">${vods.map((v,i)=>`<a class="vod" href="${esc(v)}" target="_blank" rel="noopener noreferrer" data-t="${esc(m+' vs '+s.opponent+', '+fmtD(s.scrim_date)+(vods.length>1?' (VOD '+(i+1)+')':''))}">${vods.length>1?'VOD '+(i+1):'VOD'}</a>`).join('')}</div>`:''}</section>`};
+  ${vods.length?`<div class="row" style="gap:6px;justify-content:center">${vods.map(([v,i])=>`<a class="vod" href="${esc(v)}" target="_blank" rel="noopener noreferrer" data-sid="${s.id}" data-map="${esc(m)}" data-vi="${i}" data-t="${esc(m+' vs '+s.opponent+', '+fmtD(s.scrim_date)+(vods.length>1?' (VOD '+i+')':''))}">${vods.length>1?'VOD '+i:'VOD'}</a>`).join('')}</div>${vods.map(([,i])=>vnCardList(s,m,i)).join('')}`:''}</section>`};
  const pn=scr.people?scr.people.filter(p=>(scr.notes[p.id]||'').trim()):[];
  return `<div class="row wrap" style="margin-bottom:12px;gap:12px">${t?tile(t,52):''}<div style="flex:1 1 240px;min-width:0"><h1 class="serif" style="font-size:24px;overflow-wrap:anywhere">vs ${esc(t?.name||s.opponent)}</h1><p class="mu">${esc(fmtD(s.scrim_date))}${s.maps.length?' · '+plural(s.maps.length,'map'):''}${s.score?' · '+esc(s.score):''} ${scrFm(res)}</p></div><div class="row wrap" style="gap:8px"><button class="no" data-a="sback">Back to scrims</button>${can?'<button class="go" data-a="sedit">Edit</button><button class="no" data-a="sdel">Delete</button>':''}</div></div>
  <div id="sgaps">${scrGapBox(s)}</div>
@@ -348,6 +350,7 @@ async function fetchScrims(){
  const tid=scr.tid,r=await sb.from('scrims').select('*').eq('team_id',tid).order('scrim_date',{ascending:false}).order('created_at',{ascending:false});
  if(scr?.tid!==tid)return;
  const tm=await sb.from('scout_teams').select('*').eq('owner_team_id',tid);if(scr?.tid!==tid)return;scr.teams=tm.data||[];
+ const[vn,ro]=await Promise.all([allRows(()=>sb.from('scrim_vod_notes').select('*').eq('team_id',tid).order('id')),sb.from('team_roster').select('id,name,linked_user_id').eq('team_id',tid)]);if(scr?.tid!==tid)return;scr.vn=vn.error?null:vn.data;scr.roster=(ro.data||[]).sort((a,b)=>a.name.localeCompare(b.name));
  const mr=await allRows(()=>sb.from('scrim_map_results').select('*').eq('team_id',tid).order('scrim_id').order('map'));if(scr?.tid!==tid)return;scr.allMr=mr.error?null:mr.data;
  scr.err=r.error?sErr(r.error):'';scr.list=r.data||[];
 }
@@ -409,6 +412,8 @@ function autoRun(f){
 async function autoFlush(){for(const f of document.querySelectorAll('[data-auto]'))if(f._t||f._p)await autoRun(f)}
 const autoPending=()=>[...document.querySelectorAll('[data-auto]')].some(x=>x._t||x._p);
 document.addEventListener('paste',e=>{if(e.target.id!=='simpx')return;const html=e.clipboardData?.getData('text/html')||'',text=e.clipboardData?.getData('text/plain')||'';e.preventDefault();simpRead(html,text)});
+document.addEventListener('focusin',e=>{if(e.target.id==='vnb'){const t=$('#vnt');if(t&&!t.value&&vodState.yt&&vodState.t!=null)t.value=vodT(vodState.t)}});
+document.addEventListener('keydown',e=>{if(e.target.id==='vnb'&&e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();$('#vodp [data-a=vnadd]')?.click()}});
 document.addEventListener('input',autoKick);document.addEventListener('change',autoKick);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autoFlush()});
 async function plSave(b,qt){plSync();const rows=sco.plr.rows.filter(x=>x.name.trim()).map(x=>({...x,name:x.name.trim()}));b.disabled=true;const r=await sb.from('scout_teams').update({roster:rows,players:rows.map(x=>x.name)}).eq('id',sco.oppId).select().single();b.disabled=false;if(r.error)return say(qt,scErr(r.error));Object.assign(sco.teams.find(t=>t.id===sco.oppId),r.data);if(qt)return{};sdirty=false;sco.plr=null;render();toast('Roster saved')}
@@ -638,14 +643,15 @@ async function openPlayer(page){
 }
 async function loadPlayer(){
  const s=pl,uid=s.uid,tid=s.tid,ids=[...new Set([...allMem.filter(m=>m.team_id===tid&&m.roles.includes('player')).map(m=>m.user_id),...(uid?[uid]:[])])];
- const none={data:[]},[p,g,n,e,r,sn,lk]=await Promise.all([
+ const none={data:[]},[p,g,n,e,r,sn,lk,vn]=await Promise.all([
   ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none,
   uid?sb.from('journal_goals').select('*').eq('team_id',tid).eq('user_id',uid):none,
   uid?sb.from('journal_notes').select('*').eq('team_id',tid).eq('user_id',uid):none,
   sb.from('schedule_entries').select('*').eq('team_id',tid),
   uid?statRows(tid):none,
   uid&&canPick()?sb.from('scrim_player_notes').select('scrim_id,notes').eq('team_id',tid).eq('user_id',uid):none,
-  uid?sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid):none]);
+  uid?sb.from('team_roster').select('id,name,linked_user_id').eq('team_id',tid):none,
+  uid?sb.from('scrim_vod_notes').select('*').eq('team_id',tid):none]);
  const sc=(sn.data||[]).length?await sb.from('scrims').select('id,opponent,scrim_date').in('id',sn.data.map(x=>x.scrim_id)):none;
  const by=[...new Set((g.data||[]).map(x=>x.assigned_by).filter(Boolean))],bp=by.length?await sb.from('profiles').select('id,display_name').in('id',by):none;
  if(pl!==s||s.uid!==uid)return;
@@ -654,6 +660,7 @@ async function loadPlayer(){
  s.players=ids.filter(i=>allMem.some(m=>m.team_id===tid&&m.user_id===i&&m.roles.includes('player'))).map(i=>({id:i,name:s.names[i]||'Player'})).sort((a,b)=>a.name.localeCompare(b.name));
  const bad=[g,n,r,e,sn,sc].find(x=>x.error);
  s.snotes=(sn.data||[]).map(x=>({...((sc.data||[]).find(c=>c.id===x.scrim_id)||{opponent:'Unknown',scrim_date:'2000-01-01'}),...x})).sort((a,b)=>b.scrim_date.localeCompare(a.scrim_date));
+ {const mine=(lk.data||[]).filter(x=>x.linked_user_id===uid).map(x=>x.id);s.vnotes=(vn.data||[]).filter(x=>(x.roster_ids||[]).some(id=>mine.includes(id))).sort((a,b)=>String(b.scrim_date||'').localeCompare(String(a.scrim_date||''))||a.at_seconds-b.at_seconds)}
  s.err=bad?pErr(bad.error):'';s.goals=g.data||[];s.notes=n.data||[];s.events=e.data||[];s.linked=(lk.data||[]).filter(x=>x.linked_user_id===uid).map(x=>x.name);{const nk=new Set(s.linked.map(norm));s.stats=(r.data||[]).filter(x=>x.user_id===uid||nk.has(norm(x.player_username)))}
 }
 function playerV(){
@@ -697,7 +704,7 @@ function goalCard(g,own){
 }
 function journalB(own){
  const gs=[...pl.goals].sort(goalSort);
- return `${(own||canPick())&&!pl.form?'<div class="row" style="justify-content:flex-end;margin-bottom:12px"><button class="go" data-a="gform">Add goal</button></div>':''}${(own||canPick())&&pl.form?goalForm():''}
+ return `${journalVodB()}${(own||canPick())&&!pl.form?'<div class="row" style="justify-content:flex-end;margin-bottom:12px"><button class="go" data-a="gform">Add goal</button></div>':''}${(own||canPick())&&pl.form?goalForm():''}
  ${gs.length?`<div style="display:flex;flex-direction:column;gap:12px">${gs.map(g=>goalCard(g,own)).join('')}</div>`:`<div class="cd"><p class="mu">${own?'No goals yet. Add your first one.':'No goals yet.'}</p></div>`}`;
 }
 function statsB(){
@@ -1615,26 +1622,72 @@ function vetoBanB(k,vs,name){
 }
 // VODs from YouTube and Twitch play right here; other links open in a new tab
 const vodSecs=t=>{if(!t)return 0;if(/^\d+$/.test(t))return+t;const m=/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/.exec(t);return m?(+m[1]||0)*3600+(+m[2]||0)*60+(+m[3]||0):0};
-function vodEmbed(u){
+function vodEmbed(u,at){
  try{const x=new URL(u),h=x.hostname.replace(/^(www|m)\./,''),t=x.searchParams.get('t')||x.searchParams.get('start')||'';let id='';
   if(h==='youtu.be')id=x.pathname.slice(1).split('/')[0];
   else if(h==='youtube.com'||h==='youtube-nocookie.com'){if(x.pathname==='/watch')id=x.searchParams.get('v')||'';else{const m=/^\/(embed|shorts|live|v)\/([\w-]+)/.exec(x.pathname);if(m)id=m[2]}}
-  if(id&&/^[\w-]{6,20}$/.test(id)){const s=vodSecs(t);return{src:`https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0${s?'&start='+s:''}`,site:'YouTube'}}
-  if(h==='twitch.tv'){const m=/^\/videos\/(\d+)/.exec(x.pathname);if(m)return{src:`https://player.twitch.tv/?video=v${m[1]}&parent=${encodeURIComponent(location.hostname)}&autoplay=true${t?'&time='+encodeURIComponent(t):''}`,site:'Twitch'}}
+  if(id&&/^[\w-]{6,20}$/.test(id)){const s=at!=null?Math.floor(at):vodSecs(t);return{src:`https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0${s?'&start='+s:''}&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`,site:'YouTube'}}
+  if(h==='twitch.tv'){const m=/^\/videos\/(\d+)/.exec(x.pathname);if(m)return{src:`https://player.twitch.tv/?video=v${m[1]}&parent=${encodeURIComponent(location.hostname)}&autoplay=true${at!=null?`&time=${Math.floor(at/3600)}h${Math.floor(at%3600/60)}m${Math.floor(at%60)}s`:t?'&time='+encodeURIComponent(t):''}`,site:'Twitch'}}
  }catch{}
  return null;
 }
 const VOD_W=[['s','min(32vw,520px)'],['m','min(44vw,760px)'],['l','min(60vw,1040px)']];
 const vodSize=k=>{const w=(VOD_W.find(x=>x[0]===k)||VOD_W[1]);document.documentElement.style.setProperty('--vodw',w[1]);try{localStorage.setItem('vodw',w[0])}catch{}const p=$('#vodp');if(p)p.dataset.size=w[0]};
-function vodOpen(url,title){
- const v=vodEmbed(url);if(!v)return false;
+function vodOpen(url,title,ctx={}){
+ const v=vodEmbed(url,ctx.at);if(!v)return false;
+ if($('#vodp')&&vodState.ctx?.url===url&&ctx.at!=null){vodSeek(ctx.at);return true}
+ vodState.ctx={...ctx,url};vodState.yt=v.site==='YouTube';vodState.t=ctx.at??null;
  let p=$('#vodp');if(!p){p=document.createElement('aside');p.id='vodp';p.setAttribute('aria-label','Video player');document.body.append(p);let k='m';try{k=localStorage.getItem('vodw')||'m'}catch{}vodSize(k)}
  const sz=p.dataset.size||'m';
- p.innerHTML=`<div class="row" style="gap:6px;margin-bottom:6px"><b style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(title||'VOD')}">${esc(title||'VOD')}</b><span class="row vodsz" style="gap:2px" role="group" aria-label="Player size">${VOD_W.map(x=>`<button class="actx" data-a="vodsize" data-k="${x[0]}" aria-pressed="${sz===x[0]}" aria-label="${{s:'Small',m:'Medium',l:'Large'}[x[0]]} player">${x[0].toUpperCase()}</button>`).join('')}</span><a class="actx" style="display:inline-flex;align-items:center;text-decoration:none" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open on ${v.site}</a><button class="actx" data-a="vodclose" aria-label="Close the video">✕</button></div><iframe class="vodf" src="${esc(v.src)}" title="${esc(title||'VOD')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+ p.innerHTML=`<div class="row" style="gap:6px;margin-bottom:6px"><b style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(title||'VOD')}">${esc(title||'VOD')}</b><span class="row vodsz" style="gap:2px" role="group" aria-label="Player size">${VOD_W.map(x=>`<button class="actx" data-a="vodsize" data-k="${x[0]}" aria-pressed="${sz===x[0]}" aria-label="${{s:'Small',m:'Medium',l:'Large'}[x[0]]} player">${x[0].toUpperCase()}</button>`).join('')}</span><a class="actx" style="display:inline-flex;align-items:center;text-decoration:none" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open on ${v.site}</a><button class="actx" data-a="vodclose" aria-label="Close the video">✕</button></div><iframe class="vodf" src="${esc(v.src)}" title="${esc(title||'VOD')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><div class="vodnw">${vodNotesB()}</div>`;
+ const fr=p.querySelector('iframe');fr.addEventListener('load',()=>fr.contentWindow?.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*'));
  document.body.classList.add('vodon');return true;
 }
-function vodClose(){const p=$('#vodp');if(p)p.remove();document.body.classList.remove('vodon')}
-document.addEventListener('click',e=>{const a=e.target.closest?.('a.vod');if(!a||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button)return;if(vodOpen(a.href,a.dataset.t||a.getAttribute('aria-label')||a.textContent.trim()))e.preventDefault()},true);
+function vodClose(){vodState.ctx=null;const p=$('#vodp');if(p)p.remove();document.body.classList.remove('vodon')}
+document.addEventListener('click',e=>{const a=e.target.closest?.('a.vod');if(!a||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button)return;if(vodOpen(a.href,a.dataset.t||a.getAttribute('aria-label')||a.textContent.trim(),{sid:a.dataset.sid||'',map:a.dataset.map||'',vi:+a.dataset.vi||1,at:a.dataset.at!=null?+a.dataset.at:null}))e.preventDefault()},true);
+// TIMESTAMP NOTES on a scrim VOD. The player beside the page lists them; a time jumps the video there.
+const vodT=n=>{n=Math.max(0,Math.floor(n||0));const h=Math.floor(n/3600),m=Math.floor(n%3600/60),s=n%60;return(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s).padStart(2,'0')};
+const vodParseT=v=>{v=String(v||'').trim();if(!v)return null;if(/^\d+$/.test(v))return+v;const p=v.split(':');if(p.length<2||p.length>3||p.some(x=>!/^\d+$/.test(x)))return null;return p.reduce((a,x)=>a*60+ +x,0)};
+const vodState={t:null,yt:false};
+window.addEventListener('message',e=>{if(!/^https:\/\/(www\.)?youtube(-nocookie)?\.com$/.test(e.origin))return;let d;try{d=typeof e.data==='string'?JSON.parse(e.data):e.data}catch{return}if(d?.info&&typeof d.info.currentTime==='number')vodState.t=d.info.currentTime});
+function vodSeek(sec){
+ const f=$('#vodp iframe');if(!f)return;
+ if(vodState.yt){const post=o=>f.contentWindow?.postMessage(JSON.stringify(o),'*');post({event:'command',func:'seekTo',args:[sec,true]});post({event:'command',func:'playVideo',args:[]});vodState.t=sec}
+ else{const u=new URL(f.src);u.searchParams.set('time',`${Math.floor(sec/3600)}h${Math.floor(sec%3600/60)}m${sec%60}s`);f.src=u.toString()}
+}
+const vodNotesFor=c=>(scr?.vn||[]).filter(n=>n.scrim_id===c.sid&&norm(n.map)===norm(c.map)&&n.vod===c.vi).sort((a,b)=>a.at_seconds-b.at_seconds);
+const rosterNames=ids=>(ids||[]).map(id=>(scr?.roster||[]).find(r=>r.id===id)?.name).filter(Boolean);
+function vodNotesB(){
+ const c=vodState.ctx;if(!c?.sid||!scr||scr.tid!==cur?.id||!canEditS())return '';
+ if(!scr.vn)return `<div class="vodn"><p class="mu" style="font-size:12.5px">Timestamp notes are not set up yet. Paste stage21.sql into the Supabase SQL Editor and run it.</p></div>`;
+ const l=vodNotesFor(c),ro=scr.roster||[];
+ return `<div class="vodn"><b style="font-size:13px">Timestamp notes${l.length?' ('+l.length+')':''}</b>
+ <div class="vnl">${l.map(n=>`<div class="vni"><button type="button" class="vts" data-a="vodseek" data-s="${n.at_seconds}" aria-label="Jump to ${vodT(n.at_seconds)}">${vodT(n.at_seconds)}</button><div style="flex:1;min-width:0"><div style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px">${esc(n.body)}</div>${n.roster_ids?.length?`<div class="mu" style="font-size:11.5px">For ${esc(rosterNames(n.roster_ids).join(', ')||'a removed player')}</div>`:''}</div><button type="button" class="actx" data-a="vndel" data-id="${n.id}" aria-label="Delete the note at ${vodT(n.at_seconds)}">✕</button></div>`).join('')||'<p class="mu" style="font-size:12.5px">No notes yet. Pause on a moment and write what happened.</p>'}</div>
+ <div class="vnf"><div class="row" style="gap:6px"><label for="vnt" style="margin:0;font-size:12px">Time</label><input id="vnt" class="fi" style="width:86px;height:30px;padding:0 6px" placeholder="12:34" inputmode="numeric"><button type="button" class="actx" data-a="vnnow"${vodState.yt?'':' hidden'}>Use current time</button></div>
+ <textarea id="vnb" class="fi" style="min-height:52px;padding:6px 8px;font-size:13px" maxlength="4000" placeholder="What happened? (Ctrl+Enter to add)" aria-label="Note"></textarea>
+ ${ro.length?`<div class="row wrap" style="gap:4px" role="group" aria-label="Players this note is for">${ro.map(r=>`<label class="vnp"><input type="checkbox" data-vr="${r.id}"> ${esc(r.name)}</label>`).join('')}</div>`:'<p class="mu" style="font-size:12px">Add players on the Roster page to tag them in notes.</p>'}
+ <div class="row" style="justify-content:flex-end"><button type="button" class="go" style="height:30px;font-size:13px" data-a="vnadd">Add note</button></div></div></div>`;
+}
+const vodNotesPaint=()=>{const w=$('#vodp .vodnw');if(w)w.innerHTML=vodNotesB()};
+async function vnAdd(b){
+ const c=vodState.ctx,s=scr?.list?.find(x=>x.id===c?.sid);if(!s)return;
+ const body=($('#vnb')?.value||'').trim(),raw=$('#vnt')?.value||'',at=raw.trim()?vodParseT(raw):Math.floor(vodState.t||0);
+ if(at===null)return toast('Enter the time like 12:34 or 1:02:03');if(!body)return toast('Write the note first');
+ const ids=[...document.querySelectorAll('#vodp [data-vr]:checked')].map(x=>x.dataset.vr);
+ b.disabled=true;const r=await sb.from('scrim_vod_notes').insert({scrim_id:s.id,team_id:scr.tid,map:c.map,vod:c.vi,at_seconds:at,body,roster_ids:ids,scrim_date:s.scrim_date,opponent:s.opponent,vod_url:c.url}).select().single();b.disabled=false;
+ if(r.error)return toast(/scrim_vod_notes/.test(r.error.message)?'Timestamp notes are not set up yet. Paste stage21.sql into the Supabase SQL Editor and run it.':sErr(r.error));
+ scr.vn.push(r.data);vodNotesPaint();$('#vnb')?.focus();if(view==='scrims'&&scr.st==='detail'){const k=$('#vnsec-'+CSS.escape(c.map+'|'+c.vi));if(k)k.outerHTML=vnCardList(s,c.map,c.vi)}
+}
+// the notes under a map on the scrim page; a time opens the VOD there
+function vnCardList(s,m,vi){
+ const l=(scr.vn||[]).filter(n=>n.scrim_id===s.id&&norm(n.map)===norm(m)&&n.vod===vi).sort((a,b)=>a.at_seconds-b.at_seconds),o=(scr.mr||[]).find(x=>norm(x.map)===norm(m)),url=vi===2?o?.vod_link_2:o?.vod_link;
+ return `<div id="vnsec-${esc(m+'|'+vi)}">${l.length?`<div class="vnl" style="max-height:none">${l.map(n=>`<div class="vni">${/^https?:/i.test(url||'')?`<a class="vod vts" href="${esc(url)}" target="_blank" rel="noopener noreferrer" data-t="${esc(m+' vs '+s.opponent+', '+fmtD(s.scrim_date))}" data-sid="${s.id}" data-map="${esc(m)}" data-vi="${vi}" data-at="${n.at_seconds}">${vodT(n.at_seconds)}</a>`:`<span class="vts">${vodT(n.at_seconds)}</span>`}<div style="flex:1;min-width:0;text-align:left"><div style="white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px">${esc(n.body)}</div>${n.roster_ids?.length?`<div class="mu" style="font-size:11.5px">For ${esc(rosterNames(n.roster_ids).join(', ')||'a removed player')}</div>`:''}</div></div>`).join('')}</div>`:''}</div>`;
+}
+// a player's journal: the timestamp notes their roster name is tagged in
+function journalVodB(){
+ const l=pl.vnotes||[];if(!l.length)return '';
+ return `<section class="cd" style="gap:8px;margin-bottom:12px"><h2 style="font-size:15px;font-weight:600">Scrim notes from your coaches</h2>${l.map(n=>`<div class="vni" style="border-top:1px solid var(--bd);padding-top:6px">${/^https?:/i.test(n.vod_url||'')?`<a class="vod vts" href="${esc(n.vod_url)}" target="_blank" rel="noopener noreferrer" data-t="${esc(n.map+' vs '+n.opponent+(n.scrim_date?', '+fmtD(n.scrim_date):''))}" data-at="${n.at_seconds}">${vodT(n.at_seconds)}</a>`:`<span class="vts">${vodT(n.at_seconds)}</span>`}<div style="flex:1;min-width:0"><div class="mu" style="font-size:12px">vs ${esc(n.opponent||'Unknown')}${n.scrim_date?' · '+esc(fmtD(n.scrim_date)):''}${n.map?' · '+esc(n.map):''}</div><div style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(n.body)}</div></div></div>`).join('')}</section>`;
+}
 function oTabVet(t){const k=scKeys(t),all=sco.v.filter(r=>k.has(norm(r.team))||k.has(norm(r.opponent))).sort((a,b)=>b.veto_date.localeCompare(a.veto_date));if(!all.length)return none2('No vetoes yet. Use Pull everything, or import a CSV into Vetoes.');const l=sco.oppF?all.filter(r=>vetoMaps(r).some(m=>mapCanon(m)===sco.oppF)):all,cols=LIB.v.cols.filter(c=>c[0]!=='check');return `${vetoBanB(k,all,t.name)}${oppMapPick(all.flatMap(vetoMaps))}${l.length?`<section class="cd" style="gap:6px"><p class="mu">${plural(l.length,'veto').replace('vetos','vetoes')} for ${esc(t.name)}</p>${scTbl(cols.map(c=>teamHead(c[1],esc(t.name))),l.map(r=>{const o=k.has(norm(r.team))?r:vetoFirst(r);return cols.map(c=>libCell(o,c[0]))}))}</section>`:none2('No vetoes with this map.')}`}
 function oTabOps(t,rows){
  const k=scKeys(t),scr=anPlayed().filter(s=>k.has(norm(s.opponent))&&inDR(s.scrim_date)).flatMap(anRows);
@@ -2554,7 +2607,7 @@ const A={
  sodelp:d=>{const t=sco.teams.find(x=>x.id===d.id);if(staff()&&t.site_team_id&&t.site_team_id!==cur.id&&teams.some(x=>x.id===t.site_team_id))return A.tdel({id:t.site_team_id});askDel('Delete this team?',t.name+' is removed from your opponents. Imported matches, rounds and vetoes stay in your libraries.','sodelyes',t.id)},
  rdedit:d=>rdOpen(d.id),rdadd:()=>rdOpen(null),rdsave:(d,b)=>rdSave(b),rddel:(d,b)=>rdDel(b),rdclose:async()=>{await autoFlush();$('#dlg').close()},
  rdscore:async(d,b)=>{const g=sco.m.find(x=>x.id===sco.matchId),t=g&&roundTally(g);if(!t)return;b.disabled=true;const row={round_score:t.w+'-'+t.l,total_rounds:t.w+t.l,result:t.w>t.l?'W':t.w<t.l?'L':'D',check_status:'',check_notes:''};const r=await sb.from('scout_matches').update(row).eq('id',g.id).select().single();if(r.error){b.disabled=false;return toast(scErr(r.error))}Object.assign(g,r.data);sdirty=false;render();toast('Score set to '+row.round_score)},
- scrf:d=>{scr.f=d.k;render()},scrdr:d=>{const n=+d.k;scr.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},scrtab:d=>{scr.tab=d.t;scr.st='list';scr.id=null;render()},vbsort:d=>{const o=sco.vbs||{k:'b0',d:-1};sco.vbs=o.k===d.k?{k:d.k,d:-o.d}:{k:d.k,d:d.k==='name'?1:-1};const y=window.scrollY;render();window.scrollTo?.(0,y)},vodclose:()=>vodClose(),vodsize:d=>vodSize(d.k),simp:()=>simpOpen(),simpback:()=>{scr.st='list';scr.imp=null;render()},simpgo:()=>simpGo(),
+ scrf:d=>{scr.f=d.k;render()},scrdr:d=>{const n=+d.k;scr.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},scrtab:d=>{scr.tab=d.t;scr.st='list';scr.id=null;render()},vbsort:d=>{const o=sco.vbs||{k:'b0',d:-1};sco.vbs=o.k===d.k?{k:d.k,d:-o.d}:{k:d.k,d:d.k==='name'?1:-1};const y=window.scrollY;render();window.scrollTo?.(0,y)},vodclose:()=>vodClose(),vodseek:d=>vodSeek(+d.s),vnnow:()=>{const i=$('#vnt');if(i)i.value=vodT(vodState.t||0)},vnadd:(d,b)=>vnAdd(b),vndel:async(d,b)=>{b.disabled=true;const r=await sb.from('scrim_vod_notes').delete().eq('id',d.id);if(r.error){b.disabled=false;return toast(sErr(r.error))}const n=scr.vn.find(x=>x.id===d.id);scr.vn=scr.vn.filter(x=>x.id!==d.id);vodNotesPaint();const sc=n&&scr.list.find(x=>x.id===n.scrim_id),k=n&&$('#vnsec-'+CSS.escape(n.map+'|'+n.vod));if(k&&sc)k.outerHTML=vnCardList(sc,n.map,n.vod);toast('Note removed')},vodsize:d=>vodSize(d.k),simp:()=>simpOpen(),simpback:()=>{scr.st='list';scr.imp=null;render()},simpgo:()=>simpGo(),
  sodr:d=>{const n=+d.k;sco.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},
  sotab:d=>{sco.plr=null;sdirty=false;sco.tab=d.t;sco.oppMap='';sco.oppF='';render()},
  soadd:d=>{sco.form={name:d.n||''};render()},
