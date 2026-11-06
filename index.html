@@ -236,7 +236,11 @@ function render(){
  if(view==='analyst')drawCharts();
  if(view==='sc')scDraw();
 }
-function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analytics"><form class="cd" data-s="auth">
+// email links come back to this page, wherever the site is hosted
+const siteUrl=()=>location.origin+location.pathname;
+// a confirmation link that has expired or was already used arrives with an error in the address
+const authErr=(()=>{const h=new URLSearchParams(location.hash.slice(1)),q=new URLSearchParams(location.search),c=h.get('error_code')||q.get('error_code');if(!c)return '';try{history.replaceState(null,'',location.pathname)}catch{}return c})();
+function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analytics">${authErr?`<div class="cd" role="alert" style="max-width:400px;border-color:#ff8a8a;gap:6px"><b>That email link did not work</b><p class="mu" style="font-size:13px">${authErr==='otp_expired'?'It has expired or was already used. This can happen if your email app opened the link first.':'It could not be used.'} Enter your email and password below and click Sign in. If your email still needs confirming, a fresh link is sent straight away.</p></div>`:''}<form class="cd" data-s="auth">
  <div><label for="em">Email</label><input id="em" class="fi" type="email" required autocomplete="email"></div>
  <div><label for="pw">Password</label><input id="pw" class="fi" type="password" required minlength="8" autocomplete="${mode==='in'?'current-password':'new-password'}"></div>
  <button class="go" style="height:48px">${mode==='in'?'Sign in':'Create account'}</button>
@@ -2916,8 +2920,11 @@ if(c==='sodr'){const r=sco.dr={...(sco.dr||{}),[e.target.dataset.k]:e.target.val
  if(c==='logo'&&e.target.files[0]){const u=URL.createObjectURL(e.target.files[0]);$('#lp').innerHTML=`<span class="lt" style="--s:56px;border-color:${esc(fm.color)}"><img src="${u}" alt=""></span>`}});
 document.addEventListener('submit',async e=>{if(e.target.dataset.s==='scrim'){e.preventDefault();return saveScrim(e.target)}if(e.target.dataset.s==='sched'){e.preventDefault();return saveSch(e.target)}if(e.target.dataset.s==='goal'){e.preventDefault();return saveGoal(e.target)}if(e.target.dataset.s==='gnote'){e.preventDefault();return saveNote(e.target)}if(e.target.dataset.s==='strat'){e.preventDefault();return saveStrat(e.target)}if(e.target.dataset.s==='sopp'){e.preventDefault();return saveSo(e.target)}if(e.target.dataset.s==='smatch'){e.preventDefault();return saveMatch(e.target)}if(e.target.dataset.s==='srate'){e.preventDefault();return saveRate(e.target)}if(e.target.dataset.s==='lplink'){e.preventDefault();const u=$('#lpu').value.trim();if(!/^https?:\/\/(www\.)?liquipedia\.net\/rainbowsix\/\S+/i.test(u)){sco.lp.url=u;sco.lp.err='Paste a Liquipedia Rainbow Six link, like https://liquipedia.net/rainbowsix/North_America_League/2026/Stage_2';render();return}return lpResolve(u)}if(e.target.dataset.s==='tset'){e.preventDefault();return saveTeamSet(e.target)}if(e.target.dataset.s==='rost'){e.preventDefault();return addRoster(e.target)}if(e.target.dataset.s!=='auth')return;e.preventDefault();
  const email=$('#em').value.trim(),password=$('#pw').value;
- if(mode==='in'){const{error}=await sb.auth.signInWithPassword({email,password});if(error)toast('Wrong email or password')}
- else{const{data,error}=await sb.auth.signUp({email,password});if(error)toast(/invited|Database error/i.test(error.message)?'This email has not been invited yet.':error.message);else if(!data.session)toast('Check your email to confirm, then sign in')}});
+ if(mode==='in'){const{error}=await sb.auth.signInWithPassword({email,password});if(!error)return;
+  // not confirmed yet: send a fresh link that comes back to this page
+  if(/confirm/i.test(error.message)){const r=await sb.auth.resend({type:'signup',email,options:{emailRedirectTo:siteUrl()}});toast(r.error?'Your email is not confirmed yet, and a new link could not be sent: '+r.error.message:'Your email is not confirmed yet. A new confirmation link was sent to '+email+'. Open it within an hour.')}
+  else toast('Wrong email or password')}
+ else{const{data,error}=await sb.auth.signUp({email,password,options:{emailRedirectTo:siteUrl()}});if(error)toast(/invited|Database error/i.test(error.message)?'This email has not been invited yet.':error.message);else if(!data.session)toast('Check your email to confirm, then sign in')}});
 document.addEventListener('dragover',e=>{if(view==='analyst'&&['import','parse'].includes(an?.page)){e.preventDefault();$('#dz')?.classList.toggle('on',!!e.target.closest?.('#dz'))}});
 document.addEventListener('dragleave',e=>{if(view==='analyst'&&!e.relatedTarget)$('#dz')?.classList.remove('on')});
 document.addEventListener('drop',async e=>{if(view!=='analyst'||!['import','parse'].includes(an?.page))return;e.preventDefault();$('#dz')?.classList.remove('on');if(!e.target.closest?.('#dz'))return;
