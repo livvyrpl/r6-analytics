@@ -275,20 +275,11 @@ const HUBS=[['Scouting',['coach','assistant_coach','analyst'],'<circle cx="11" c
 ['Coach Deck',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches','cover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Player Hub','stats, journals, off days for every player','phub'],['Drone Prep','where drones sit at 2:40, per map','dprep'],['Anti-Strat','their strats per site, with VODs, bans and the map','sprep'],['Team Settings','name, region, league, color, logo','tset']]],
 ['Analyst Deck',['analyst','coach','assistant_coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary','aover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Stats','your team and opponents','astats'],['Import','replays and scrims','aimport'],['Parse','drop in .rec replay files','aparse']]],
 ['Player Deck',['player'],'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>',[['Overview','your week at a glance','pover'],['My Schedule','team schedule, add off days','pmysch'],['Journal','goals with deadlines','pjournal'],['My Stats','KOST, K/D, operators','pstats'],['Strats','open slides in the site','strats']]]];
-// For the owner and admins: the team's Liquipedia page, taken from any scouted copy of this team that has its link saved
-const dlp={};
-function dashLp(){
- if(!staff()||!cur)return '';const t=cur,v=dlp[t.id];
- if(v===undefined){dlp[t.id]=null;sb.from('scout_teams').select('source_ids').eq('site_team_id',t.id).then(r=>{dlp[t.id]=(r.data||[]).map(x=>x.source_ids?.liquipedia).find(Boolean)||'';if(view==='dash'&&cur?.id===t.id)render()});return ''}
- if(v===null)return '';
- const a='class="no" style="display:inline-flex;align-items:center;height:32px;padding:0 12px;text-decoration:none" target="_blank" rel="noopener noreferrer"';
- return v?`<a ${a} href="${esc(lpLinkOf(v))}" title="${esc(lpLinkOf(v))}">Liquipedia ↗</a>`:`<a ${a} href="https://liquipedia.net/rainbowsix/index.php?search=${encodeURIComponent(t.name)}" title="No Liquipedia link is saved for this team. Add it on the team in Scouting.">Find on Liquipedia ↗</a>`;
-}
 function dashV(){
  if(!cur)return `<div class="cd"><h2 class="serif" style="font-size:28px">No team yet</h2><p class="mu">${staff()?'Create a team in Admin, or open one from the Teams list.':'Ask the owner to add you to a team.'}</p></div>`;
  const roles=staff()?ALL:(mem[cur.id]||[]);
  const badge=[...(staff()?[me.site_role]:[]),...(mem[cur.id]||[]).map(r=>R[r])].filter(Boolean).map(s=>s[0].toUpperCase()+s.slice(1)).join(', '),seen=new Set();
- return `<div class="row wrap" style="margin-bottom:24px;gap:14px">${tile(cur,48)}<h1 class="serif" style="font-size:24px;color:var(--pk)">${esc(cur.name)}</h1><span class="badge">${esc(badge)}</span>${dashLp()}</div>`+
+ return `<div class="row wrap" style="margin-bottom:24px;gap:14px">${tile(cur,48)}<h1 class="serif" style="font-size:24px;color:var(--pk)">${esc(cur.name)}</h1><span class="badge">${esc(badge)}</span></div>`+
  HUBS.filter(h=>h[1].some(r=>roles.includes(r))).map(h=>`<h2 class="hh">${h[0]}</h2><div class="g">${h[3].filter(c=>!c[2]||(!seen.has(c[2])&&seen.add(c[2]))).map(c=>`<button class="c" data-a="${c[2]||'soon'}"><span class="ic">${ico(h[2])}</span><span><b>${c[0]}</b><small>${c[1]}</small></span>${c[2]?'':'<span class="soon">Soon</span>'}</button>`).join('')}</div>`).join('');
 }
 const hasR=l=>staff()||(cur&&(mem[cur.id]||[]).some(r=>l.includes(r))),canSeeS=()=>hasR(['coach','assistant_coach','analyst']),canEditS=()=>hasR(['coach','assistant_coach','analyst']);
@@ -2574,6 +2565,7 @@ function teamSetV(){
  <form class="cd" data-s="tset" data-dirty data-auto="tset" style="max-width:720px">
  <div><label for="tsn">Team name</label><input id="tsn" class="fi" required maxlength="120" value="${esc(cur.name)}"></div>
  ${aliasField('tsa',cur.aliases)}
+ <div><label for="tslp">Liquipedia link</label><div class="row" style="gap:8px"><input id="tslp" class="fi" style="flex:1;min-width:0" inputmode="url" maxlength="300" value="${esc(lpLinkOf(cur.liquipedia||''))}" placeholder="https://liquipedia.net/rainbowsix/Cloud9">${cur.liquipedia?`<a class="no" style="display:inline-flex;align-items:center;height:40px;padding:0 12px;text-decoration:none;flex:none" href="${esc(lpLinkOf(cur.liquipedia))}" target="_blank" rel="noopener noreferrer">Open ↗</a>`:''}</div><p class="mu" style="font-size:12.5px;margin-top:4px">This team's page on Liquipedia.</p></div>
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="tsr">Region</label><select id="tsr" class="fi">${[...new Set([...REG,...(cur.region?[cur.region]:[])])].map(r=>`<option${cur.region===r?' selected':''}>${esc(r)}</option>`).join('')}</select></div><div style="${half}"><label for="tsl">League</label><input id="tsl" class="fi" maxlength="80" value="${esc(cur.league||'')}"></div></div>
  <div><span class="lb">Team color</span><div class="row wrap" style="gap:10px">${COL.map(x=>`<button type="button" class="sw" data-a="tsw" data-c="${x}" style="background:${x}" aria-label="Color ${x}" aria-pressed="${x===c}"></button>`).join('')}</div><div style="margin-top:12px;max-width:220px"><label for="tsx">Or enter a hex code</label><input id="tsx" class="fi" data-c="tsx" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c)}"></div></div>
  <div><label for="tsf">Logo (PNG or SVG, up to 2 MB)</label><div class="row wrap"><span id="tsp">${tile(cur,56)}</span><input id="tsf" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" data-c="tsf" style="min-width:0;max-width:100%"></div>${cur.logo_url?'<label class="row" style="gap:8px;margin-top:8px;color:var(--tx)"><input id="tsd" type="checkbox">Remove the current logo</label>':''}</div>
@@ -2615,9 +2607,12 @@ async function saveTeamSet(form,qt){
  if(f){const path=crypto.randomUUID()+'.'+(f.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,''),up=await sb.storage.from('logos').upload(path,f,{contentType:f.type});if(up.error){btn.disabled=false;return say(qt,/row-level security/i.test(up.error.message)?'You do not have permission to upload a logo.':up.error.message)}row.logo_url=sb.storage.from('logos').getPublicUrl(path).data.publicUrl}
  else if($('#tsd')?.checked)row.logo_url=null;
  row.aliases=aliasList($('#tsa').value);
+ const lpRaw=$('#tslp').value.trim(),lpName=lpTeamOf(lpRaw);
+ if(lpRaw&&!lpName){btn.disabled=false;return say(qt,'Paste a Liquipedia Rainbow Six team link, like https://liquipedia.net/rainbowsix/Cloud9')}
+ row.liquipedia=lpName||'';
  const r=await sb.from('teams').update(row).eq('id',cur.id).select().single();
  btn.disabled=false;
- if(r.error)return say(qt,r.error.code==='PGRST116'||/row-level security/i.test(r.error.message)?'You do not have permission to make that change. If you are a coach, paste stage8.sql into the Supabase SQL Editor and run it.':r.error.message);
+ if(r.error)return say(qt,/liquipedia/i.test(r.error.message)?'The Liquipedia link needs a database update. Paste stage26.sql into the Supabase SQL Editor and run it.':r.error.code==='PGRST116'||/row-level security/i.test(r.error.message)?'You do not have permission to make that change. If you are a coach, paste stage8.sql into the Supabase SQL Editor and run it.':r.error.message);
  Object.assign(cur,r.data);const t=teams.find(x=>x.id===cur.id);if(t)Object.assign(t,r.data);
  if(qt){if(f)$('#tsf').value='';applyAccent();return{}}
  sdirty=false;render();toast('Team saved');
