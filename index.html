@@ -2125,6 +2125,8 @@ async function saveSo(form,qt){
  sdirty=false;
  const i=sco.teams.findIndex(t=>t.id===r.data.id);if(i>=0)sco.teams[i]=r.data;else sco.teams.push(r.data);
  sco.teams.sort((a,b)=>a.name.localeCompare(b.name));
+ // the database copies this onto the team in Admin and its other Scouting copies, so the site's team list is refreshed
+ if(staff()||r.data.site_team_id)refreshTeams();adm.mt=null;
  if(qt){if(f)$('#sou').value='';return{}}
  sco.form=null;sco.page='opp';sco.oppId=r.data.id;sco.tab=sco.tab||'over';render();toast('Opponent saved');
 }
