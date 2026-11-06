@@ -3183,15 +3183,16 @@ async function plGo(d){
 // Here the owner and admins edit any team and merge two copies of the same team across every Scouting list at once.
 async function mtLoad(){
  const r=await allRows(()=>sb.from('scout_teams').select('id,owner_team_id,site_team_id').order('id'));
- const n=new Map();(r.data||[]).forEach(s=>{if(s.site_team_id)n.set(s.site_team_id,(n.get(s.site_team_id)||0)+1)});
- adm.mt={...(adm.mt||{}),n,loaded:true};if(view==='mteams')render();
+ const pages=new Map();(r.data||[]).forEach(s=>{if(!s.site_team_id)return;const m=pages.get(s.site_team_id)||new Map();m.set(s.owner_team_id,(m.get(s.owner_team_id)||0)+1);pages.set(s.site_team_id,m)});
+ const n=new Map([...pages].map(([k,m])=>[k,m.size])),twice=new Map([...pages].map(([k,m])=>[k,[...m].filter(x=>x[1]>1).map(x=>x[0])]).filter(x=>x[1].length));
+ adm.mt={...(adm.mt||{}),n,twice,loaded:true};if(view==='mteams')render();
 }
 function mteamsV(){
  const H=admHead('Manage Teams','Every team on the site. These are the same teams that show on Scouting pages, so a change here shows everywhere. When one team has two copies, merge them into one.');
  if(!adm.mt){adm.mt={};mtLoad()}
  const N=adm.mt.n,list=[...teams].sort((a,b)=>a.name.localeCompare(b.name));
- const row=t=>{const m=allMem.filter(x=>x.team_id===t.id).length,sc=N?.get(t.id)||0;
-  return `<div class="mtr" data-s="${esc([t.name,...(t.aliases||[]),t.region||'',t.league||''].join(' ').toLowerCase())}">${tile(t,40)}<div style="flex:1 1 220px;min-width:0"><b style="font-weight:600;overflow-wrap:anywhere">${esc(t.name)}</b>${(t.aliases||[]).length?` <span class="mu" style="font-size:12px;overflow-wrap:anywhere">also ${esc(t.aliases.join(', '))}</span>`:''}<p class="mu" style="font-size:12.5px">${esc([t.region,t.league].filter(Boolean).join(' · ')||'No region or league')} · ${plural(m,'member')}${N?` · on ${plural(sc,'Scouting page')}`:''}${t.liquipedia?` · <a href="${esc(lpLinkOf(t.liquipedia))}" target="_blank" rel="noopener noreferrer">Liquipedia</a>`:''}</p></div><div class="row" style="gap:6px;flex:none"><button class="no" style="height:32px" data-a="mtedit" data-id="${t.id}">Edit</button><button class="no" style="height:32px" data-a="mtmerge" data-id="${t.id}">Merge</button><button class="no" style="height:32px" data-a="open" data-id="${t.id}">Dashboard</button></div></div>`};
+ const row=t=>{const m=allMem.filter(x=>x.team_id===t.id).length,sc=N?.get(t.id)||0,tw=adm.mt.twice?.get(t.id)||[];
+  return `<div class="mtr" data-s="${esc([t.name,...(t.aliases||[]),t.region||'',t.league||''].join(' ').toLowerCase())}">${tile(t,40)}<div style="flex:1 1 220px;min-width:0"><b style="font-weight:600;overflow-wrap:anywhere">${esc(t.name)}</b>${(t.aliases||[]).length?` <span class="mu" style="font-size:12px;overflow-wrap:anywhere">also ${esc(t.aliases.join(', '))}</span>`:''}<p class="mu" style="font-size:12.5px">${esc([t.region,t.league].filter(Boolean).join(' · ')||'No region or league')} · ${plural(m,'member')}${N?` · on ${plural(sc,'Scouting page')}`:''}${t.liquipedia?` · <a href="${esc(lpLinkOf(t.liquipedia))}" target="_blank" rel="noopener noreferrer">Liquipedia</a>`:''}</p>${tw.length?`<p class="row wrap" style="gap:8px;font-size:12.5px;margin-top:4px"><span class="over">Two copies on ${esc(tw.map(o=>teams.find(x=>x.id===o)?.name||'a').join(', '))}'s Scouting page.</span><button class="no" style="height:26px;font-size:12px" data-a="mtcombine" data-id="${t.id}">Combine copies</button></p>`:''}</div><div class="row" style="gap:6px;flex:none"><button class="no" style="height:32px" data-a="mtedit" data-id="${t.id}">Edit</button><button class="no" style="height:32px" data-a="mtmerge" data-id="${t.id}">Merge</button><button class="no" style="height:32px" data-a="open" data-id="${t.id}">Dashboard</button></div></div>`};
  return H+`<div style="max-width:980px;display:flex;flex-direction:column;gap:10px">${srch('Search teams')}<p class="mu" style="font-size:12.5px">${plural(list.length,'team')}. Merge moves everything from one team into the other on every Scouting page, then removes the empty one.</p><div class="cd" style="gap:0;padding:4px 14px">${list.map(row).join('')||'<p class="mu">No teams yet.</p>'}</div></div>`;
 }
 // EDIT a team
@@ -3246,6 +3247,31 @@ async function mtUse(){
  if(ra.error||rc.error){$('#dlg').close();return toast(/site_team_usage|schema cache|does not exist/i.test((ra.error||rc.error).message)?'Manage Teams needs a database update. Paste stage28.sql into the Supabase SQL Editor and run it.':(ra.error||rc.error).message)}
  m.use={[m.from]:ra.data||{},[m.to]:rc.data||{}};mtMergeDraw();
 }
+// one Scouting page: merge copy ac into copy cc, with the same plan the Scouting page's Merge teams uses
+async function mtMergeCopy(o,ac,cc,copies,m,v,r){
+ const keep=sco;let p;try{sco={tid:o,teams:copies.filter(s=>s.owner_team_id===o),m,v,r};p=mergePlan(ac,cc)}finally{sco=keep}
+ const drop=p.dups.flatMap(d=>d.rows.filter(x=>x.id!==d.keep).map(x=>({keep:d.keep,drop:x.id})));
+ const roster=[...(cc.roster||[])];(ac.roster||[]).forEach(x=>{if(!roster.some(y=>norm(y.name)===norm(x.name)))roster.push(x)});
+ const aliases=[...new Set([...(cc.aliases||[]),ac.name,ac.short_name,ac.source_ids?.liquipedia,...(ac.aliases||[])].filter(n=>n&&norm(n)!==norm(cc.name)))];
+ const q=await sb.rpc('merge_scout_teams',{p_from:ac.id,p_to:cc.id,p_names:p.names,p_drop:drop,p_vdrop:p.vdrop.map(x=>x.id),p_self:p.self.map(x=>x.id),p_team:{aliases,players:[...new Set([...(cc.players||[]),...(ac.players||[])])],roster,coach_notes:[cc.coach_notes,ac.coach_notes].filter(Boolean).join('\n\n')}});
+ if(q.error)throw q.error;return q.data||{};
+}
+// one team with two copies on the same Scouting page: the copy named like the team (or the oldest) is kept
+async function mtCombine(id,b){
+ const t=teams.find(x=>x.id===id);if(!t)return;b.disabled=true;const job=actStart('Combining the copies of '+t.name);let moved=0,removed=0,n=0;
+ try{
+  const cp=await allRows(()=>sb.from('scout_teams').select('*').eq('site_team_id',id).order('created_at'));if(cp.error)throw cp.error;
+  for(const o of adm.mt.twice?.get(id)||[]){
+   const here=cp.data.filter(s=>s.owner_team_id===o);if(here.length<2)continue;
+   const cc=here.find(s=>norm(s.name)===norm(t.name))||here[0],all=(await allRows(()=>sb.from('scout_teams').select('*').eq('owner_team_id',o).order('id'))).data||[];
+   const qq=x=>allRows(()=>sb.from(x).select('*').eq('owner_team_id',o).order('id')),[mm,vv,rr]=await Promise.all([qq('scout_matches'),qq('scout_vetoes'),qq('scout_rounds')]);const bad=mm.error||vv.error||rr.error;if(bad)throw bad;
+   for(const ac of here.filter(s=>s.id!==cc.id)){const d=await mtMergeCopy(o,ac,cc,all,mm.data,vv.data,rr.data);n++;moved+=d.moved||0;removed+=d.removed||0}
+  }
+  await refreshTeams();adm.mt=null;sco=sco&&{tid:sco.tid,league:'',q:'',f:{}};prep=null;
+  actEnd(job,'ok',`${t.name} is one team on its Scouting page again. ${n===1?'1 copy':n+' copies'} combined · ${plural(moved,'game')} moved · ${plural(removed,'duplicate')} removed.`);
+ }catch(e){actEnd(job,'warn','The copies could not be combined: '+repErr(e));adm.mt=null}
+ if(view==='mteams')render();
+}
 async function mtGo(b){
  const m=adm.mg,a=teams.find(x=>x.id===m.from),c=teams.find(x=>x.id===m.to);if(!a||!c)return;
  b.disabled=true;b.textContent='Merging…';const job=actStart(`Merging ${a.name} into ${c.name}`);$('#dlg').close();
@@ -3259,15 +3285,7 @@ async function mtGo(b){
    actSet(job,{detail:`Scouting page ${i+1} of ${owners.length}: ${teams.find(t=>t.id===o)?.name||''}`});
    const q=t=>allRows(()=>sb.from(t).select('*').eq('owner_team_id',o).order('id'));
    const [mm,vv,rr]=await Promise.all([q('scout_matches'),q('scout_vetoes'),q('scout_rounds')]);const bad=mm.error||vv.error||rr.error;if(bad)throw bad;
-   for(const ac of as){
-    // the same plan the Scouting page's Merge teams uses, worked out for this list
-    sco={tid:o,teams:cp.data.filter(s=>s.owner_team_id===o),m:mm.data,v:vv.data,r:rr.data};const p=mergePlan(ac,cc);sco=keep;
-    const drop=p.dups.flatMap(d=>d.rows.filter(r=>r.id!==d.keep).map(r=>({keep:d.keep,drop:r.id})));
-    const roster=[...(cc.roster||[])];(ac.roster||[]).forEach(x=>{if(!roster.some(y=>norm(y.name)===norm(x.name)))roster.push(x)});
-    const aliases=[...new Set([...(cc.aliases||[]),ac.name,ac.short_name,ac.source_ids?.liquipedia,...(ac.aliases||[])].filter(n=>n&&norm(n)!==norm(cc.name)))];
-    const r=await sb.rpc('merge_scout_teams',{p_from:ac.id,p_to:cc.id,p_names:p.names,p_drop:drop,p_vdrop:p.vdrop.map(x=>x.id),p_self:p.self.map(x=>x.id),p_team:{aliases,players:[...new Set([...(cc.players||[]),...(ac.players||[])])],roster,coach_notes:[cc.coach_notes,ac.coach_notes].filter(Boolean).join('\n\n')}});
-    if(r.error)throw r.error;lists++;moved+=r.data?.moved||0;removed+=r.data?.removed||0;
-   }
+   for(const ac of as){const d=await mtMergeCopy(o,ac,cc,cp.data,mm.data,vv.data,rr.data);lists++;moved+=d.moved||0;removed+=d.removed||0}
   }
   const f=await sb.rpc('merge_site_teams',{p_from:a.id,p_to:c.id});if(f.error)throw f.error;
   await refreshTeams();adm.mt=null;sco=sco&&{tid:sco.tid,league:'',q:'',f:{}};prep=null;
@@ -3499,7 +3517,7 @@ const A={
  strats:()=>openStrats(),
  dprep:()=>openPrep('drone'),sprep:()=>openPrep('strat'),prepmap:d=>{prep.map=d.k;prep.site='';prep.round=null;render()},prepside:d=>{prep.side=d.k;prep.site='';render()},prepsite:d=>{prep.site=d.k;prep.msel=new Set();render()},
  prepdr:d=>{const n=+d.k;prep.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},
- preplog:d=>prepOpen(d.id),mtedit:d=>mtEdit(d.id),mtmerge:d=>mtMergeOpen(d.id),mtgo:(d,b)=>mtGo(b),mtswap:()=>{const m=adm.mg;adm.mg={from:m.to,to:m.from,use:m.use};mtMergeDraw()},prepmergemode:()=>{prep.merge=!prep.merge;prep.msel=new Set();render()},prepmerge:(d,b)=>prepMerge([d.v,d.k],b),prepmergesel:(d,b)=>prepMerge([...prep.msel],b),prepout:async(d,b)=>{const x=prepRounds(true).find(o=>o.r.id===d.id);if(x&&await prepSetStrat([x],null,b)){toast(`Round ${x.r.round_number} is back on its own strat.`);render()}},prepround:d=>{prep.round=d.id;prep.rd=null;render();scrollTo(0,0)},prepback:()=>{if(prep.rd?.dirty&&!confirm('This round has changes that are not saved. Leave without saving?'))return;prep.round=null;prep.rd=null;render()},prepsaveround:(d,b)=>prepRoundSave(b),prepbanedit:()=>{prep.rd.banEdit=!prep.rd.banEdit;prepPaint('prepbans',prepBansH())},prepbansave:(d,b)=>prepBanSave(b),prepvodsave:(d,b)=>prepVodSave(b),prepjump:()=>{const v=prepT($('#prepat').value);if(Number.isNaN(v))return toast('Write the round start like 12:34 or 1:02:30');prep.rd.vod_at=v;prepDirty();prepPaint('prepvodbox',prepVodH())},prepfloor:d=>{prep.rd.floor=d.k;prep.rd.arm='';prepPaint('prepboard',prepBoardH())},prepunpin:d=>{prep.rd.pins=prep.rd.pins.filter(p=>norm(p.op)!==norm(d.k));prepDirty();prepPaint('prepboard',prepBoardH())},bpmove:d=>bpMove(d.id,+d.k),bpdel:d=>bpDel(d.id),prepsave:(d,b)=>prepSave(b),prepclose:()=>{prep&&(prep.dlg=null);$('#dlg').close()},
+ preplog:d=>prepOpen(d.id),mtedit:d=>mtEdit(d.id),mtmerge:d=>mtMergeOpen(d.id),mtgo:(d,b)=>mtGo(b),mtcombine:(d,b)=>mtCombine(d.id,b),mtswap:()=>{const m=adm.mg;adm.mg={from:m.to,to:m.from,use:m.use};mtMergeDraw()},prepmergemode:()=>{prep.merge=!prep.merge;prep.msel=new Set();render()},prepmerge:(d,b)=>prepMerge([d.v,d.k],b),prepmergesel:(d,b)=>prepMerge([...prep.msel],b),prepout:async(d,b)=>{const x=prepRounds(true).find(o=>o.r.id===d.id);if(x&&await prepSetStrat([x],null,b)){toast(`Round ${x.r.round_number} is back on its own strat.`);render()}},prepround:d=>{prep.round=d.id;prep.rd=null;render();scrollTo(0,0)},prepback:()=>{if(prep.rd?.dirty&&!confirm('This round has changes that are not saved. Leave without saving?'))return;prep.round=null;prep.rd=null;render()},prepsaveround:(d,b)=>prepRoundSave(b),prepbanedit:()=>{prep.rd.banEdit=!prep.rd.banEdit;prepPaint('prepbans',prepBansH())},prepbansave:(d,b)=>prepBanSave(b),prepvodsave:(d,b)=>prepVodSave(b),prepjump:()=>{const v=prepT($('#prepat').value);if(Number.isNaN(v))return toast('Write the round start like 12:34 or 1:02:30');prep.rd.vod_at=v;prepDirty();prepPaint('prepvodbox',prepVodH())},prepfloor:d=>{prep.rd.floor=d.k;prep.rd.arm='';prepPaint('prepboard',prepBoardH())},prepunpin:d=>{prep.rd.pins=prep.rd.pins.filter(p=>norm(p.op)!==norm(d.k));prepDirty();prepPaint('prepboard',prepBoardH())},bpmove:d=>bpMove(d.id,+d.k),bpdel:d=>bpDel(d.id),prepsave:(d,b)=>prepSave(b),prepclose:()=>{prep&&(prep.dlg=null);$('#dlg').close()},
  prepadd:()=>{const w=$('#prepdl');if(!w)return;const j=w.querySelectorAll('input').length;if(j>=20)return toast('A round can have up to 20 drones.');w.insertAdjacentHTML('beforeend',`<input id="pdr${j}" class="fi" list="preprooms" maxlength="80" aria-label="Drone ${j+1}" placeholder="Room" data-pdr="1">`);$('#pdr'+j).focus()},
  stropen:async d=>{await openStrats();A.stview(d)},
  stadd:d=>{stra.st='form';stra.id=null;stra.pre=d.map?{map:d.map,side:d.side}:null;render()},
