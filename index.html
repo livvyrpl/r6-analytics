@@ -1517,12 +1517,18 @@ const prepTeam=()=>prep.teams.find(x=>x.id===prep.team);
 // every round this team played, once each, seen from this team's side
 function prepRounds(all){
  const t=prepTeam();if(!t)return[];const k=scKeys(t),{from,to}=prep.dr||{},seen=new Map();
+ // The same round can be saved twice, e.g. from a replay as "FIVE FEARS" and from a library import as "Five Fears".
+ // Same date, map, round number and opponent is the same round: the copy that was logged, came from a replay or has more filled in is kept.
+ const logged=new Set(prep.logs.map(l=>l.scout_round_id)),rep=new Set(prep.m.filter(m=>m.replay_match_id).map(m=>matchId(m)));
+ const rich=o=>(logged.has(o.r.id)?100:0)+(rep.has(o.r.match_id)?10:0)+(o.site?2:0)+(o.res?1:0)+o.ops.filter(Boolean).length/10+(o.i===0?.05:0);
  for(const r of prep.r){
   const tm=roundTeams(r),i=tm.findIndex(x=>k.has(norm(x.who)));if(i<0)continue;
   const d=r.round_date||'';if(!all&&((from&&(!d||d<from))||(to&&(!d||d>to))))continue;
-  const id=norm(r.match_id)+'|'+r.round_number,old=seen.get(id);if(old&&old.i===0)continue;
   const w=normRes(r.result),res=i===0?w:w==='W'?'L':w==='L'?'W':w;
-  seen.set(id,{r,i,side:tm[i].side,ops:tm[i].ops,who:tm[i].who,foe:tm[1-i].who,map:mapCanon(r.map),site:(r.site||'').trim(),res,date:d});
+  const o={r,i,side:tm[i].side,ops:tm[i].ops,who:tm[i].who,foe:tm[1-i].who,map:mapCanon(r.map),site:(r.site||'').trim(),res,date:d};
+  const id=d&&o.foe?[d,norm(o.map),r.round_number,nameCore(o.foe)].join('|'):norm(r.match_id)+'|'+r.round_number,old=seen.get(id);
+  if(old&&rich(old)>=rich(o))continue;
+  seen.set(id,o);
  }
  return [...seen.values()].sort((a,b)=>b.date.localeCompare(a.date)||a.r.match_id.localeCompare(b.r.match_id)||a.r.round_number-b.r.round_number);
 }
