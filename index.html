@@ -97,7 +97,9 @@ footer{max-width:1180px;margin:0 auto;padding:0 24px 24px;font-size:11.5px;color
 dialog.dkw{width:min(760px,92vw)}dialog.ccw{width:min(1080px,94vw);padding:16px}
 .autost{margin:0;font-size:12px;color:var(--mu);text-align:right}.autost.bad{color:#ff8a8a}
 .vbt .tbl th,.vbt .tbl td{padding:3px 8px;font-size:12.5px}.vbt tbody th{text-align:left;font-weight:600}.vbs{border:0;background:none;color:var(--mu);font:inherit;font-size:12px;font-weight:600;padding:0;cursor:pointer;white-space:nowrap}.vbs.on{color:var(--tx)}.vbs:hover{color:var(--pk)}.vbk{background:rgba(var(--pk-rgb),.07)}
-dialog#vodd{width:min(1100px,96vw);padding:12px}.vodf{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:10px;background:#000}
+#vodp{position:fixed;top:10px;right:12px;width:var(--vodw,min(44vw,760px));z-index:9;background:var(--cd);border:1px solid var(--bd2);border-radius:12px;padding:8px;box-shadow:0 10px 32px rgba(0,0,0,.55)}.vodf{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:8px;background:#000}.vodsz [aria-pressed=true]{border-color:var(--pk);color:var(--pk)}
+body.vodon{padding-right:calc(var(--vodw,min(44vw,760px)) + 24px)}body.vodon #toast,body.vodon #upd{right:calc(var(--vodw,min(44vw,760px)) + 36px)}
+@media(max-width:900px){#vodp{top:auto;bottom:0;left:0;right:0;width:auto;border-radius:12px 12px 0 0}.vodsz{display:none!important}body.vodon{padding-right:0;padding-bottom:calc(56.25vw + 52px)}body.vodon #toast,body.vodon #upd{right:16px;bottom:calc(56.25vw + 64px)}}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -1622,12 +1624,16 @@ function vodEmbed(u){
  }catch{}
  return null;
 }
+const VOD_W=[['s','min(32vw,520px)'],['m','min(44vw,760px)'],['l','min(60vw,1040px)']];
+const vodSize=k=>{const w=(VOD_W.find(x=>x[0]===k)||VOD_W[1]);document.documentElement.style.setProperty('--vodw',w[1]);try{localStorage.setItem('vodw',w[0])}catch{}const p=$('#vodp');if(p)p.dataset.size=w[0]};
 function vodOpen(url,title){
  const v=vodEmbed(url);if(!v)return false;
- let d=$('#vodd');if(!d){d=document.createElement('dialog');d.id='vodd';document.body.append(d);d.addEventListener('close',()=>{d.innerHTML=''})}
- d.innerHTML=`<div class="row" style="gap:8px;margin-bottom:8px"><b style="flex:1;min-width:0;overflow-wrap:anywhere">${esc(title||'VOD')}</b><a class="no" style="height:28px;display:inline-flex;align-items:center;padding:0 10px;text-decoration:none;color:var(--tx);font-size:12.5px" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open on ${v.site}</a><button class="no" style="height:28px" data-a="vodclose">Close</button></div><iframe class="vodf" src="${esc(v.src)}" title="${esc(title||'VOD')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
- if(!d.open)d.showModal();return true;
+ let p=$('#vodp');if(!p){p=document.createElement('aside');p.id='vodp';p.setAttribute('aria-label','Video player');document.body.append(p);let k='m';try{k=localStorage.getItem('vodw')||'m'}catch{}vodSize(k)}
+ const sz=p.dataset.size||'m';
+ p.innerHTML=`<div class="row" style="gap:6px;margin-bottom:6px"><b style="flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(title||'VOD')}">${esc(title||'VOD')}</b><span class="row vodsz" style="gap:2px" role="group" aria-label="Player size">${VOD_W.map(x=>`<button class="actx" data-a="vodsize" data-k="${x[0]}" aria-pressed="${sz===x[0]}" aria-label="${{s:'Small',m:'Medium',l:'Large'}[x[0]]} player">${x[0].toUpperCase()}</button>`).join('')}</span><a class="actx" style="display:inline-flex;align-items:center;text-decoration:none" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open on ${v.site}</a><button class="actx" data-a="vodclose" aria-label="Close the video">✕</button></div><iframe class="vodf" src="${esc(v.src)}" title="${esc(title||'VOD')}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+ document.body.classList.add('vodon');return true;
 }
+function vodClose(){const p=$('#vodp');if(p)p.remove();document.body.classList.remove('vodon')}
 document.addEventListener('click',e=>{const a=e.target.closest?.('a.vod');if(!a||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey||e.button)return;if(vodOpen(a.href,a.dataset.t||a.getAttribute('aria-label')||a.textContent.trim()))e.preventDefault()},true);
 function oTabVet(t){const k=scKeys(t),all=sco.v.filter(r=>k.has(norm(r.team))||k.has(norm(r.opponent))).sort((a,b)=>b.veto_date.localeCompare(a.veto_date));if(!all.length)return none2('No vetoes yet. Use Pull everything, or import a CSV into Vetoes.');const l=sco.oppF?all.filter(r=>vetoMaps(r).some(m=>mapCanon(m)===sco.oppF)):all,cols=LIB.v.cols.filter(c=>c[0]!=='check');return `${vetoBanB(k,all,t.name)}${oppMapPick(all.flatMap(vetoMaps))}${l.length?`<section class="cd" style="gap:6px"><p class="mu">${plural(l.length,'veto').replace('vetos','vetoes')} for ${esc(t.name)}</p>${scTbl(cols.map(c=>teamHead(c[1],esc(t.name))),l.map(r=>{const o=k.has(norm(r.team))?r:vetoFirst(r);return cols.map(c=>libCell(o,c[0]))}))}</section>`:none2('No vetoes with this map.')}`}
 function oTabOps(t,rows){
@@ -2548,7 +2554,7 @@ const A={
  sodelp:d=>{const t=sco.teams.find(x=>x.id===d.id);if(staff()&&t.site_team_id&&t.site_team_id!==cur.id&&teams.some(x=>x.id===t.site_team_id))return A.tdel({id:t.site_team_id});askDel('Delete this team?',t.name+' is removed from your opponents. Imported matches, rounds and vetoes stay in your libraries.','sodelyes',t.id)},
  rdedit:d=>rdOpen(d.id),rdadd:()=>rdOpen(null),rdsave:(d,b)=>rdSave(b),rddel:(d,b)=>rdDel(b),rdclose:async()=>{await autoFlush();$('#dlg').close()},
  rdscore:async(d,b)=>{const g=sco.m.find(x=>x.id===sco.matchId),t=g&&roundTally(g);if(!t)return;b.disabled=true;const row={round_score:t.w+'-'+t.l,total_rounds:t.w+t.l,result:t.w>t.l?'W':t.w<t.l?'L':'D',check_status:'',check_notes:''};const r=await sb.from('scout_matches').update(row).eq('id',g.id).select().single();if(r.error){b.disabled=false;return toast(scErr(r.error))}Object.assign(g,r.data);sdirty=false;render();toast('Score set to '+row.round_score)},
- scrf:d=>{scr.f=d.k;render()},scrdr:d=>{const n=+d.k;scr.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},scrtab:d=>{scr.tab=d.t;scr.st='list';scr.id=null;render()},vbsort:d=>{const o=sco.vbs||{k:'b0',d:-1};sco.vbs=o.k===d.k?{k:d.k,d:-o.d}:{k:d.k,d:d.k==='name'?1:-1};const y=window.scrollY;render();window.scrollTo?.(0,y)},vodclose:()=>$('#vodd')?.close(),simp:()=>simpOpen(),simpback:()=>{scr.st='list';scr.imp=null;render()},simpgo:()=>simpGo(),
+ scrf:d=>{scr.f=d.k;render()},scrdr:d=>{const n=+d.k;scr.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},scrtab:d=>{scr.tab=d.t;scr.st='list';scr.id=null;render()},vbsort:d=>{const o=sco.vbs||{k:'b0',d:-1};sco.vbs=o.k===d.k?{k:d.k,d:-o.d}:{k:d.k,d:d.k==='name'?1:-1};const y=window.scrollY;render();window.scrollTo?.(0,y)},vodclose:()=>vodClose(),vodsize:d=>vodSize(d.k),simp:()=>simpOpen(),simpback:()=>{scr.st='list';scr.imp=null;render()},simpgo:()=>simpGo(),
  sodr:d=>{const n=+d.k;sco.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},
  sotab:d=>{sco.plr=null;sdirty=false;sco.tab=d.t;sco.oppMap='';sco.oppF='';render()},
  soadd:d=>{sco.form={name:d.n||''};render()},
