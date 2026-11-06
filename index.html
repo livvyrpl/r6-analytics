@@ -80,6 +80,11 @@ body.upd main{padding-bottom:88px}body.upd #toast{bottom:68px}
 .mas{column-width:300px;column-gap:8px}.mas>*{break-inside:avoid;margin-bottom:8px}
 .ops2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}@media(max-width:640px){.ops2{grid-template-columns:minmax(0,1fr)}}
 .opi{width:20px!important;height:20px!important}
+.oph{font-size:16px;font-weight:700;line-height:1.2;padding-left:9px;border-left:3px solid var(--pk)}.nr{text-align:right;font-variant-numeric:tabular-nums}
+.obar{display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr) 34px 40px;gap:8px;align-items:center;font-size:13px;padding:3px 0}.obar i{display:block;height:8px;border-radius:4px;background:var(--pk);min-width:2px}@media(max-width:640px){.obar{grid-template-columns:minmax(0,112px) minmax(0,1fr) 30px 38px}}
+.omg{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,460px),1fr));gap:8px}.omap{gap:10px}.omap .ph{max-width:none;aspect-ratio:21/8}.omap figcaption{text-align:center;font-weight:700;font-size:15px;margin-top:6px;overflow-wrap:anywhere}
+.o2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.orow{display:grid;grid-template-columns:minmax(0,1fr) auto 36px;gap:6px;align-items:center;font-size:12.5px;padding:2px 0;border-bottom:1px solid var(--bd)}.orow:last-child{border-bottom:0}.orow .opr{gap:6px}.orow .opr span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drb{gap:8px;margin-bottom:8px;padding:10px 12px}.drb .fi{height:36px;padding:0 8px;width:150px}.drb label{font-size:12px;margin:0 0 2px}
 .mbar{display:grid;grid-template-columns:minmax(0,110px) minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12.5px;padding:2px 0}.mbar i{display:block;height:8px;border-radius:4px;background:var(--pk);min-width:2px}
 .plr{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid var(--bd)}.plr .pn{flex:2 1 150px;min-width:0}.plr .pr{flex:0 1 110px}.plr .aka{font-size:12px;color:var(--mu);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 footer{max-width:1180px;margin:0 auto;padding:0 24px 24px;font-size:11.5px;color:var(--mu)}
@@ -1299,7 +1304,7 @@ function oppMaps(rows){
 const pctS=(w,l)=>w+l?Math.round(w/(w+l)*100)+'%':'—';
 const scTbl=(heads,rows,num=[])=>`<div style="overflow-x:auto"><table class="tbl"><thead><tr>${heads.map((h,i)=>`<th scope="col"${num.includes(i)?' class="num"':''}>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${num.includes(i)?' class="num"':''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 function oppBans(t,rows){
- const k=scKeys(t),scr=anPlayed().filter(s=>k.has(norm(s.opponent))).flatMap(anRows);
+ const k=scKeys(t),scr=anPlayed().filter(s=>k.has(norm(s.opponent))&&inDR(s.scrim_date)).flatMap(anRows);
  return{atk:topCount([...rows.flatMap(x=>opNames(x.atk)),...scr.flatMap(r=>r.their_atk_bans||[])]),def:topCount([...rows.flatMap(x=>opNames(x.def)),...scr.flatMap(r=>r.their_def_bans||[])])};
 }
 function oppB2(t){
@@ -1308,7 +1313,17 @@ function oppB2(t){
  const bar=`<div class="row" style="gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px" role="group" aria-label="Opponent pages">${tabs.map(x=>`<button class="ch" style="flex:none" data-a="sotab" data-t="${x[0]}" aria-pressed="${sco.tab===x[0]}">${x[1]}</button>`).join('')}</div>`;
  if(sco.form)return head+soForm();
  const fn={over:oTabOver,games:oTabGames,maps:oTabMaps,ranks:oTabRanks,lib:oTabLib,vet:oTabVet,ops:oTabOps,pl:oTabPl,notes:oTabNotes}[sco.tab]||oTabOver;
- return head+(sco.lp?.team===t.id?lpB():'')+bar+fn(t,rows);
+ const dr=DR_TABS.has(sco.tab||'over'),use=dr?rows.filter(x=>inDR(x.date)):rows;
+ return head+(sco.lp?.team===t.id?lpB():'')+bar+(dr?drBar(use.length,rows.length):'')+fn(t,use);
+}
+// DATE RANGE: Overview, Maps, Map ranks and Operators only count games inside it. Scrims, vetoes and replay rounds use their own dates.
+const DR_TABS=new Set(['over','maps','ranks','ops']),DR_PRE=[['','All time'],['30','Last 30 days'],['90','Last 3 months'],['182','Last 6 months'],['365','Last 12 months']];
+const drOn=()=>view==='sc'&&sco?.page==='opp'&&DR_TABS.has(sco.tab||'over')&&!!(sco.dr?.from||sco.dr?.to);
+const inDR=d=>{if(!drOn())return true;if(!d)return false;const{from,to}=sco.dr;return(!from||d>=from)&&(!to||d<=to)};
+function drBar(n,all){
+ const r=sco.dr||{},pick=!r.from&&!r.to?'':(DR_PRE.find(p=>p[0]&&!r.to&&r.from===dayShift(today(),-p[0]))||[null])[0];
+ const say=drOn()?`Showing ${n} of ${plural(all,'game')}${r.from?' from '+esc(fmtD(r.from)):''}${r.to?' to '+esc(fmtD(r.to)):' to today'}`:`Showing all ${plural(all,'game')}`;
+ return `<section class="cd drb"><div class="row wrap" style="gap:6px" role="group" aria-label="Date range">${DR_PRE.map(p=>`<button class="ch" style="height:30px" data-a="sodr" data-k="${p[0]}" aria-pressed="${pick===p[0]}">${p[1]}</button>`).join('')}</div><div class="row wrap" style="gap:10px;align-items:flex-end"><div><label for="sodrf">From</label><input id="sodrf" type="date" class="fi" data-c="sodr" data-k="from" value="${esc(r.from||'')}"></div><div><label for="sodrt">To</label><input id="sodrt" type="date" class="fi" data-c="sodr" data-k="to" value="${esc(r.to||'')}"></div><span class="mu" style="font-size:12.5px;padding-bottom:8px">${say}</span></div></section>`;
 }
 const none2=m=>`<div class="cd"><p class="mu">${m}</p></div>`;
 function oTabOver(t,rows){
@@ -1347,20 +1362,22 @@ const teamHead=(h,name)=>({'Team 1':name,'Team 2':'Opponent','Team Name':name,'W
 function oTabLib(t,rows){if(!rows.length)return none2('No matches yet. Use Pull everything, or import replays on the Parse page.');const cols=[['match_ref','Match ID'],...LIB.m.cols],l=sco.oppF?rows.filter(x=>mapCanon(x.map)===sco.oppF):rows;return `${oppMapPick(rows.map(x=>x.map))}${l.length?`<section class="cd" style="gap:6px"><p class="mu">${plural(l.length,'game')} for ${esc(t.name)}</p>${scTbl(cols.map(c=>teamHead(c[1],esc(t.name))),l.map(x=>{const r=x.same?x.r:teamFirst(x.r);return cols.map(c=>libCell(r,c[0]))}))}</section>`:none2('No games on this map.')}`}
 function oTabVet(t){const k=scKeys(t),all=sco.v.filter(r=>k.has(norm(r.team))||k.has(norm(r.opponent))).sort((a,b)=>b.veto_date.localeCompare(a.veto_date));if(!all.length)return none2('No vetoes yet. Use Pull everything, or import a CSV into Vetoes.');const l=sco.oppF?all.filter(r=>vetoMaps(r).some(m=>mapCanon(m)===sco.oppF)):all,cols=LIB.v.cols.filter(c=>c[0]!=='check');return `${oppMapPick(all.flatMap(vetoMaps))}${l.length?`<section class="cd" style="gap:6px"><p class="mu">${plural(l.length,'veto').replace('vetos','vetoes')} for ${esc(t.name)}</p>${scTbl(cols.map(c=>teamHead(c[1],esc(t.name))),l.map(r=>{const o=k.has(norm(r.team))?r:vetoFirst(r);return cols.map(c=>libCell(o,c[0]))}))}</section>`:none2('No vetoes with this map.')}`}
 function oTabOps(t,rows){
- const k=scKeys(t),b=oppBans(t,rows),scr=anPlayed().filter(s=>k.has(norm(s.opponent))).flatMap(anRows),by=new Map(),games=rows.length+scr.length;
- rows.forEach(x=>{const m=norm(x.map),e=by.get(m)||{name:x.map.trim(),a:[],d:[]};e.a.push(...opNames(x.atk));e.d.push(...opNames(x.def));by.set(m,e)});
- scr.forEach(r=>{const m=norm(r.map),e=by.get(m)||{name:r.map.trim(),a:[],d:[]};e.name=betterName(e.name,r.map);e.a.push(...(r.their_atk_bans||[]));e.d.push(...(r.their_def_bans||[]));by.set(m,e)});
- const maps=[...by.values()].filter(e=>e.a.length||e.d.length).sort((a,b2)=>a.name.localeCompare(b2.name));
+ const k=scKeys(t),scr=anPlayed().filter(s=>k.has(norm(s.opponent))&&inDR(s.scrim_date)).flatMap(anRows);
+ const blank=name=>({name,g:0,ba:[],bd:[],ga:0,gd:0,pa:[],pd:[],ra:0,rd:0}),tot=blank(''),by=new Map(),at=m=>{const n=mapCanon(m);if(!n)return null;if(!by.has(n))by.set(n,blank(n));return by.get(n)};
+ const ban=(map,a,d)=>[tot,at(map)].forEach(e=>{if(!e)return;e.g++;e.ba.push(...a);e.bd.push(...d);if(a.length)e.ga++;if(d.length)e.gd++});
+ rows.forEach(x=>ban(x.map,opNames(x.atk),opNames(x.def)));
+ scr.forEach(r=>ban(r.map,r.their_atk_bans||[],r.their_def_bans||[]));
  // a replay can list this team on either side of a round
- const own=new Map();sco.r.forEach(r=>{const mine=k.has(norm(r.team));if(!mine&&!k.has(norm(r.opponent)))return;const id=norm(r.match_id)+'|'+r.round_number;if(mine||!own.has(id))own.set(id,mine?r:flipRound(r))});
- const pa=[],pd=[];let ra=0,rd=0;
- own.forEach(r=>{const sd=startNorm(r.side);if(sd==='attack')ra++;if(sd==='defense')rd++;[1,2,3,4,5].flatMap(i=>opNames(r['operator_'+i])).forEach(o=>{const known=OPS.find(x=>x[0]===opCanon(o)),atk=sd?sd==='attack':known?!!known[1]:null;if(atk===true)pa.push(o);else if(atk===false)pd.push(o)})});
- if(!b.atk.length&&!b.def.length&&!pa.length&&!pd.length)return none2('No operator data yet. Bans come from the Match Library and your scrims. Operators played come from imported replays and the Round Library.');
- const list=(title,l,den)=>`<div style="min-width:0"><span class="lb" style="margin-bottom:2px">${title}</span>${l.length?scTbl(['Operator','Times','%'],l.slice(0,10).map(x=>[`<span class="opr">${opIcon(x.name)}${esc(x.name)}</span>`,x.n,den?Math.round(x.n/den*100)+'%':'—']),[1,2]):'<p class="mu">None recorded.</p>'}</div>`;
- const side=(title,bans,played,den)=>`<section class="cd" style="gap:6px"><h2 style="font-size:14px;font-weight:600">${title}: top 10</h2><div class="ops2">${list('Banned, % of games',bans,games)}${list('Played, % of rounds',topCount(played),den)}</div></section>`;
- const line=l=>l.slice(0,3).map(x=>esc(x.name)+' '+x.n).join(', ')||'None';
- return `<div class="ov" style="gap:8px;margin-bottom:8px;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))">${side('Attackers',b.atk,pa,ra)}${side('Defenders',b.def,pd,rd)}</div>
- ${maps.length?`<details class="cd"><summary style="cursor:pointer;font-weight:600;font-size:14px">Banned per map (${maps.length})</summary><div class="mg" style="margin-top:6px">${maps.map(e=>`<div class="tr" style="gap:4px;padding:8px"><div class="opr">${mapPhoto(e.name,'t')}<b style="font-weight:600;font-size:13px;overflow-wrap:anywhere">${esc(e.name)}</b></div><span class="mu" style="font-size:12px;overflow-wrap:anywhere">Attack: ${line(topCount(e.a))}</span><span class="mu" style="font-size:12px;overflow-wrap:anywhere">Defense: ${line(topCount(e.d))}</span></div>`).join('')}</div></details>`:''}`;
+ const own=new Map();sco.r.forEach(r=>{if(!inDR(r.round_date))return;const mine=k.has(norm(r.team));if(!mine&&!k.has(norm(r.opponent)))return;const id=norm(r.match_id)+'|'+r.round_number;if(mine||!own.has(id))own.set(id,mine?r:flipRound(r))});
+ own.forEach(r=>{const seen=new Set(),ops=[1,2,3,4,5].flatMap(i=>opNames(r['operator_'+i])).filter(o=>{const k=norm(opCanon(o));return !seen.has(k)&&seen.add(k)});if(!ops.length)return;let sd=startNorm(r.side);if(!sd){const kn=ops.map(o=>OPS.find(x=>x[0]===opCanon(o))).find(Boolean);if(kn)sd=kn[1]?'attack':'defense'}if(!sd)return;
+  [tot,at(r.map)].forEach(e=>{if(!e)return;if(sd==='attack'){e.ra++;e.pa.push(...ops)}else{e.rd++;e.pd.push(...ops)}})});
+ if(!tot.ba.length&&!tot.bd.length&&!tot.pa.length&&!tot.pd.length)return none2(drOn()?'No operator data in this date range.':'No operator data yet. Bans come from the Match Library and your scrims. Operators played come from imported replays and the Round Library.');
+ const pc=(n,den)=>den?Math.round(n/den*100)+'%':'—';
+ const big=(title,l,den,what)=>{const top=topCount(l).slice(0,10);return `<section class="cd" style="gap:6px"><h2 class="oph">${title}</h2><p class="mu" style="font-size:12px">Top 10 · % of ${plural(den,what)}</p>${top.length?top.map(x=>{const p=den?Math.min(100,Math.round(x.n/den*100)):0;return `<div class="obar"><span class="opr">${opIcon(x.name)}<span style="overflow-wrap:anywhere">${esc(x.name)}</span></span><span><i style="width:${p}%"></i></span><span class="nr">${x.n}</span><span class="mu nr">${pc(x.n,den)}</span></div>`}).join(''):'<p class="mu">None recorded.</p>'}</section>`};
+ const mini=(title,l,den)=>{const top=topCount(l).slice(0,10);return `<div style="min-width:0"><span class="lb" style="margin-bottom:2px">${title}</span>${top.length?top.map(x=>`<div class="orow"><span class="opr">${opIcon(x.name)}<span title="${esc(x.name)}">${esc(x.name)}</span></span><span class="nr">${x.n}</span><span class="mu nr">${pc(x.n,den)}</span></div>`).join(''):'<p class="mu" style="font-size:12.5px">None recorded.</p>'}</div>`};
+ const maps=[...by.values()].filter(e=>e.ba.length||e.bd.length||e.pa.length||e.pd.length).sort((a,b)=>b.g-a.g||(b.ra+b.rd)-(a.ra+a.rd)||a.name.localeCompare(b.name)),l=sco.oppF?maps.filter(e=>e.name===sco.oppF):maps;
+ return `<div class="ov" style="gap:8px;margin-bottom:8px;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr))">${big('Banned Attackers',tot.ba,tot.ga,'game')}${big('Banned Defenders',tot.bd,tot.gd,'game')}${big('Played Attackers',tot.pa,tot.ra,'attack round')}${big('Played Defenders',tot.pd,tot.rd,'defense round')}</div>
+ ${maps.length?`<h2 class="oph" style="margin:16px 0 8px">Per map</h2>${oppMapPick(maps.map(e=>e.name))}<div class="omg">${l.map(e=>`<section class="cd omap"><figure style="margin:0">${mapPhoto(e.name,'w')}<figcaption>${esc(e.name)}</figcaption></figure><div class="o2">${mini('Banned Attackers',e.ba,e.ga)}${mini('Banned Defenders',e.bd,e.gd)}</div><div class="o2">${mini('Played Attackers',e.pa,e.ra)}${mini('Played Defenders',e.pd,e.rd)}</div></section>`).join('')}</div>`:''}`;
 }
 // MERGING TEAMS: the preview finds the duplicates, the database does the merge in one go
 function mergePlan(a,c){
@@ -1821,7 +1838,7 @@ function mapPower(t,rows,vetoes=sco.v){
 }
 const powerCell=(p,min,max)=>{const t=max>min?(p-min)/(max-min):.5,c=t>=.5?`rgba(52,196,106,${.15+(t-.5)*1.3})`:`rgba(229,72,77,${.15+(.5-t)*1.3})`;return `<span style="display:block;padding:4px 8px;border-radius:6px;background:${c};color:#fff;font-weight:600;font-variant-numeric:tabular-nums">${p}</span>`};
 function oTabRanks(t,rows){
- const list=mapPower(t,rows);if(list.every(e=>!(e.W+e.L+e.D+e.by+e.against+e.picked)))return none2('No results to rank yet.');
+ const list=mapPower(t,rows,sco.v.filter(r=>inDR(r.veto_date)));if(list.every(e=>!(e.W+e.L+e.D+e.by+e.against+e.picked)))return none2('No results to rank yet.');
  const min=Math.min(...list.map(e=>e.power)),max=Math.max(...list.map(e=>e.power)),{f}=rateCfg(),ranked=[...list].sort((a,b)=>a.rank-b.rank);
  const fac=RATE_LABEL.map(x=>`${x[1]} ×${f[x[0]]}`).join(' · ');
  return `<div style="display:flex;flex-direction:column;gap:16px"><section class="cd" style="gap:8px"><h2 style="font-size:15px;font-weight:600">Map Power Rating</h2>${scTbl(['Map','W','L','Banned By Team','Banned Against','Picked','Power Rating','Rank'],list.map(e=>[`<span class="opr">${mapPhoto(e.name,'t')}${esc(e.name)}</span>`,e.W,e.L,e.by,e.against,e.picked,powerCell(e.power,min,max),e.rank]),[1,2,3,4,5,6,7])}<p class="mu" style="font-size:12.5px">${esc(fac)} × map weight</p></section>
@@ -2161,6 +2178,7 @@ const A={
   await load();if(back==='sc'&&sco){sco.page='home';sco.form=null;view='sc'}else view='teamsV';render();toast('Deleted '+t.name);
  },
  sodelp:d=>{const t=sco.teams.find(x=>x.id===d.id);if(staff()&&t.site_team_id&&t.site_team_id!==cur.id&&teams.some(x=>x.id===t.site_team_id))return A.tdel({id:t.site_team_id});askDel('Delete this team?',t.name+' is removed from your opponents. Imported matches, rounds and vetoes stay in your libraries.','sodelyes',t.id)},
+ sodr:d=>{const n=+d.k;sco.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},
  sotab:d=>{sco.plr=null;sdirty=false;sco.tab=d.t;sco.oppMap='';sco.oppF='';render()},
  soadd:d=>{sco.form={name:d.n||''};render()},
  soedit:()=>{sco.form={id:sco.oppId};render()},
@@ -2283,6 +2301,7 @@ document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='dkout'
  if(c==='rlink'){const row=rost.list.find(x=>x.id===e.target.dataset.id),v=e.target.value||null;sb.from('team_roster').update({linked_user_id:v}).eq('id',row.id).select().single().then(r=>{if(r.error){e.target.value=row.linked_user_id||'';return toast('That link could not be saved. The name can only link to a player on this team.')}row.linked_user_id=v;toast('Roster saved')})}
  if(c==='lpev'||c==='lpteam'){const set=c==='lpev'?sco.lp.on:sco.lp.tOn;e.target.checked?set.add(e.target.dataset.id):set.delete(e.target.dataset.id);render()}
  if(c==='lpopt'){sco.lp[e.target.dataset.id]=e.target.checked}
+ if(c==='sodr'){const r=sco.dr={...(sco.dr||{}),[e.target.dataset.k]:e.target.value};if(r.from&&r.to&&r.from>r.to)[r.from,r.to]=[r.to,r.from];const id=e.target.id;render();document.getElementById(id)?.focus()}
  if(c==='sofm'){sco.oppF=e.target.value;render();document.getElementById('sofm')?.focus()}
  if(c==='scf'){const f=sco.f[sco.kind]=sco.f[sco.kind]||{};f[e.target.dataset.k]=e.target.value;const id=e.target.id;render();document.getElementById(id)?.focus()}
  if(c==='xteam'){e.target.checked?sco.x.teams.add(e.target.dataset.id):sco.x.teams.delete(e.target.dataset.id);xDraw()}
