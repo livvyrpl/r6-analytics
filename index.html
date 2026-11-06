@@ -12,7 +12,7 @@
 h1,h2,h3,p{margin:0}button,input,select,textarea{font:inherit}
 .serif{font-family:'Cormorant Garamond',serif;font-weight:600}
 header{display:flex;align-items:center;gap:12px;padding:6px 20px;border-bottom:1px solid #1d1923;flex-wrap:wrap}
-.sp{flex:1}
+.sp{flex:1}.hban{flex:1 1 260px;min-width:0;display:flex;align-items:center;justify-content:center;gap:10px;margin:0 6px;padding:7px 10px 7px 18px;border-radius:999px;border:1px solid rgba(var(--pk-rgb),.45);background:radial-gradient(ellipse 60% 120% at 50% 50%,rgba(var(--pk-rgb),.22),transparent 75%),rgba(6,5,9,.6);box-shadow:0 0 18px -6px rgba(var(--pk-rgb),.6),inset 0 0 12px -6px rgba(var(--pk-rgb),.5)}.hbt{min-width:0;text-align:center;white-space:pre-wrap;overflow-wrap:anywhere;font-weight:600;color:var(--pk-lt);text-shadow:0 0 10px rgba(var(--pk-rgb),.5)}.hbs{flex:none;color:var(--pk);font-size:12px;text-shadow:0 0 8px var(--pk)}.hban .actx{flex:none;margin-left:auto;background:var(--cd)}@media(max-width:900px){.hban{order:9;flex-basis:100%;margin:2px 0 0}}
 #sky{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}#sky .sk{width:100%;height:100%;display:block}#sky .tl{display:none;position:absolute;top:90px;right:3vw;width:clamp(220px,30vw,420px);height:clamp(220px,30vw,420px);object-fit:contain;opacity:.28;filter:drop-shadow(0 0 30px rgba(var(--pk-rgb),.6))}#sky.logo .tl{display:block}#sky.logo .mn{display:none}#sky .mn{position:absolute;top:84px;right:-3vw;width:clamp(220px,30vw,430px);filter:drop-shadow(0 0 40px rgba(var(--pk-rgb),.35))}
 #sky .g1{stop-color:var(--pk);stop-opacity:.1}#sky .g0{stop-color:var(--pk);stop-opacity:0}
 #sky .dots{fill:#f4eef8;opacity:.85}#sky .dots .sa{fill:var(--pk-lt)}
@@ -248,10 +248,10 @@ function render(){
  if(me.suspended)return a.innerHTML=`<div class="login"><div class="cd"><p>This account is suspended. Ask the owner for help.</p><button class="no" data-a="out">Sign out</button></div></div>`;
  navTrack();
  const mine=teams.filter(t=>mem[t.id]);
- a.innerHTML=`<header><button class="hm" data-a="go" data-v="dash" aria-label="Liv Analytics, go to dashboard"><img src="logo.png" alt=""><span class="brand serif">Liv <small>Analytics</small></span></button><button id="navb" class="tb" data-a="navback"${nav.stack.length?'':' hidden'}>← Back</button><span class="sp"></span>
+ a.innerHTML=`<header><button class="hm" data-a="go" data-v="dash" aria-label="Liv Analytics, go to dashboard"><img src="logo.png" alt=""><span class="brand serif">Liv <small>Analytics</small></span></button><button id="navb" class="tb" data-a="navback"${nav.stack.length?'':' hidden'}>← Back</button>${siteBanner()}
  ${staff()?`<button class="tb" data-a="go" data-v="admin">Admin</button>`:''}
  ${mine.length>1?`<select class="tb" data-c="sw" aria-label="Switch team">${mine.map(t=>`<option value="${t.id}"${cur&&t.id===cur.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`:''}
- <button class="tb" data-a="go" data-v="dash">Dashboard</button><button class="tb" data-a="settings">Settings</button><button class="tb" data-a="profile">Profile</button></header>${siteBanner()}
+ <button class="tb" data-a="go" data-v="dash">Dashboard</button><button class="tb" data-a="settings">Settings</button><button class="tb" data-a="profile">Profile</button></header>
  ${viewing&&view==='dash'&&cur?`<div class="bar"><span>Viewing ${esc(cur.name)} as ${me.site_role}</span><button class="no" data-a="go" data-v="teamsV">Back to teams</button></div>`:''}
  <main>${({dash:dashV,admin:adminV,teamsV,users:usersV,roles:()=>admGuard(rolesV),invitesV:()=>admGuard(invitesV),pulls:()=>admGuard(pullsV),actlog:()=>admGuard(actlogV),siteset:()=>admGuard(sitesetV),backup:()=>admGuard(backupV),create:createV,scrims:scrimsV,schedule:scheduleV,player:playerV,roster:rosterV,analyst:analystV,strats:stratsV,cover:coverV,sc:scoutV,tset:teamSetV})[view]()}</main><footer>Map and operator images © Ubisoft. Some data from Liquipedia, CC-BY-SA. Liv Analytics is not affiliated with Ubisoft.</footer>`;
  if(view==='analyst')drawCharts();
@@ -2811,13 +2811,14 @@ async function saveSiteSet(f,qt){
   if(gp&&!/^[0-9]{6,20}$/.test(gp))return say(qt,'The project number is only digits.');
   Object.assign(row,{google_client_id:gc,google_api_key:gk,google_project_number:gp});gdrv.client=null;gdrv.tok=null}
  const r=await sb.from('site_settings').update(row).eq('id',true).select().single();if(r.error)return say(qt,r.error.message);
- siteSet=r.data;applyAccent();const b=$('#sitebanner');if(b)b.outerHTML=siteBanner()||'<span id="sitebanner" hidden></span>';else{const h=$('header');if(h&&siteBanner())h.insertAdjacentHTML('afterend',siteBanner())}
+ siteSet=r.data;applyAccent();const b=$('#sitebanner');if(b)b.outerHTML=siteBanner();
  document.querySelectorAll('[data-a=sssw]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===row.default_color));
  return qt?{}:toast('Site settings saved');
 }
 AUTO.siteset=f=>saveSiteSet(f,1);AUTO_AFTER.add('sssw');
 const sbKey=()=>'sbhide:'+(siteSet?.updated_at||'');
-function siteBanner(){const s=siteSet;if(!s?.announcement_on||!s.announcement.trim())return '';let hid=false;try{hid=localStorage.getItem(sbKey())==='1'}catch{}return hid?'':`<div id="sitebanner" class="bar" role="status"><span style="width:52px;flex:none" aria-hidden="true"></span><span style="flex:1;min-width:0;text-align:center;white-space:pre-wrap;overflow-wrap:anywhere;font-weight:600">${esc(s.announcement)}</span><button class="actx" style="width:52px;flex:none" data-a="sbhide">Hide</button></div>`}
+// the announcement sits in the header's empty middle, in the page's colour. Without one, the same spot is just the gap that pushes the buttons right.
+function siteBanner(){const s=siteSet,none='<span id="sitebanner" class="sp"></span>';if(!s?.announcement_on||!s.announcement.trim())return none;let hid=false;try{hid=localStorage.getItem(sbKey())==='1'}catch{}return hid?none:`<div id="sitebanner" class="hban" role="status"><span class="hbs" aria-hidden="true">✦</span><span class="hbt">${esc(s.announcement)}</span><span class="hbs" aria-hidden="true">✦</span><button class="actx" data-a="sbhide">Hide</button></div>`}
 
 // BACKUPS AND EXPORT (owner)
 const BK=[['teams','Teams','id'],['team_members','Team members','team_id,user_id'],['profiles','People','id'],['invites','Invites','email'],['team_roster','Rosters','id'],['schedule_entries','Schedule','id'],['strats','Strats','id'],['journal_goals','Journal goals','id'],['journal_notes','Journal notes','id'],['scrims','Scrims','id'],['scrim_map_results','Scrim maps','scrim_id,map'],['scrim_player_notes','Scrim player notes','scrim_id,user_id'],['scrim_vod_notes','Timestamp notes','id'],['scout_teams','Scouted teams','id'],['scout_matches','Match library','id'],['scout_vetoes','Vetoes','id'],['scout_rounds','Round library','id'],['scout_settings','Rating settings','owner_team_id'],['player_round_stats','Player round stats','id'],['site_settings','Site settings','id'],['activity_log','Activity log','id']];
@@ -3062,7 +3063,7 @@ plgo:d=>plGo(d),plreload:()=>{adm.pl=null;render()},
 plclear:async(d,b)=>{if(!confirm('Empty the Liquipedia cache? The next pull will fetch everything fresh, which is slower.'))return;b.disabled=true;const r=await sb.rpc('lp_cache_clear');b.disabled=false;if(r.error)return toast(r.error.message);toast(plural(r.data||0,'page')+' removed from the cache');pullsLoad()},
 lgmore:()=>logLoad(true),ddclear:()=>{try{localStorage.removeItem(DD_KEY)}catch{}an.driveSkip=0;recPaint();toast('Next time, every Drive replay will be read again')},drvpick:(d,b)=>drivePick(b),drvauth:async()=>{try{await driveAuth();const w=gdrv.wait;gdrv.wait=null;w?.ok();recPaint()}catch(e){toast(e.message)}},
 sssw:d=>{const i=$('#ssc');if(i)i.value=d.c},
-sbhide:()=>{try{localStorage.setItem(sbKey(),'1')}catch{}$('#sitebanner')?.remove()},
+sbhide:()=>{try{localStorage.setItem(sbKey(),'1')}catch{}const b=$('#sitebanner');if(b)b.outerHTML=siteBanner()},
 bkall:()=>bkAll(),bkcsv:(d,b)=>bkCsv(d.t,b),
  color:(d,b)=>{cap();fm.color=d.c;$('#hx').value=d.c;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x===b));$('#lp').innerHTML=tile({color:fm.color,name:fm.name||'?'},56)},
  prole:(d,b)=>b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')!=='true'),
