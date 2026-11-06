@@ -1038,12 +1038,18 @@ function recCard(g){
 }
 function recList(){
  const r=an.recs,total=r.reduce((a,x)=>a+x.size,0),done=r.filter(x=>x.res).length,pct=r.length?Math.round(done/r.length*100):0,cur=r.find(x=>!x.res),busy=an.rp&&cur;
- const skip=(an.skipped?`<p class="mu">Skipped ${plural(an.skipped,'file')} that ${an.skipped===1?'is':'are'} not .rec.</p>`:'')+(an.zipping?`<p class="mu">Opening ${plural(an.zipping,'zip file')}…</p>`:'')+(an.zipNested?`<p class="mu">Skipped ${plural(an.zipNested,'zip file')} inside a zip. Unzip ${an.zipNested===1?'it':'them'} first, or add ${an.zipNested===1?'it':'them'} on ${an.zipNested===1?'its':'their'} own.</p>`:'')+(gdrv.wait?'<div class="cd" role="alert" style="border-color:#ff8a8a;gap:6px"><b>Google Drive needs you to sign in again</b><p class="mu" style="font-size:13px">Google sign-ins last about an hour. Reading carries on from where it stopped.</p><div><button class="go" data-a="drvauth">Reconnect Google Drive</button></div></div>':'');
+ const skip=(an.skipped?`<p class="mu">Skipped ${plural(an.skipped,'file')} that ${an.skipped===1?'is':'are'} not .rec.</p>`:'')+(an.driveSkip?`<p class="mu">Skipped ${plural(an.driveSkip,'replay file')} already imported from Google Drive on this computer. <button class="actx" data-a="ddclear">Read them again next time</button></p>`:'')+(an.zipping?`<p class="mu">Opening ${plural(an.zipping,'zip file')}…</p>`:'')+(an.zipNested?`<p class="mu">Skipped ${plural(an.zipNested,'zip file')} inside a zip. Unzip ${an.zipNested===1?'it':'them'} first, or add ${an.zipNested===1?'it':'them'} on ${an.zipNested===1?'its':'their'} own.</p>`:'')+(gdrv.wait?'<div class="cd" role="alert" style="border-color:#ff8a8a;gap:6px"><b>Google Drive needs you to sign in again</b><p class="mu" style="font-size:13px">Google sign-ins last about an hour. Reading carries on from where it stopped.</p><div><button class="go" data-a="drvauth">Reconnect Google Drive</button></div></div>':'');
  if(!r.length)return skip;
  const gs=recGroups();
  return `<div class="row wrap" style="justify-content:space-between"><b style="font-weight:600">${plural(r.length,'replay file')} · ${fmtSize(total)} · ${gs.length===1?'1 match':gs.length+' matches'}</b><span class="row wrap" style="gap:6px">${recSaveable().length>1?`<button class="go" style="height:32px" data-a="recsaveall">Save all ready (${recSaveable().length})</button>`:''}<button class="no" style="height:32px" data-a="recclear">${busy?'Stop and clear':'Clear list'}</button></span></div>
  ${busy?`<div><p style="overflow-wrap:anywhere">Reading ${esc(cur.name)}</p><div class="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Replay reading progress" style="margin:6px 0"><i style="width:${pct}%"></i></div><p class="mu">${done} of ${r.length} files</p></div>`:''}
- ${an.rerr?`<p role="alert">${esc(an.rerr)}</p>`:''}${skip}${gs.map(recCard).join('')}`;
+ ${an.rerr?`<p role="alert">${esc(an.rerr)}</p>`:''}${skip}${recCardsB(gs)}`;
+}
+// A big run would draw a card for every match. Past 25 matches, only the ones that need a look are drawn.
+function recCardsB(gs){
+ if(gs.length<=25)return gs.map(recCard).join('');
+ const st=g=>{if(g.files.some(x=>!x.res))return'wait';const s=recSummary(g);if(!s.rounds.length)return'look';const ex=an.rex?.[s.id];return ex&&s.rounds.every(r=>ex.done.includes(r.roundNumber))?'saved':'look'},l=gs.map(g=>({g,k:st(g)})),n=k=>l.filter(x=>x.k===k).length,look=l.filter(x=>x.k==='look');
+ return `<div class="cd" style="gap:4px;padding:10px 12px"><b>${plural(gs.length,'match').replace('matchs','matches')} in this run</b><p class="mu" style="font-size:13px">${n('saved')} saved · ${n('wait')} still to read · ${look.length} need a look${look.length>25?', showing the first 25':''}</p></div>${look.slice(0,25).map(x=>recCard(x.g)).join('')}`;
 }
 const recPaint=()=>{const l=$('#recl');if(l)l.innerHTML=recList()};
 function parseRec(p,file){
@@ -1079,6 +1085,7 @@ async function recCheck(a,onlyKey){
  const bad=t.error||m.error||d.error;a.rerr=bad?repErr(bad):'';if(bad){if(an===a)recPaint();return}
  a.rteams=(t.data||[]).sort((x,y)=>x.name.localeCompare(y.name));a.rroster=(ro.data||[]).map(x=>x.name);a.rlinks=(ro.data||[]).filter(x=>x.linked_user_id);
  ids.forEach(i=>{const row=m.data.find(x=>x.replay_match_id===i),done=[...new Set(d.data.filter(x=>x.match_id===i).map(x=>x.round_number))];if(row)a.rex[i]={row,done};else delete a.rex[i]});
+ gs.forEach(g=>{const s=recSummary(g),ex=a.rex[s.id];if(ex&&!g.files.some(x=>!x.res)&&s.rounds.every(r=>ex.done.includes(r.roundNumber)))ddAdd(g.files.filter(x=>x.res?.ok).map(x=>x.driveKey))});
  if(an===a)recPaint();
 }
 const dayShift=(d,n)=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
@@ -1145,7 +1152,7 @@ async function recSave(key,b,quiet,auto){
   const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:recOp(c,r,p),operator_id:recOp(c,r,p)===repOp(p.operator)?p.operatorId||'':'',side:side(p.role),kills:p.kills,deaths:p.deaths,assists:p.assists,headshots:Math.min(p.headshots,p.kills),match_score:p.score,kost_point:repKost(r,p)})));
   const w1=await sb.from('scout_rounds').upsert(rounds,{onConflict:'owner_team_id,round_number,dedupe_key',ignoreDuplicates:true});if(w1.error)throw w1.error;
   const w2=await sb.from('player_round_stats').upsert(stats,{onConflict:'owner_team_id,match_id,round_number,player_key',ignoreDuplicates:true});if(w2.error)throw w2.error;
-  a.rlib=null;await recCheck(a,key);
+  a.rlib=null;await recCheck(a,key);ddAdd(g.files.filter(x=>x.res?.ok).map(x=>x.driveKey));
   if(sco&&sco.tid===tid){const[m,r]=await Promise.all([allRows(()=>sb.from('scout_matches').select('*').eq('owner_team_id',tid).order('id')),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',tid).order('id'))]);if(!m.error)sco.m=m.data;if(!r.error)sco.r=r.data;if(a.rteams)sco.teams=a.rteams}
   if(an===a)recPaint();if(!quiet||note)toast((auto?`Saved ${s.names.join(' vs ')}, ${s.map}: ${plural(fresh.length,'round')}.`:'Saved '+plural(fresh.length,'round')+'.')+note);
  }catch(e){b.disabled=false;b.textContent='Save';toast(g.label+': '+repErr(e))}
@@ -1204,11 +1211,15 @@ function addAny(list){
  if(rest.length||!zips.length)addRecs(rest);
  if(zips.length)addZips(zips.map(x=>x.src||fileSrc(x.file)));
 }
+// remember which Drive replays were saved, on this computer, so a big folder can be pulled over several sessions
+const DD_KEY='liv-drive-done';
+const ddGet=()=>{try{return new Set(JSON.parse(localStorage.getItem(DD_KEY)||'[]'))}catch{return new Set()}};
+const ddAdd=keys=>{keys=keys.filter(Boolean);if(!keys.length)return;try{const d=ddGet();keys.forEach(k=>d.add(k));localStorage.setItem(DD_KEY,JSON.stringify([...d].slice(-80000)))}catch{}};
 async function addZips(srcs){
  if(typeof DecompressionStream==='undefined')return toast('This browser cannot open zip files. Use Chrome, Edge, Firefox or Safari, kept up to date.');
  const a=an;a.zipping=(a.zipping||0)+srcs.length;recPaint();const out=[];
- for(const z of srcs){try{const es=await zipEntries(z);let n=0;es.forEach(e=>{if(/\.zip$/i.test(e.name)){a.zipNested=(a.zipNested||0)+1;return}if(!/\.rec$/i.test(e.name)){a.skipped++;return}n++;out.push({name:e.name.split('/').pop(),path:e.name,size:e.size,load:()=>zipExtract(z,e)})});if(!n)toast(`${z.name} has no .rec replays in it`)}catch(err){toast(z.name+': '+(err.message||err))}finally{a.zipping--}}
- if(an===a)addRecs(out);
+ const dd=ddGet();for(const z of srcs){try{const es=await zipEntries(z);let n=0;es.forEach(e=>{if(/\.zip$/i.test(e.name)){a.zipNested=(a.zipNested||0)+1;return}if(!/\.rec$/i.test(e.name)){a.skipped++;return}n++;const k=z.key?z.key+'/'+e.name:null;if(k&&dd.has(k)){a.driveSkip=(a.driveSkip||0)+1;return}out.push({name:e.name.split('/').pop(),path:e.name,size:e.size,driveKey:k,load:()=>zipExtract(z,e)})});if(!n)toast(`${z.name} has no .rec replays in it`)}catch(err){toast(z.name+': '+(err.message||err))}finally{a.zipping--}}
+ if(an===a){if(!out.length&&a.driveSkip)toast('Everything there was already imported from Google Drive on this computer.');addRecs(out)}
 }
 
 // GOOGLE DRIVE: pick zips or replays in Drive; only the parts being read are downloaded. Each person signs in to their own Google account.
@@ -1244,23 +1255,23 @@ async function drivePick(b){
 const DRIVE_FOLDER='application/vnd.google-apps.folder',DRIVE_SCOPE='https://www.googleapis.com/auth/drive.readonly';
 // Looks through folders level by level, asking about up to 40 folders at once, so a big tournament folder takes seconds, not minutes
 const recZipCount=l=>{const r=l.filter(x=>/\.rec$/i.test(x.name)).length,z=l.filter(x=>/\.zip$/i.test(x.name)).length;return plural(r,'replay file')+(z?' and '+plural(z,'zip file'):'')};
+// Looks through folders one folder per request, eight at a time. Asking about one folder at a time is what Google answers reliably for shared folders.
 async function driveListAll(roots,job,stop){
- const path=new Map(roots.map(r=>[r.id,r.name])),seen=new Set(roots.map(r=>r.id)),out=[];let level=[...seen],folders=level.length,items=0;
- const say=()=>actSet(job,{detail:`${plural(folders,'folder')} · ${recZipCount(out)} so far`});say();
- for(let depth=0;level.length&&!stop.v&&depth<20;depth++){
-  const next=[];
-  for(let i=0;i<level.length&&!stop.v;i+=40){
-   const q=encodeURIComponent('('+level.slice(i,i+40).map(id=>`'${id.replace(/'/g,"\'")}' in parents`).join(' or ')+') and trashed=false');let pt='';
-   do{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${encodeURIComponent('nextPageToken,files(id,name,mimeType,size,parents,shortcutDetails)')}&pageSize=1000&corpora=allDrives&supportsAllDrives=true&includeItemsFromAllDrives=true${pt?'&pageToken='+encodeURIComponent(pt):''}`,{},job),j=await r.json();
-    for(const f of j.files||[]){items++;const par=(f.parents||[]).find(x=>path.has(x)),p=(par?path.get(par)+'/':'')+f.name;
-     const isSc=f.mimeType==='application/vnd.google-apps.shortcut',sc=isSc?f.shortcutDetails:null;if(isSc&&!sc?.targetId)continue;const fid=sc?.targetId||f.id,mt=sc?sc.targetMimeType:f.mimeType;
-     if(mt===DRIVE_FOLDER){if(!seen.has(fid)){seen.add(fid);path.set(fid,p);next.push(fid);folders++}}
-     else if(!sc||sc.targetId)out.push({id:fid,name:f.name,path:p,sizeBytes:sc?undefined:f.size})}
-    pt=j.nextPageToken||'';say()}while(pt&&!stop.v);
-  }
-  level=next;
- }
- out.folders=folders;out.items=items;
+ const out=[],seen=new Set(roots.map(r=>r.id)),queue=roots.map(r=>({id:r.id,path:r.name}));let folders=0,items=0,active=0,last=0;
+ const say=(force)=>{if(!force&&Date.now()-last<250)return;last=Date.now();actSet(job,{detail:`${plural(folders,'folder')} looked through, ${queue.length+active} to go · ${recZipCount(out)} so far`})};say(true);
+ const one=async q=>{
+  let pt='';
+  do{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(`'${q.id}' in parents and trashed=false`)}&fields=${encodeURIComponent('nextPageToken,files(id,name,mimeType,size,shortcutDetails)')}&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true${pt?'&pageToken='+encodeURIComponent(pt):''}`,{},job),j=await r.json();
+   for(const f of j.files||[]){items++;const p=q.path+'/'+f.name,isSc=f.mimeType==='application/vnd.google-apps.shortcut',sc=isSc?f.shortcutDetails:null;if(isSc&&!sc?.targetId)continue;
+    const fid=sc?.targetId||f.id,mt=sc?sc.targetMimeType:f.mimeType;
+    if(mt===DRIVE_FOLDER){if(!seen.has(fid)&&p.split('/').length<25){seen.add(fid);queue.push({id:fid,path:p})}}
+    else out.push({id:fid,name:f.name,path:p,sizeBytes:sc?undefined:f.size})}
+   pt=j.nextPageToken||''}while(pt&&!stop.v);
+  folders++;say();
+ };
+ await new Promise((ok,no)=>{let failed=false;
+  const pump=()=>{if(failed)return;while(!stop.v&&active<8&&queue.length){const q=queue.shift();active++;one(q).then(()=>{active--;pump()},e=>{failed=true;no(e)})}if(!active&&(stop.v||!queue.length))ok()};pump()});
+ say(true);out.folders=folders;out.items=items;
  return out;
 }
 async function drivePicked(picked){
@@ -1271,11 +1282,11 @@ async function drivePicked(picked){
    docs=docs.concat(found);
    const n=docs.filter(d=>/\.(rec|zip)$/i.test(d.name)).length;actEnd(job,stop.v?'warn':'ok',(stop.v?'Stopped. ':'')+'Looked through '+plural(found.folders,'folder')+': '+recZipCount(docs)+' found'+(stop.v&&n?', and added':''))}
   catch(e){actEnd(job,'warn',e.message);return toast(e.message)}}
- const list=[];
- for(const d of docs){let size=+d.sizeBytes||0;if(!/\.(rec|zip)$/i.test(d.name)){an.skipped++;continue}if(!size){try{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(d.id)}?fields=size&supportsAllDrives=true`);size=+(await r.json()).size||0}catch{}}
-  const src={name:d.name,size,read:(a,b)=>driveRead(d.id,a,b)};
-  if(/\.zip$/i.test(d.name))list.push({name:d.name,src});else list.push({name:d.name,path:d.path||d.name,size,load:()=>driveRead(d.id,0,size).then(x=>new Blob([x]))})}
- if(!list.length)return toast(folders.length?'No .rec or .zip files were found in that folder.':'Choose folders, .zip or .rec files');
+ const list=[],dd=ddGet();
+ for(const d of docs){let size=+d.sizeBytes||0;if(!/\.(rec|zip)$/i.test(d.name)){an.skipped++;continue}if(/\.rec$/i.test(d.name)&&dd.has(d.id)){an.driveSkip=(an.driveSkip||0)+1;continue}if(!size){try{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(d.id)}?fields=size&supportsAllDrives=true`);size=+(await r.json()).size||0}catch{}}
+  const src={name:d.name,size,key:d.id,read:(a,b)=>driveRead(d.id,a,b)};
+  if(/\.zip$/i.test(d.name))list.push({name:d.name,src});else list.push({name:d.name,path:d.path||d.name,size,driveKey:d.id,load:()=>driveRead(d.id,0,size).then(x=>new Blob([x]))})}
+ if(!list.length){recPaint();return toast(an.driveSkip?'Everything there was already imported from Google Drive on this computer.':folders.length?'No .rec or .zip files were found in that folder.':'Choose folders, .zip or .rec files')}
  const zips=list.filter(x=>x.src);if(list.length>zips.length)addRecs(list.filter(x=>!x.src));if(zips.length)addZips(zips.map(x=>x.src));
 }
 // Google sign-ins last about an hour. A long run pauses and asks to reconnect, then carries on where it was.
@@ -2959,7 +2970,7 @@ const A={
  amode:d=>{an.mode=d.m;render()},
  aclear:()=>{Object.assign(an,{from:'',to:'',map:''});render()},
  recpick:d=>$('#'+d.t).click(),
- recclear:()=>{const p=an.rp;an.rp=null;p?.abort?.();p?.w?.terminate();Object.assign(an,{recs:[],skipped:0,zipNested:0,rc:{},rex:{},rpick:{},rerr:'',rlib:null,rsum:null});recPaint()},
+ recclear:()=>{const p=an.rp;an.rp=null;p?.abort?.();p?.w?.terminate();Object.assign(an,{recs:[],skipped:0,zipNested:0,driveSkip:0,rc:{},rex:{},rpick:{},rerr:'',rlib:null,rsum:null});recPaint()},
  actclear:()=>{act.items=act.items.filter(x=>x.state==='run');actDraw()},
  acttog:()=>{act.closed=!act.closed;act.pinned=!act.closed;actDraw();actIdle()},
  actstop:d=>{act.items.find(x=>x.id===+d.id)?.stop?.()},
@@ -3026,7 +3037,7 @@ ivedit:d=>{const i=invs.find(x=>x.email===d.id);if(!i)return;adm.inv={email:i.em
 ivlink:async()=>{const u=signupLink();try{await navigator.clipboard.writeText(u);toast('Sign-up link copied: '+u)}catch{prompt('Copy this sign-up link',u)}},
 plgo:d=>plGo(d),plreload:()=>{adm.pl=null;render()},
 plclear:async(d,b)=>{if(!confirm('Empty the Liquipedia cache? The next pull will fetch everything fresh, which is slower.'))return;b.disabled=true;const r=await sb.rpc('lp_cache_clear');b.disabled=false;if(r.error)return toast(r.error.message);toast(plural(r.data||0,'page')+' removed from the cache');pullsLoad()},
-lgmore:()=>logLoad(true),drvpick:(d,b)=>drivePick(b),drvauth:async()=>{try{await driveAuth();const w=gdrv.wait;gdrv.wait=null;w?.ok();recPaint()}catch(e){toast(e.message)}},
+lgmore:()=>logLoad(true),ddclear:()=>{try{localStorage.removeItem(DD_KEY)}catch{}an.driveSkip=0;recPaint();toast('Next time, every Drive replay will be read again')},drvpick:(d,b)=>drivePick(b),drvauth:async()=>{try{await driveAuth();const w=gdrv.wait;gdrv.wait=null;w?.ok();recPaint()}catch(e){toast(e.message)}},
 sssw:d=>{const i=$('#ssc');if(i)i.value=d.c},
 sbhide:()=>{try{localStorage.setItem(sbKey(),'1')}catch{}$('#sitebanner')?.remove()},
 bkall:()=>bkAll(),bkcsv:(d,b)=>bkCsv(d.t,b),
