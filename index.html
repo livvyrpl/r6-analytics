@@ -135,7 +135,7 @@ const actAdd=x=>{x.id=++act.seq;x.start=x.start||Date.now();act.items.push(x);wh
 const actStart=(title,stop)=>actAdd({title,stop,state:'run',detail:'',pct:null});
 const actSet=(x,o)=>{Object.assign(x,o);actDraw()};
 const actEnd=(x,state,detail)=>{toast.last=Date.now();Object.assign(x,{state,detail:detail??x.detail,end:Date.now(),pct:null,stop:null});actDraw();actIdle()};
-const ACT_WARN=/could not|cannot|can't|permission|^enter |^choose |^paste |error|failed|not set up|too many|must be|already|should |needs? |unexpected|does not|not found|no longer/i;
+const ACT_WARN=/could not|cannot|can't|permission|^enter |^choose |^paste |error|failed|not set up|too many|must be|already|should |needs? |unexpected|does not|not found|no longer| twice|^fix /i;
 function toast(m){toast.last=Date.now();const n=Date.now();actAdd({title:m,state:ACT_WARN.test(m)?'warn':'ok',start:n,end:n})}
 setInterval(()=>{document.querySelectorAll('[data-at]').forEach(e=>{const x=act.items.find(y=>y.id===+e.dataset.at);if(x&&e.firstChild)e.firstChild.nodeValue=actAge(x)+(x.state==='run'&&x.stop?' ':'')})},1000);
 const logoOk=u=>!!u&&!/liquipedia\.net/i.test(u);
@@ -713,6 +713,15 @@ function recSummarize(g){
  s.players=[...pl.values()];
  return s;
 }
+// A team can only pick each operator once a round, so a repeat is a misread to fix before saving
+const recOp=(c,r,p)=>c.ops?.[r.roundNumber+'|'+norm(p.username)]||repOp(p.operator);
+const recDups=(s,c,done)=>{const out=[];s.rounds.forEach(r=>{if(done.has(r.roundNumber))return;[0,1].forEach(i=>{const ps=r.players.filter(p=>p.teamIndex===i),d=opDup(ps.map(p=>recOp(c,r,p)));if(d.length)out.push({r,i,ps,d})})});return out};
+function recDupH(g,s,c,dups){
+ const fixed=Object.keys(c.ops||{}).length;
+ if(!dups.length)return fixed?`<p class="mu">You changed ${plural(fixed,'operator')}. ${fixed===1?'It':'They'} will be saved with this replay.</p>`:'';
+ const sel=(r,p)=>{const id='rco'+g.key.replace(/[^a-z0-9]/gi,'')+r.roundNumber+squash(p.username);return `<div class="row wrap" style="gap:8px"><label for="${esc(id)}" style="margin:0;color:var(--tx);flex:1 1 140px;min-width:0;overflow-wrap:anywhere">${esc(p.username)}</label><select id="${esc(id)}" class="fi" style="flex:0 1 200px;min-width:0;height:34px;padding:0 8px" data-c="recop" data-k="${esc(g.key)}" data-r="${r.roundNumber}" data-u="${esc(p.username)}">${opOptions(recOp(c,r,p),startNorm(p.role))}</select></div>`};
+ return `<div class="cd" role="alert" style="gap:10px;padding:10px 12px;border-color:#ff8a8a"><b style="font-weight:600"><span aria-hidden="true">⚠</span> The same operator is listed twice in a round. Pick the right operator for each player to save.</b>${dups.map(x=>{const bad=new Set(x.d.map(o=>norm(opCanon(o))));return `<div style="display:flex;flex-direction:column;gap:4px"><span>Round ${x.r.roundNumber}, ${esc(s.names[x.i])}: ${esc(x.d.join(' and '))} twice</span>${x.ps.filter(p=>bad.has(norm(opCanon(recOp(c,x.r,p))))).map(p=>sel(x.r,p)).join('')}</div>`}).join('')}</div>`;
+}
 const recRc=k=>an.rc[k]||(an.rc[k]={names:{}});
 // Falcons and Falcons Esports are the same team. Sharing another word is only a reason to ask.
 const TEAM_FILLER=new Set(['esports','esport','gaming','team','club','gg','the']);
@@ -777,14 +786,15 @@ function recCard(g){
  if(s.pending)return `<article class="cd" style="gap:6px"><b style="font-weight:600;overflow-wrap:anywhere">${esc(g.label)}</b><p class="mu">Reading ${count}…</p></article>`;
  const warnH=s.warn.length?`<div><h3 class="lb" style="margin-bottom:4px">Warnings</h3><ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;overflow-wrap:anywhere">${s.warn.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></div>`:'';
  if(!s.rounds.length)return `<article class="cd" style="gap:10px"><b style="font-weight:600;overflow-wrap:anywhere">${esc(g.label)}</b><p>None of these files could be read.</p>${warnH}</article>`;
- const ex=an.rex?.[s.id],done=ex?new Set(ex.done):new Set(),fresh=s.rounds.filter(r=>!done.has(r.roundNumber)).length,row=ex?.row;
- const sb2=i=>{const l=s.players.filter(p=>p.team===i).sort((a,b)=>b.k-a.k||a.d-b.d);return `<div style="overflow-x:auto"><table class="tbl"><caption style="text-align:left;font-weight:600;padding-bottom:4px;overflow-wrap:anywhere">${esc(s.names[i])}</caption><thead><tr><th scope="col">Player</th><th scope="col">Operators</th><th scope="col" class="num">K</th><th scope="col" class="num">D</th><th scope="col" class="num">A</th><th scope="col" class="num">HS</th><th scope="col" class="num">Score</th></tr></thead><tbody>${l.map(p=>`<tr><td>${esc(p.name)}</td><td style="white-space:normal;min-width:120px">${esc(p.ops.join(', '))}</td><td class="num">${p.k}</td><td class="num">${p.d}</td><td class="num">${p.a}</td><td class="num">${p.h}</td><td class="num">${p.score}</td></tr>`).join('')}</tbody></table></div>`};
+ const ex=an.rex?.[s.id],done=ex?new Set(ex.done):new Set(),fresh=s.rounds.filter(r=>!done.has(r.roundNumber)).length,row=ex?.row,dups=s.mixed?[]:recDups(s,c,done);
+ const plOps=p=>c.ops&&Object.keys(c.ops).length?[...new Set(s.rounds.flatMap(r=>r.players.filter(q=>q.teamIndex===p.team&&norm(q.username)===norm(p.name)).map(q=>recOp(c,r,q))))]:p.ops;
+ const sb2=i=>{const l=s.players.filter(p=>p.team===i).sort((a,b)=>b.k-a.k||a.d-b.d);return `<div style="overflow-x:auto"><table class="tbl"><caption style="text-align:left;font-weight:600;padding-bottom:4px;overflow-wrap:anywhere">${esc(s.names[i])}</caption><thead><tr><th scope="col">Player</th><th scope="col">Operators</th><th scope="col" class="num">K</th><th scope="col" class="num">D</th><th scope="col" class="num">A</th><th scope="col" class="num">HS</th><th scope="col" class="num">Score</th></tr></thead><tbody>${l.map(p=>`<tr><td>${esc(p.name)}</td><td style="white-space:normal;min-width:120px">${esc(plOps(p).join(', '))}</td><td class="num">${p.k}</td><td class="num">${p.d}</td><td class="num">${p.a}</td><td class="num">${p.h}</td><td class="num">${p.score}</td></tr>`).join('')}</tbody></table></div>`};
  const roundsH=`<details><summary style="cursor:pointer;font-weight:600">Who won each round</summary><div style="overflow-x:auto;margin-top:8px"><table class="tbl"><thead><tr><th scope="col" class="num">Round</th><th scope="col">Winner</th><th scope="col" class="num">Score</th><th scope="col">Site</th></tr></thead><tbody>${s.rounds.map(r=>`<tr><td class="num">${r.roundNumber}</td><td>${r.winningTeam===null?'Unknown':esc(s.names[r.winningTeam])}</td><td class="num">${r.teams[0].score}-${r.teams[1].score}</td><td>${esc(r.site||'Not found')}</td></tr>`).join('')}</tbody></table></div></details>`;
  const sides=ex||s.mixed?null:recSides(s,c);
  const pick=s.mixed?'':ex?`<p>${fresh?`Already in the library as ${esc(row.team)} vs ${esc(row.opponent)}. ${plural(fresh,'new round')} will be added.`:'Already imported. Nothing new to save.'}</p>`:!sides?'<p class="mu">Checking teams…</p>':`<div style="display:flex;flex-direction:column;gap:8px">${sides.map(x=>recTeamLine(x,g)).join('')}${sides.same?`<p role="alert">Both sides match ${esc(sides[0].name)}. Check that team's aliases in its settings.</p>`:''}</div>`;
- const can=!s.mixed&&fresh>0&&(ex||recReady(sides));
+ const can=!s.mixed&&fresh>0&&!dups.length&&(ex||recReady(sides));
  return `<article class="cd" style="gap:12px"><div class="row wrap" style="gap:8px 14px"><div style="flex:1 1 220px;min-width:0"><h3 style="font-size:17px;font-weight:600;overflow-wrap:anywhere">${esc(s.map)}: ${esc(s.names[0])} vs ${esc(s.names[1])}</h3><p class="mu" style="overflow-wrap:anywhere">${esc(fmtD(s.date))} · ${plural(s.rounds.length,'round')} · ${esc(g.label)}</p></div><span class="badge" style="font-variant-numeric:tabular-nums">${s.score[0]}-${s.score[1]}</span></div>
-  ${recGroups().length>3?`<details><summary style="cursor:pointer;font-weight:600">Scoreboard and rounds</summary><div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">${sb2(0)}${sb2(1)}${roundsH}</div></details>`:sb2(0)+sb2(1)+roundsH}${warnH}${pick}${!ex&&!s.mixed&&sides?recLibLine(s,sides):''}${s.mixed||(ex&&!fresh)?'':`<div class="row wrap" style="justify-content:flex-end;gap:10px">${can?'':'<span class="mu">Choose the team above to save.</span>'}<button class="go" data-a="recsave" data-k="${esc(g.key)}"${can?'':' disabled'}>Save ${plural(fresh,'round')}</button></div>`}</article>`;
+  ${recGroups().length>3?`<details><summary style="cursor:pointer;font-weight:600">Scoreboard and rounds</summary><div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">${sb2(0)}${sb2(1)}${roundsH}</div></details>`:sb2(0)+sb2(1)+roundsH}${warnH}${recDupH(g,s,c,dups)}${pick}${!ex&&!s.mixed&&sides?recLibLine(s,sides):''}${s.mixed||(ex&&!fresh)?'':`<div class="row wrap" style="justify-content:flex-end;gap:10px">${can?'':`<span class="mu">${dups.length?'Fix the operators above to save.':'Choose the team above to save.'}</span>`}<button class="go" data-a="recsave" data-k="${esc(g.key)}"${can?'':' disabled'}>Save ${plural(fresh,'round')}</button></div>`}</article>`;
 }
 function recList(){
  const r=an.recs,total=r.reduce((a,x)=>a+x.size,0),done=r.filter(x=>x.res).length,pct=r.length?Math.round(done/r.length*100):0,cur=r.find(x=>!x.res),busy=an.rp&&cur;
@@ -875,22 +885,22 @@ async function recGame(s,c,tid){
  if(r.error){if(r.error.code==='23505'){const again=await sb.from('scout_matches').select('*').eq('owner_team_id',tid).eq('replay_match_id',s.id).maybeSingle();if(again.data)return again.data}throw r.error}
  return r.data;
 }
-const recSaveable=()=>recGroups().filter(g=>{if(g.files.some(x=>!x.res))return false;const s=recSummary(g);if(!s.rounds.length||s.mixed)return false;const ex=an.rex?.[s.id];if(ex)return s.rounds.some(r=>!ex.done.includes(r.roundNumber));return recReady(recSides(s,recRc(g.key)))});
+const recSaveable=()=>recGroups().filter(g=>{if(g.files.some(x=>!x.res))return false;const s=recSummary(g);if(!s.rounds.length||s.mixed)return false;const ex=an.rex?.[s.id];if(recDups(s,recRc(g.key),new Set(ex?.done||[])).length)return false;if(ex)return s.rounds.some(r=>!ex.done.includes(r.roundNumber));return recReady(recSides(s,recRc(g.key)))});
 async function recSaveAll(){
  const a=an,keys=recSaveable().map(g=>g.key);let stop=false,ok=0;const job=actStart('Saving replays',()=>{stop=true});
  for(const k of keys){if(stop||an!==a)break;actSet(job,{detail:(ok+1)+' of '+keys.length,pct:Math.round(ok/keys.length*100)});await recSave(k,{},true);ok++}
  const left=an===a?recGroups().filter(g=>g.files.every(x=>x.res)&&recSummary(g).rounds.length&&!an.rex?.[recSummary(g).id]).length:0;
- actEnd(job,left?'warn':'ok',plural(ok,'match').replace('matchs','matches')+' saved'+(left?' · '+left+' still need a team chosen':''));
+ actEnd(job,left?'warn':'ok',plural(ok,'match').replace('matchs','matches')+' saved'+(left?' · '+left+' still need a team chosen or an operator fixed':''));
 }
 async function recSave(key,b,quiet){
  const a=an,tid=a.tid,g=recGroups().find(x=>x.key===key);if(!g)return;
- const s=recSummary(g),c=recRc(key);b.disabled=true;b.textContent='Saving…';
+ const s=recSummary(g),c=recRc(key);if(recDups(s,c,new Set(a.rex[s.id]?.done||[])).length)return toast('Fix the operator listed twice before saving');b.disabled=true;b.textContent='Saving…';
  try{
   const note=a.rex[s.id]?'':await recApplyTeams(s,c,a);
   const game=await recGame(s,c,tid),t1=game.replay_t1_index??0,t2=t1^1,our=game.our_team_index,mid=matchId(game),done=new Set(a.rex[s.id]?.done||[]),fresh=s.rounds.filter(r=>!done.has(r.roundNumber));
   const side=v=>v==='Attack'?'attack':v==='Defense'?'defense':'';
-  const rounds=fresh.map(r=>{const ops=i=>r.players.filter(p=>p.teamIndex===i).map(p=>repOp(p.operator)),mine=ops(t1),row={owner_team_id:tid,match_id:mid,round_date:game.match_date,map:game.map,round_number:r.roundNumber,team:game.team,opponent:game.opponent,side:r.teams[t1]?.role||'',site:r.site||'',result:r.winningTeam===null?'':r.winningTeam===t1?'W':'L',opponent_operators:ops(t2).join(' ')};[0,1,2,3,4].forEach(i=>row['operator_'+(i+1)]=mine[i]||'');return row});
-  const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:repOp(p.operator),operator_id:p.operatorId||'',side:side(p.role),kills:p.kills,deaths:p.deaths,assists:p.assists,headshots:Math.min(p.headshots,p.kills),match_score:p.score,kost_point:repKost(r,p)})));
+  const rounds=fresh.map(r=>{const ops=i=>r.players.filter(p=>p.teamIndex===i).map(p=>recOp(c,r,p)),mine=ops(t1),row={owner_team_id:tid,match_id:mid,round_date:game.match_date,map:game.map,round_number:r.roundNumber,team:game.team,opponent:game.opponent,side:r.teams[t1]?.role||'',site:r.site||'',result:r.winningTeam===null?'':r.winningTeam===t1?'W':'L',opponent_operators:ops(t2).join(' ')};[0,1,2,3,4].forEach(i=>row['operator_'+(i+1)]=mine[i]||'');return row});
+  const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:recOp(c,r,p),operator_id:recOp(c,r,p)===repOp(p.operator)?p.operatorId||'':'',side:side(p.role),kills:p.kills,deaths:p.deaths,assists:p.assists,headshots:Math.min(p.headshots,p.kills),match_score:p.score,kost_point:repKost(r,p)})));
   const w1=await sb.from('scout_rounds').upsert(rounds,{onConflict:'owner_team_id,round_number,dedupe_key',ignoreDuplicates:true});if(w1.error)throw w1.error;
   const w2=await sb.from('player_round_stats').upsert(stats,{onConflict:'owner_team_id,match_id,round_number,player_key',ignoreDuplicates:true});if(w2.error)throw w2.error;
   a.rlib=null;await recCheck(a,key);
@@ -1869,6 +1879,102 @@ function oppIssues(rows){
 }
 const LP_DEAD=/^siege\.gg \d+: answered 404/;
 const GAP_COLS=[['maps','Maps'],['veto','Veto'],['bans','Op bans'],['board','Scoreboard'],['log','Round log'],['ops','Operators'],['vod','VOD'],['src','Sources']];
+// DATA THAT LOOKS WRONG: things that can't happen in a real game, like one team picking the same operator twice in a round
+const opSide=o=>{const x=OPS.find(y=>y[0]===opCanon(o));return x?(x[1]?'attack':'defense'):''};
+const opDup=l=>{const seen=new Set(),out=[];l.forEach(o=>{const k=norm(opCanon(o));if(!k)return;if(seen.has(k)){if(!out.some(y=>norm(opCanon(y))===k))out.push(o)}else seen.add(k)});return out};
+const otherSide=s=>s==='attack'?'defense':s==='defense'?'attack':'';
+const opOptions=(v,side)=>{const grp=(lbl,atk)=>`<optgroup label="${lbl}">${OPS.filter(o=>!!o[1]===atk).map(o=>o[0]).sort((a,b)=>a.localeCompare(b)).map(o=>`<option${o===v?' selected':''}>${esc(o)}</option>`).join('')}</optgroup>`,known=!v||OPS.some(o=>o[0]===v);return `<option value=""${v?'':' selected'}>None</option>${known?'':`<option selected>${esc(v)}</option>`}${side==='defense'?grp('Defenders',false)+grp('Attackers',true):grp('Attackers',true)+grp('Defenders',false)}`};
+const roundTeams=r=>{const sd=startNorm(r.side);return[{who:r.team,side:sd,ops:[1,2,3,4,5].flatMap(i=>opNames(r['operator_'+i]))},{who:r.opponent,side:otherSide(sd),ops:opNames(r.opponent_operators)}]};
+function roundWrong(r){
+ const out=[];
+ roundTeams(r).forEach(t=>{const who=t.who||'A team',d=opDup(t.ops);if(d.length)out.push(`${who} has ${d.join(' and ')} twice`);if(t.ops.length>5)out.push(`${who} has ${t.ops.length} operators`);if(t.side){const bad=t.ops.filter(o=>{const s=opSide(o);return s&&s!==t.side});if(bad.length)out.push(`${who} is on ${t.side} but has ${bad.join(', ')}`)}});
+ return out;
+}
+const roundIdx=()=>{if(sco._ri?.src!==sco.r||sco._ri.n!==sco.r.length){const m=new Map();sco.r.forEach(x=>{const k=norm(x.match_id);(m.get(k)||m.set(k,[]).get(k)).push(x)});sco._ri={src:sco.r,n:sco.r.length,m}}return sco._ri.m};
+const gameRounds=g=>[...(roundIdx().get(norm(matchId(g)))||[])].sort((a,b)=>a.round_number-b.round_number||String(a.team).localeCompare(String(b.team)));
+// a round as seen by the game's Team 1
+const roundFor=(g,r)=>!sameName(r.team,g.team)&&sameName(r.team,g.opponent)?flipRound(r):r;
+function roundTally(g){
+ const rs=gameRounds(g).map(r=>roundFor(g,r));if(!rs.length||new Set(rs.map(r=>r.round_number)).size!==rs.length||rs.some(r=>!normRes(r.result)))return null;
+ return{w:rs.filter(r=>normRes(r.result)==='W').length,l:rs.filter(r=>normRes(r.result)==='L').length,n:rs.length};
+}
+const tallyOff=(t,p)=>!!t&&!!p&&(t.w>p.a||t.l>p.b||(t.n>=p.a+p.b&&(t.w!==p.a||t.l!==p.b)));
+function gameWrong(g){
+ const out=[],p=parseScore(g.round_score),res=normRes(g.result),word={W:'a win',L:'a loss',D:'a draw'};
+ if(p&&res&&((res==='W'&&p.a<=p.b)||(res==='L'&&p.a>=p.b)||(res==='D'&&p.a!==p.b)))out.push(`It is marked as ${word[res]} for ${g.team} but the score is ${g.round_score}`);
+ [['our_atk_ban',g.team,'attack'],['our_def_ban',g.team,'defense'],['opp_atk_ban',g.opponent,'attack'],['opp_def_ban',g.opponent,'defense']].forEach(([k,who,want])=>opNames(g[k]).forEach(o=>{const s=opSide(o);if(s&&s!==want)out.push(`${who}'s ${want} ban ${o} is ${s==='attack'?'an attacker':'a defender'}`)}));
+ const t=roundTally(g);if(tallyOff(t,p))out.push(`The rounds add up to ${t.w}-${t.l} but the score is ${g.round_score}`);
+ gameRounds(g).forEach(r=>roundWrong(r).forEach(w=>out.push(`Round ${r.round_number}: ${w}`)));
+ return out.sort((a,b)=>+/ twice$/.test(b)-+/ twice$/.test(a));
+}
+function wrongB(team){
+ const k=team?scKeys(team):null,l=sco.m.filter(r=>!k||k.has(norm(r.team))||k.has(norm(r.opponent))).map(g=>({g,why:gameWrong(g)})).filter(x=>x.why.length).sort((a,b)=>b.g.match_date.localeCompare(a.g.match_date));
+ if(!l.length)return '';
+ const say=w=>w.length>3?w.slice(0,3).join('. ')+`. And ${w.length-3} more.`:w.join('. ')+'.';
+ return `<details class="cd" open style="margin-bottom:8px;border-color:#ff8a8a"><summary style="cursor:pointer;font-weight:600"><span aria-hidden="true">⚠</span> Looks wrong (${l.length}). Click a game to fix it.</summary><div style="max-height:360px;overflow-y:auto;margin-top:6px">${l.slice(0,200).map(x=>`<button class="u" data-a="smatch" data-id="${x.g.id}" style="padding:6px 8px;justify-content:space-between;flex-wrap:wrap;border-top:1px solid var(--bd);border-radius:0"><span style="min-width:0;flex:1 1 200px"><b style="display:block;font-weight:600;overflow-wrap:anywhere">${esc(x.g.team)} vs ${esc(x.g.opponent)}, ${esc(x.g.map)}</b><span class="mu" style="font-size:12px">${esc(fmtD(x.g.match_date))}</span></span><span class="over" style="flex:1 1 260px;overflow-wrap:anywhere;text-align:left">${esc(say(x.why))}</span></button>`).join('')}${l.length>200?'<p class="mu">Showing the first 200.</p>':''}</div></details>`;
+}
+const wrongTop=g=>{const w=gameWrong(g);return w.length?`<section class="cd" style="gap:6px;margin-bottom:8px;border-color:#ff8a8a" role="alert"><h2 style="font-size:14px;font-weight:600"><span aria-hidden="true">⚠</span> This looks wrong</h2><ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px;overflow-wrap:anywhere">${w.map(x=>`<li>${esc(x)}.</li>`).join('')}</ul><p class="mu" style="font-size:12.5px">Fix it in the game details or the rounds below.</p></section>`:''};
+// EDITING ROUNDS on a game's page
+function rdB(g){
+ const rs=gameRounds(g),t=roundTally(g),p=parseScore(g.round_score),sideW=s=>s==='attack'?'Attack':s==='defense'?'Defense':'<span class="mu">—</span>';
+ const opsTxt=(l,side)=>{const d=new Set(opDup(l).map(o=>norm(opCanon(o))));return l.length?l.map(o=>{const bad=d.has(norm(opCanon(o)))||(side&&opSide(o)&&opSide(o)!==side);return `<span${bad?' class="over" style="font-weight:700"':''}>${esc(o)}</span>`}).join(', '):'<span class="mu">—</span>'};
+ const body=rs.map(r=>{const o=roundFor(g,r),tm=roundTeams(o),res=normRes(o.result),bad=roundWrong(r).length;return `<tr style="vertical-align:top${bad?';background:rgba(255,138,138,.08)':''}"><td class="num">${bad?'<span class="over" aria-label="Looks wrong">⚠</span> ':''}${r.round_number}</td><td>${sideW(tm[0].side)}</td><td>${res==='W'?esc(g.team):res==='L'?esc(g.opponent):'<span class="mu">Not set</span>'}</td><td>${o.site?esc(o.site):'<span class="mu">—</span>'}</td><td style="white-space:normal;min-width:150px">${opsTxt(tm[0].ops,tm[0].side)}</td><td style="white-space:normal;min-width:150px">${opsTxt(tm[1].ops,tm[1].side)}</td><td><button class="no" style="height:26px;padding:0 10px;font-size:12px" data-a="rdedit" data-id="${r.id}" aria-label="Edit round ${r.round_number}">Edit</button></td></tr>`}).join('');
+ const off=tallyOff(t,p),fix=off&&t.n>=p.a+p.b;
+ return `<section id="rdsec" class="cd" style="gap:8px;margin-top:16px"><div class="row wrap" style="justify-content:space-between"><h2 style="font-size:15px;font-weight:600">Rounds (${rs.length})</h2><button class="go" style="height:32px" data-a="rdadd">Add a round</button></div>${off?`<div class="row wrap" style="gap:8px"><span class="over">The rounds add up to ${t.w}-${t.l} but the score says ${esc(g.round_score)}.</span>${fix?`<button class="no" style="height:28px;font-size:12.5px" data-a="rdscore">Use ${t.w}-${t.l}</button>`:''}</div>`:''}${rs.length?`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col" class="num">Rd</th><th scope="col">${esc(g.team)} side</th><th scope="col">Won by</th><th scope="col">Site</th><th scope="col">${esc(g.team)} operators</th><th scope="col">${esc(g.opponent)} operators</th><th scope="col"><span style="position:absolute;left:-9999px">Edit</span></th></tr></thead><tbody>${body}</tbody></table></div>`:'<p class="mu">No rounds saved for this game. Import its replay on the Parse page, or add rounds here.</p>'}</section>`;
+}
+function rdPaint(g){const s=$('#rdsec');if(s)s.outerHTML=rdB(g);const w=$('#wrtop');if(w)w.innerHTML=wrongTop(g)}
+async function rdOpen(id){
+ const g=sco.m.find(x=>x.id===sco.matchId);if(!g)return;const r=id?sco.r.find(x=>x.id===id):null;
+ let stats=[];if(r&&g.replay_match_id){const q=await sb.from('player_round_stats').select('id,player_username,team_name,operator,side').eq('owner_team_id',sco.tid).eq('scout_match_id',g.id).eq('round_number',r.round_number);if(q.error)return toast(scErr(q.error));stats=q.data||[]}
+ const used=gameRounds(g).map(x=>x.round_number);
+ sco.rd={gid:g.id,id:r?.id||null,stats,next:used.length?Math.max(...used)+1:1};
+ const d=$('#dlg');d.className='dkw';d.innerHTML=rdHtml();if(!d.open){d.showModal();d.addEventListener('close',()=>{d.className='';if(sco)sco.rd=null},{once:true})}
+}
+function rdHtml(){
+ const f=sco.rd,g=sco.m.find(x=>x.id===f.gid),r=f.id?sco.r.find(x=>x.id===f.id):null;
+ const o=r||{team:g.team,opponent:g.opponent,round_number:f.next,side:'',site:'',result:'',opponent_operators:''},tm=roundTeams(o),res=normRes(o.result);
+ const sites=[...new Set(sco.r.filter(x=>mapCanon(x.map)===mapCanon(g.map)).map(x=>(x.site||'').trim()).filter(Boolean))].sort();
+ const team=(t,i)=>{const sk=l=>l.map(o=>norm(opCanon(o))).sort().join(),all=f.stats.filter(p=>sameName(p.team_name,t.who)),ps=all.length&&sk(all.map(p=>repOp(p.operator)))===sk(t.ops)?all:[],slots=ps.length?ps.map(p=>({label:p.player_username,op:repOp(p.operator),pid:p.id})):[0,1,2,3,4].map(j=>({label:'Operator '+(j+1),op:t.ops[j]||''})),d=new Set(opDup(slots.map(x=>x.op)).map(o=>norm(opCanon(o))));
+  return `<fieldset style="border:1px solid var(--bd);border-radius:10px;padding:8px 10px;min-width:0;margin:0"><legend style="font-weight:600;padding:0 4px;overflow-wrap:anywhere">${esc(t.who)}${t.side?' · '+t.side:''}</legend>${slots.map((x,j)=>{const id='rdo'+i+'_'+j,bad=x.op&&d.has(norm(opCanon(x.op)));return `<div class="row" style="gap:8px;padding:2px 0"><label for="${id}" style="margin:0;color:var(--tx);flex:1 1 80px;min-width:0;font-size:13px;overflow-wrap:anywhere">${esc(x.label)}${bad?' <span class="over">twice</span>':''}</label><select id="${id}" class="fi" style="flex:0 1 170px;min-width:0;height:34px;padding:0 6px${bad?';border-color:#ff8a8a':''}" data-rdo="${i}" data-pid="${x.pid||''}" data-was="${esc(x.op)}">${opOptions(x.op,t.side)}</select></div>`}).join('')}</fieldset>`};
+ const fx=(id,l,inner)=>`<div style="flex:1 1 140px;min-width:0"><label for="${id}">${l}</label>${inner}</div>`;
+ return `<div class="row" style="justify-content:space-between;margin-bottom:6px"><h2 class="serif" style="font-size:20px">${r?'Round '+r.round_number:'Add a round'}</h2><button class="no" style="height:28px" data-a="rdclose">Close</button></div>
+ <p class="mu" style="margin-bottom:10px;overflow-wrap:anywhere">${esc(g.team)} vs ${esc(g.opponent)}, ${esc(g.map)}, ${esc(fmtD(g.match_date))}</p>
+ <div class="row wrap" style="gap:10px;margin-bottom:10px;align-items:flex-end">${fx('rdn','Round #',`<input id="rdn" class="fi" inputmode="numeric" value="${o.round_number}"${f.stats.length?' disabled title="This comes from the replay"':''}>`)}${fx('rds',`${esc(o.team)} side`,`<select id="rds" class="fi">${[['','Not set'],['Attack','Attack'],['Defense','Defense']].map(x=>`<option value="${x[0]}"${startNorm(o.side)===norm(x[0])?' selected':''}>${x[1]}</option>`).join('')}</select>`)}${fx('rdw','Won by',`<select id="rdw" class="fi"><option value="">Not set</option><option value="W"${res==='W'?' selected':''}>${esc(o.team)}</option><option value="L"${res==='L'?' selected':''}>${esc(o.opponent)}</option></select>`)}${fx('rdsite','Site',`<input id="rdsite" class="fi" maxlength="120" list="rdsites" value="${esc(o.site||'')}"><datalist id="rdsites">${sites.map(s=>`<option value="${esc(s)}">`).join('')}</datalist>`)}</div>
+ <div class="ops2" style="margin-bottom:12px">${tm.map(team).join('')}</div>
+ <div class="row wrap" style="justify-content:space-between;gap:8px">${r?'<button class="no" data-a="rddel">Delete round</button>':'<span></span>'}<span class="row" style="gap:8px"><button class="no" data-a="rdclose">Cancel</button><button class="go" data-a="rdsave">Save round</button></span></div>`;
+}
+async function rdSave(b){
+ const f=sco.rd,g=sco.m.find(x=>x.id===f.gid),r=f.id?sco.r.find(x=>x.id===f.id):null,d=$('#dlg'),v=s=>d.querySelector(s).value.trim();
+ const n=+v('#rdn');if(!Number.isInteger(n)||n<1||n>99)return toast('Enter a round number from 1 to 99');
+ const team=r?r.team:g.team,opp=r?r.opponent:g.opponent;
+ if(gameRounds(g).some(x=>x.id!==r?.id&&x.round_number===n&&norm(x.team)===norm(team)))return toast(`Round ${n} is already saved for this game`);
+ const pick=i=>[...d.querySelectorAll(`[data-rdo="${i}"]`)].map(s=>({op:s.value,pid:s.dataset.pid,was:s.dataset.was})),a=pick(0),c=pick(1);
+ for(const [l,who] of [[a,team],[c,opp]]){const dd=opDup(l.map(x=>x.op).filter(Boolean));if(dd.length)return toast(`${who} has ${dd.join(' and ')} twice. Pick the right operator.`)}
+ const side=v('#rds'),mine=a.map(x=>x.op).filter(Boolean),row={round_number:n,side,result:v('#rdw'),site:v('#rdsite'),opponent_operators:c.map(x=>x.op).filter(Boolean).join(' ')};for(let i=0;i<5;i++)row['operator_'+(i+1)]=mine[i]||'';
+ b.disabled=true;
+ const w=r?await sb.from('scout_rounds').update(row).eq('id',r.id).select().single():await sb.from('scout_rounds').insert({...row,owner_team_id:sco.tid,match_id:matchId(g),round_date:g.match_date,map:g.map,team,opponent:opp,league:g.league||''}).select().single();
+ if(w.error){b.disabled=false;return toast(w.error.code==='23505'?`Round ${n} is already saved for this game`:scErr(w.error))}
+ // the player numbers from the replay follow the change
+ const sd=startNorm(side),pside=i=>i===0?sd:otherSide(sd);
+ for(const [i,l] of [[0,a],[1,c]])for(const x of l){if(!x.pid)continue;const st=f.stats.find(p=>p.id===x.pid),up={};if(x.op&&x.op!==x.was){up.operator=x.op;up.operator_id=''}if(sd&&st&&st.side!==pside(i))up.side=pside(i);if(Object.keys(up).length){const q=await sb.from('player_round_stats').update(up).eq('id',x.pid);if(q.error){b.disabled=false;return toast(scErr(q.error))}}}
+ if(r)Object.assign(r,w.data);else sco.r=[...sco.r,w.data];
+ d.close();rdPaint(g);toast(r?`Round ${n} saved`:`Round ${n} added`);
+}
+async function rdDel(b){
+ const f=sco.rd,g=sco.m.find(x=>x.id===f.gid),r=sco.r.find(x=>x.id===f.id);if(!r)return;
+ if(!confirm(`Delete round ${r.round_number}? ${f.stats.length?'Its player numbers are deleted too. ':''}This cannot be undone.`))return;
+ b.disabled=true;const q=await sb.from('scout_rounds').delete().eq('id',r.id);if(q.error){b.disabled=false;return toast(scErr(q.error))}
+ if(f.stats.length){const q2=await sb.from('player_round_stats').delete().eq('owner_team_id',sco.tid).eq('scout_match_id',g.id).eq('round_number',r.round_number);if(q2.error)toast(scErr(q2.error))}
+ sco.r=sco.r.filter(x=>x.id!==r.id);$('#dlg').close();rdPaint(g);toast(`Round ${r.round_number} deleted`);
+}
+// a game's rounds move with it when its date, map or teams change
+async function rdMove(old,now){
+ const a=matchId(old),z=matchId(now),mapCh=old.map!==now.map||old.match_date!==now.match_date;if(a===z&&!mapCh)return;
+ const rs=sco.r.filter(x=>norm(x.match_id)===norm(a));
+ for(const x of rs){const same=sameName(x.team,old.team)||!sameName(x.team,old.opponent),up={match_id:z,map:now.map,round_date:now.match_date,team:same?now.team:now.opponent,opponent:same?now.opponent:now.team};const q=await sb.from('scout_rounds').update(up).eq('id',x.id).select().single();if(q.error)return toast('The game saved, but its rounds could not move with it: '+scErr(q.error));Object.assign(x,q.data)}
+ if(now.replay_match_id||rs.length)await sb.from('player_round_stats').update({map:now.map,match_date:now.match_date}).eq('owner_team_id',sco.tid).eq('scout_match_id',now.id);
+ sco.r=[...sco.r];
+}
 // One line per match: what we hold for it and what we don't. team=null means every team.
 function gapRows(team){
  const k=team?scKeys(team):null,pairOf=r=>[squash(r.team),squash(r.opponent)].sort().join('|'),groups=new Map();
@@ -1895,7 +2001,7 @@ function gapB(){
  const cell=(x,c)=>x.has[c]?'<span style="color:#34c46a" aria-label="Have it">✓</span>':`<button class="no" style="height:20px;width:26px;padding:0;border-radius:999px;color:#ff8a8a;font-size:12px" data-a="gapfix" data-k="${c}" data-id="${x.r.id}" aria-label="Add ${c} for ${esc(x.who)}">+</button>`;
  const src=x=>{const r=x.r,tag=(t,u,bad)=>u?`<a class="${bad?'over':''}" style="font-size:11px;font-weight:700;text-decoration:none;${bad?'':'color:var(--pk)'}" href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(t)}">${t[0]}</a>`:'';return `<span class="row" style="gap:6px">${tag('Official page',/^\d+$/.test(r.r6esports_id||'')?'https://www.ubisoft.com/en-us/esports/rainbow-six/siege/match/'+r.r6esports_id:'')}${tag('Siege.gg',/^\d+$/.test(r.siegegg_id||'')?'https://siege.gg/matches/'+r.siegegg_id:'',x.rows.some(y=>y.gg_missing))}${tag('Liquipedia',/^https:/.test(r.source_link||'')?r.source_link:'')}${x.rows.some(y=>y.gg_missing)?`<button class="no" style="height:22px;padding:0 8px;font-size:11.5px" data-a="lpggclear" data-g="${esc(r.siegegg_id)}">Remove dead siege.gg link</button>`:''}</span>`};
  return `<div class="row wrap" style="margin-bottom:8px"><div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:24px;overflow-wrap:anywhere">${gapIco}Missing data</h1><p class="mu">${team?esc(team.name):'All teams'}. Click + to fill a gap.</p></div><button class="no" data-a="gapback">Back</button></div>
- <div class="row wrap" style="gap:6px;margin-bottom:8px" role="group" aria-label="Filter gaps">${chip('','All gaps',open.length)}${GAP_COLS.map(c=>chip(c[0],c[1],miss(c[0]))).join('')}</div>
+ ${wrongB(team)}<div class="row wrap" style="gap:6px;margin-bottom:8px" role="group" aria-label="Filter gaps">${chip('','All gaps',open.length)}${GAP_COLS.map(c=>chip(c[0],c[1],miss(c[0]))).join('')}</div>
  ${show.length?`<section class="cd" style="padding:8px 10px"><div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">${team?'Opponent':'Match'}</th><th scope="col">Event</th>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<th scope="col" style="text-align:center">${c[1]}</th>`).join('')}<th scope="col">Source</th></tr></thead><tbody>${show.map(x=>`<tr><td>${esc(x.date)}</td><td><button class="no" style="border:0;height:auto;padding:0;font-weight:600;background:none;text-align:left;white-space:normal" data-a="smatch" data-id="${x.r.id}">${esc(x.who)}</button></td><td class="mu" style="max-width:150px;overflow:hidden;text-overflow:ellipsis" title="${esc(x.event)}">${esc(x.event)}</td>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<td style="text-align:center">${cell(x,c[0])}</td>`).join('')}<td>${x.has.src?src(x):x.r.r6esports_id||x.r.siegegg_id?src(x):cell(x,'src')}</td></tr>`).join('')}</tbody></table></div>${l.length>200?'<p class="mu">Showing the first 200.</p>':''}</section>`:`<div class="cd"><p>Nothing missing${F?' here':''}.</p></div>`}`;
 }
 const hubRows=()=>sco.m.map(r=>({r,foe:r.opponent,map:r.map,date:r.match_date,res:normRes(r.result),score:r.round_score}));
@@ -1970,7 +2076,7 @@ function matchB(r){
  const res=normRes(r.result);
  return `<div class="row wrap" style="margin-bottom:16px"><div style="flex:1 1 240px;min-width:0"><h1 class="serif" style="font-size:22px;overflow-wrap:anywhere">${esc(r.team)} vs ${esc(r.opponent)}</h1><p class="mu" style="overflow-wrap:anywhere">${esc(fmtD(r.match_date))} · ${esc(r.map)}${r.league?' · '+esc(r.league):''}</p></div><button class="no" data-a="smback">Back</button></div>
  <section class="cd" style="gap:10px;margin-bottom:16px">${mapPhoto(r.map)}<div class="row wrap" style="gap:10px"><span style="font-size:24px;font-weight:600">${esc(r.round_score||'No score')}</span>${res?`<span class="fm f${res}">${res}</span>`:''}${/^https?:\/\//i.test(r.vod_link||'')?`<a class="vod" href="${esc(r.vod_link)}" target="_blank" rel="noopener noreferrer">VOD</a>`:''}${/^https:\/\//i.test(r.replay_link||'')?`<a class="vod" href="${esc(r.replay_link)}" target="_blank" rel="noopener noreferrer">Replay</a>`:''}</div><p>${checkTag(r)}</p>${lk?`<p class="mu" style="overflow-wrap:anywhere">${lk}</p>`:''}${r.check_status==='mismatch'||oppIssues([{r,res,score:r.round_score,foe:r.opponent,map:r.map,date:r.match_date}]).length?'<div><button class="no" data-a="smok">Mark as reviewed</button></div>':''}</section>
- ${fixB(r)}<form class="cd" data-s="smatch" data-dirty>
+ <div id="wrtop">${wrongTop(r)}</div>${fixB(r)}<form class="cd" data-s="smatch" data-dirty>
  <h2 style="font-size:15px;font-weight:600">Match details</h2>
  ${box(f('match_date','Date','date','required')+f('map','Map','text','required maxlength="120" list="mfmaps"'))}<datalist id="mfmaps">${MAP_POOL.map(m=>`<option value="${esc(m[0])}">`).join('')}</datalist>
  ${box(f('team','Team 1','text','required maxlength="120"')+f('opponent','Team 2','text','required maxlength="120"'))}
@@ -1982,7 +2088,7 @@ function matchB(r){
  ${box(f('ot_start','OT Side')+f('vod_link','VOD link'))}
  ${box(f('r6esports_id','Official match ID')+f('siegegg_id','siege.gg match ID'))}
  <div><span class="lb">Rounds won on each side (optional)</span>${box(n('t1_atk','T1 ATK')+n('t1_def','T1 DEF')+n('t1_ot_atk','T1 OT ATK')+n('t1_ot_def','T1 OT DEF'))}<div style="height:8px"></div>${box(n('t2_atk','T2 ATK')+n('t2_def','T2 DEF')+n('t2_ot_atk','T2 OT ATK')+n('t2_ot_def','T2 OT DEF'))}</div>
- <div class="row wrap" style="justify-content:space-between"><button type="button" class="no" data-a="smdel">Delete game</button><span class="row"><button type="button" class="no" data-a="smback">Cancel</button><button class="go">Save changes</button></span></div></form>`;
+ <div class="row wrap" style="justify-content:space-between"><button type="button" class="no" data-a="smdel">Delete game</button><span class="row"><button type="button" class="no" data-a="smback">Cancel</button><button class="go">Save changes</button></span></div></form>${rdB(r)}`;
 }
 async function saveMatch(form){
  const row={},btn=form.querySelector('.go'),id=sco.matchId;
@@ -2005,7 +2111,7 @@ async function saveMatch(form){
  const r=await sb.from('scout_matches').update(row).eq('id',id).select().single();
  btn.disabled=false;
  if(r.error)return toast(r.error.code==='23505'||/duplicate key/i.test(r.error.message)?'That date, teams, map and phase already exist as another game.':scErr(r.error));
- Object.assign(sco.m.find(x=>x.id===id),r.data);sdirty=false;render();toast('Game saved');recheck(r.data);
+ const old={...sco.m.find(x=>x.id===id)};Object.assign(sco.m.find(x=>x.id===id),r.data);await rdMove(old,r.data);sdirty=false;render();toast('Game saved');recheck(r.data);
 }
 // after an edit, compare the game with the official page and siege.gg again
 async function recheck(r){
@@ -2178,6 +2284,8 @@ const A={
   await load();if(back==='sc'&&sco){sco.page='home';sco.form=null;view='sc'}else view='teamsV';render();toast('Deleted '+t.name);
  },
  sodelp:d=>{const t=sco.teams.find(x=>x.id===d.id);if(staff()&&t.site_team_id&&t.site_team_id!==cur.id&&teams.some(x=>x.id===t.site_team_id))return A.tdel({id:t.site_team_id});askDel('Delete this team?',t.name+' is removed from your opponents. Imported matches, rounds and vetoes stay in your libraries.','sodelyes',t.id)},
+ rdedit:d=>rdOpen(d.id),rdadd:()=>rdOpen(null),rdsave:(d,b)=>rdSave(b),rddel:(d,b)=>rdDel(b),rdclose:()=>$('#dlg').close(),
+ rdscore:async(d,b)=>{const g=sco.m.find(x=>x.id===sco.matchId),t=g&&roundTally(g);if(!t)return;b.disabled=true;const row={round_score:t.w+'-'+t.l,total_rounds:t.w+t.l,result:t.w>t.l?'W':t.w<t.l?'L':'D',check_status:'',check_notes:''};const r=await sb.from('scout_matches').update(row).eq('id',g.id).select().single();if(r.error){b.disabled=false;return toast(scErr(r.error))}Object.assign(g,r.data);sdirty=false;render();toast('Score set to '+row.round_score)},
  sodr:d=>{const n=+d.k;sco.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},
  sotab:d=>{sco.plr=null;sdirty=false;sco.tab=d.t;sco.oppMap='';sco.oppF='';render()},
  soadd:d=>{sco.form={name:d.n||''};render()},
@@ -2301,6 +2409,7 @@ document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='dkout'
  if(c==='rlink'){const row=rost.list.find(x=>x.id===e.target.dataset.id),v=e.target.value||null;sb.from('team_roster').update({linked_user_id:v}).eq('id',row.id).select().single().then(r=>{if(r.error){e.target.value=row.linked_user_id||'';return toast('That link could not be saved. The name can only link to a player on this team.')}row.linked_user_id=v;toast('Roster saved')})}
  if(c==='lpev'||c==='lpteam'){const set=c==='lpev'?sco.lp.on:sco.lp.tOn;e.target.checked?set.add(e.target.dataset.id):set.delete(e.target.dataset.id);render()}
  if(c==='lpopt'){sco.lp[e.target.dataset.id]=e.target.checked}
+ if(c==='recop'){const cc=recRc(e.target.dataset.k);(cc.ops=cc.ops||{})[e.target.dataset.r+'|'+norm(e.target.dataset.u)]=e.target.value;recPaint()}
  if(c==='sodr'){const r=sco.dr={...(sco.dr||{}),[e.target.dataset.k]:e.target.value};if(r.from&&r.to&&r.from>r.to)[r.from,r.to]=[r.to,r.from];const id=e.target.id;render();document.getElementById(id)?.focus()}
  if(c==='sofm'){sco.oppF=e.target.value;render();document.getElementById('sofm')?.focus()}
  if(c==='scf'){const f=sco.f[sco.kind]=sco.f[sco.kind]||{};f[e.target.dataset.k]=e.target.value;const id=e.target.id;render();document.getElementById(id)?.focus()}
