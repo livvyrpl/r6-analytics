@@ -254,12 +254,12 @@ const backDash=`<button class="no" data-a="sdash">Back to dashboard</button>`;
 function scrimsV(){
  if(!cur||!scr||scr.tid!==cur.id)return `<div class="cd"><p>Open Scrims from a team's dashboard.</p><div>${backDash}</div></div>`;
  if(!canSeeS())return `<div class="cd"><p>Scrims are for this team's coaches, assistant coaches and analysts.</p><div>${backDash}</div></div>`;
- return scr.st==='form'&&canEditS()?scrimForm():scr.st==='detail'?scrimDetail():scrimList();
+ return scr.st==='import'&&canEditS()?scrimImport():scr.st==='form'&&canEditS()?scrimForm():scr.st==='detail'?scrimDetail():scrimList();
 }
 function scrimList(){
  const ready=scr.list&&!scr.err,body=!scr.list?'<p class="mu">Loading scrims…</p>':scr.err?`<div class="cd"><p>${esc(scr.err)}</p></div>`:!scr.list.length?`<div class="cd"><p class="mu">No scrims yet.${canEditS()?' Add the first one.':''}</p></div>`:
  `<div style="display:flex;flex-direction:column;gap:10px">${scr.list.map(s=>`<button class="c" data-a="sopen" data-id="${s.id}"><span style="flex:1;min-width:0"><b style="overflow-wrap:anywhere">vs ${esc(s.opponent)}</b><small>${fmtD(s.scrim_date)}${s.maps.length?' · '+esc(s.maps.join(', ')):''}</small></span>${s.score?`<span class="badge">${esc(s.score)}</span>`:''}${s.split?`<span class="mu">Split ${esc(s.split)}</span>`:''}</button>`).join('')}</div>`;
- return `<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div><h1 class="serif" style="font-size:24px">Scrims</h1><p class="mu">${esc(cur.name)}, newest first.</p></div><span class="sp"></span>${backDash}${ready&&canEditS()?'<button class="go" data-a="sform">Add scrim</button>':''}</div>${body}`;
+ return `<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div><h1 class="serif" style="font-size:24px">Scrims</h1><p class="mu">${esc(cur.name)}, newest first.</p></div><span class="sp"></span>${backDash}${ready&&canEditS()?'<button class="no" data-a="simp">Import scrims</button><button class="go" data-a="sform">Add scrim</button>':''}</div>${body}`;
 }
 function scrimForm(embed=false){
  const s=scr.id?curScrim():null,fld=(id,lab,val,ph='',att='')=>`<div><label for="${id}">${lab}</label><input id="${id}" class="fi" value="${esc(val)}" placeholder="${esc(ph)}" ${att}></div>`;
@@ -342,10 +342,102 @@ function autoRun(f){
 }
 async function autoFlush(){for(const f of document.querySelectorAll('[data-auto]'))if(f._t||f._p)await autoRun(f)}
 const autoPending=()=>[...document.querySelectorAll('[data-auto]')].some(x=>x._t||x._p);
+document.addEventListener('paste',e=>{if(e.target.id!=='simpx')return;const html=e.clipboardData?.getData('text/html')||'',text=e.clipboardData?.getData('text/plain')||'';e.preventDefault();simpRead(html,text)});
 document.addEventListener('input',autoKick);document.addEventListener('change',autoKick);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autoFlush()});
 async function plSave(b,qt){plSync();const rows=sco.plr.rows.filter(x=>x.name.trim()).map(x=>({...x,name:x.name.trim()}));b.disabled=true;const r=await sb.from('scout_teams').update({roster:rows,players:rows.map(x=>x.name)}).eq('id',sco.oppId).select().single();b.disabled=false;if(r.error)return say(qt,scErr(r.error));Object.assign(sco.teams.find(t=>t.id===sco.oppId),r.data);if(qt)return{};sdirty=false;sco.plr=null;render();toast('Roster saved')}
 async function scnSave(b,qt){b.disabled=true;const v=$('#scn').value,r=await sb.from('scout_teams').update({coach_notes:v}).eq('id',sco.oppId).select().single();b.disabled=false;if(r.error)return say(qt,scErr(r.error));sco.teams.find(t=>t.id===sco.oppId).coach_notes=v;if(qt)return{};sdirty=false;toast('Notes saved')}
+// IMPORTING SCRIMS from a spreadsheet: one row per map. Rows are grouped into scrims by date and opponent.
+const MAP_SHORT={club:'Clubhouse',labs:'Nighthaven Labs',nh:'Nighthaven Labs',kafe:'Kafe Dostoyevsky',fort:'Fortress'};
+const OP_SHORT={bb:'Blackbeard',monty:'Montagne',tachanks:'Tachanka',chanka:'Tachanka',lord:'Tachanka',valk:'Valkyrie',hib:'Hibana',therm:'Thermite',mav:'Maverick',cap:'Capitão',snake:'Solid Snake',jager:'Jäger',jaeger:'Jäger',iq:'IQ',tb:'Thunderbird',thunder:'Thunderbird',mozz:'Mozzie',kap:'Kapkan',doc:'Doc',rook:'Rook',buck:'Buck',sledge:'Sledge',zof:'Zofia',zero:'Zero',amaru:'Amaru',nok:'Nøkk',nokk:'Nøkk',melus:'Melusi',ori:'Oryx',tubarao:'Tubarão',skopos:'Skopós'};
+const mapGuess=n=>{const t=String(n||'').trim(),k=norm(t);if(!k)return '';if(MAP_SHORT[k])return MAP_SHORT[k];const c=mapCanon(t);if(MAP_POOL.some(m=>m[0]===c))return c;const hit=MAP_POOL.filter(m=>norm(m[0]).startsWith(k)||norm(m[0]).split(' ').some(w=>w.startsWith(k)));return hit.length===1?hit[0][0]:t};
+const opGuess=n=>{const k=opKey(String(n||'').trim());if(!k)return null;const ex=OPS.find(o=>opKey(o[0])===k);if(ex)return ex[0];if(OP_SHORT[k])return OP_SHORT[k];if(k.length<3)return null;const hit=OPS.filter(o=>opKey(o[0]).startsWith(k));return hit.length===1?hit[0][0]:null};
+function banSplit(v,warn,who){
+ const out={atk:[],def:[]};
+ String(v||'').split('+').forEach(grp=>{const l=grp.split(/[\/,&;]+/).map(x=>x.trim()).filter(Boolean).map(x=>({raw:x,op:opGuess(x)}));const sides=l.map(x=>x.op&&opSide(x.op)).filter(Boolean),lean=sides.filter(s=>s==='attack').length>=sides.filter(s=>s==='defense').length?'attack':'defense';
+  l.forEach(x=>{if(!x.op)warn.push(`${who}: "${x.raw}" is not an operator we know, so it was left out`);else(opSide(x.op)||lean)==='attack'?out.atk.push(x.op):out.def.push(x.op)})});
+ ['atk','def'].forEach(s=>{if(out[s].length>3){warn.push(`${who}: more than 3 ${s==='atk'?'attackers':'defenders'}, so only the first 3 were kept`);out[s]=out[s].slice(0,3)}});
+ return out;
+}
+const SIMP_COLS={date:['date','day'],opp:['opponent','opp','vs','against','oppteam','whoweplayed','team'],map:['map'],type:['leaguescrim','scrimleague','type','league','event','kind','matchtype'],out:['outcome','result','wl','winloss'],score:['mapscore','score','finalscore','final'],our:['ourbans','ourban','bans'],opb:['opponentbans','oppbans','theirbans','opponentban'],side:['startingside','side','startside','start'],split:['splitscore','split'],vod:['link','vod','vodlink','video']};
+function simpCells(html,text){
+ if(/<table/i.test(html||'')){const d=new DOMParser().parseFromString(html,'text/html');return[...d.querySelectorAll('tr')].map(tr=>[...tr.querySelectorAll('td,th')].map(td=>{const a=td.querySelector('a[href]');return{t:td.textContent.replace(/\s+/g,' ').trim(),href:a&&/^https?:/i.test(a.getAttribute('href'))?a.getAttribute('href'):''}}))}
+ const lines=String(text||'').replace(/\r/g,'').split('\n').filter(l=>l.trim());const tabs=lines.some(l=>l.includes('\t'));
+ return(tabs?lines.map(l=>l.split('\t')):parseCsv(lines.join('\n'))).map(r=>r.map(c=>{const t=String(c).trim();return{t,href:/^https?:\/\/\S+$/i.test(t)?t:''}}));
+}
+function simpParse(cells){
+ const hk=s=>String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+ let hi=cells.findIndex(r=>{const h=r.map(c=>hk(c.t));return h.includes('date')&&h.includes('map')}),col={};
+ if(hi>=0){const h=cells[hi].map(c=>hk(c.t));Object.entries(SIMP_COLS).forEach(([k,names])=>{const i=h.findIndex(x=>names.includes(x));if(i>=0)col[k]=i});if(col.our===undefined){const i=h.findIndex((x,j)=>x.endsWith('bans')&&!/opp|their/.test(x)&&j!==col.opb);if(i>=0)col.our=i}}
+ else{hi=-1;['date','opp','map','type','out','score','our','opb','side','split','vod'].forEach((k,i)=>col[k]=i)}
+ const out=[];let skipped=0;
+ cells.slice(hi+1).forEach((r,n)=>{
+  const c=k=>col[k]===undefined?{t:'',href:''}:(r[col[k]]||{t:'',href:''}),v=k=>c(k).t;
+  if(!v('date')&&!v('map'))return;
+  if(col.type!==undefined&&!/scrim/i.test(v('type'))){skipped++;return}
+  const warn=[],date=parseDate(v('date')),map=mapGuess(v('map')),raw=v('opp'),sc=parseScore(v('score')),sp=parseScore(v('split')),res=normRes(v('out')),sd=/^att/i.test(v('side'))?'attack':/^def/i.test(v('side'))?'defense':'';
+  if(!date)warn.push(`"${v('date')}" is not a date we understand, so this row is skipped`);
+  if(!raw)warn.push('No opponent, so this row is skipped');if(!map)warn.push('No map, so this row is skipped');
+  if(v('score')&&!sc)warn.push(`The score "${v('score')}" was left out. Write it like 7-5`);
+  let split=sp?fmtPair(sp):null;if(v('split')&&!sp)warn.push(`The split "${v('split')}" was left out. Write it like 4-2`);if(sp&&sp.a+sp.b!==6){warn.push(`The split ${v('split')} does not add up to 6 rounds, so it was left out`);split=null}if(sp&&sc&&split&&(sp.a>sc.a||sp.b>sc.b)){warn.push('The split is more than the score, so it was left out');split=null}
+  if(sc&&res&&((res==='W'&&sc.a<=sc.b)||(res==='L'&&sc.a>=sc.b)||(res==='D'&&sc.a!==sc.b)))warn.push(`The outcome says ${res} but the score is ${fmtPair(sc)}. The score is kept`);
+  if(!sc&&res)warn.push(`Outcome ${res} has no score, so only the map is saved`);
+  const vod=c('vod').href||(/^https?:\/\/\S+$/i.test(v('vod'))?v('vod'):'');if(v('vod')&&!vod)warn.push(`The link "${v('vod')}" did not come through. Paste straight from Google Sheets to keep links`);
+  const ours=banSplit(v('our'),warn,'Our bans'),theirs=banSplit(v('opb'),warn,'Opponent bans');
+  out.push({n:hi+2+n,date,raw,map,score:sc?fmtPair(sc):null,split,side:sd,ours,theirs,vod,warn,bad:!date||!raw||!map});
+ });
+ return{rows:out,skipped,header:hi>=0};
+}
+// who each row is against, the scrim it goes in, and whether it is already saved
+function simpPlan(){
+ const im=scr.imp,teamsS=im.teams||[],res=n=>{const t=teamsS.find(x=>scSame(x,n)||(x.short_name&&norm(x.short_name)===norm(n)));return t?t.name:n.trim()};
+ const groups=[];
+ im.rows.filter(r=>!r.bad).forEach(r=>{r.opp=res(r.raw);const k=r.date+'|'+norm(r.opp);let g=groups.find(x=>x.k===k&&!x.rows.some(y=>norm(y.map)===norm(r.map)));if(!g){g={k,date:r.date,opp:r.opp,rows:[]};groups.push(g)}g.rows.push(r)});
+ const used=new Set();
+ groups.forEach(g=>{const ex=(scr.list||[]).find(s=>!used.has(s.id)&&s.scrim_date===g.date&&(norm(s.opponent)===norm(g.opp)||sameName(s.opponent,g.opp)||norm(res(s.opponent))===norm(g.opp)));if(ex)used.add(ex.id);g.ex=ex||null;
+  g.rows.forEach(r=>{const have=ex&&(im.have||[]).some(h=>h.scrim_id===ex.id&&norm(h.map)===norm(r.map));r.status=have?'have':ex?'add':'new'})});
+ return groups;
+}
+function scrimImport(){
+ const im=scr.imp||{},plan=im.rows?simpPlan():[],all=plan.flatMap(g=>g.rows),todo=all.filter(r=>r.status!=='have'),bad=(im.rows||[]).filter(r=>r.bad),warns=(im.rows||[]).filter(r=>r.warn.length);
+ const bans=b=>[...b.atk,...b.def].length?`<span style="white-space:normal">${esc(b.atk.join(', ')||'—')} <span class="mu">+</span> ${esc(b.def.join(', ')||'—')}</span>`:'<span class="mu">—</span>';
+ const tag={new:'<span style="color:#34c46a;font-weight:600">New scrim</span>',add:'<span style="color:#34c46a;font-weight:600">Adds to a scrim</span>',have:'<span class="mu">Already saved</span>'};
+ const preview=!im.rows?'':!im.rows.length?`<div class="cd"><p>No scrim rows found${im.skipped?`. ${plural(im.skipped,'row')} did not say Scrim and ${im.skipped===1?'was':'were'} skipped`:''}. Include the header row (Date, Opponent, Map…) when you copy.</p></div>`:
+ `<section class="cd" style="gap:8px"><div class="row wrap" style="justify-content:space-between;gap:8px"><p><b style="font-weight:600">${plural(plan.filter(g=>g.rows.some(r=>r.status!=='have')).length,'scrim')}, ${plural(todo.length,'map')} to import.</b> <span class="mu">${[im.skipped?plural(im.skipped,'row')+' not marked Scrim skipped':'',all.length-todo.length?plural(all.length-todo.length,'map')+' already saved':'',bad.length?plural(bad.length,'row')+' could not be read':''].filter(Boolean).join(' · ')}</span></p><button class="go" data-a="simpgo"${todo.length&&!im.busy?'':' disabled'}>${im.busy?'Importing…':`Import ${plural(todo.length,'map')}`}</button></div>
+ ${warns.length?`<details${warns.length<6?' open':''}><summary style="cursor:pointer;font-weight:600" class="over">⚠ ${plural(warns.length,'row')} to check</summary><ul style="margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px;overflow-wrap:anywhere">${warns.map(r=>`<li>Row ${r.n}${r.date?', '+esc(fmtD(r.date)):''}${r.raw?' vs '+esc(r.raw):''}${r.map?', '+esc(r.map):''}: ${esc(r.warn.join('. '))}.</li>`).join('')}</ul></details>`:''}
+ ${scTbl(['Date','Opponent','Map','Score','Split','Started','Our bans','Their bans','VOD',''],plan.flatMap(g=>g.rows.map(r=>[esc(fmtD(r.date)),esc(r.opp)+(norm(r.opp)!==norm(r.raw)?` <span class="mu">(${esc(r.raw)})</span>`:''),esc(r.map),esc(r.score||'—'),esc(r.split||'—'),r.side?r.side[0].toUpperCase()+r.side.slice(1):'—',bans(r.ours),bans(r.theirs),r.vod?safeLink(r.vod,'VOD'):'—',tag[r.status]])))}</section>`;
+ return `<div class="row wrap" style="margin-bottom:16px"><div style="flex:1 1 240px;min-width:0"><h1 class="serif" style="font-size:24px">Import scrims</h1><p class="mu">${esc(cur.name)}. One row per map.</p></div><button class="no" data-a="simpback">Back to scrims</button></div>
+ <section class="cd" style="gap:8px;margin-bottom:12px"><p>In Google Sheets, select your rows <b style="font-weight:600">including the header row</b> (Date, Opponent, Map, League/Scrim, Outcome, Map Score, Our Bans, Opponent Bans, Starting Side, Split Score, Link), copy, then click the box below and paste. Rows that don't say Scrim are skipped. Map Score is your score first, like 7-5. Bans can be short names, like Valk/Hib/Therm + BB/Monty.</p>
+ <textarea id="simpx" class="fi ta" style="min-height:110px" placeholder="Click here and paste (Ctrl+V)" aria-label="Paste scrim rows here"></textarea>
+ <div class="row wrap" style="gap:8px"><span class="mu">Or choose a CSV file:</span><input id="simpf" type="file" accept=".csv,.tsv,.txt" data-c="simpf" aria-label="CSV file of scrims"></div>${im.err?`<p role="alert" class="over">${esc(im.err)}</p>`:''}</section>${preview}`;
+}
+async function simpOpen(){
+ scr.st='import';scr.imp={busy:false};render();
+ const tid=scr.tid,[t,h]=await Promise.all([sb.from('scout_teams').select('id,name,aliases,short_name').eq('owner_team_id',tid),allRows(()=>sb.from('scrim_map_results').select('scrim_id,map').eq('team_id',tid).order('scrim_id'))]);
+ if(scr?.tid!==tid||!scr.imp)return;scr.imp.teams=t.data||[];scr.imp.have=h.data||[];if(scr.st==='import')render();
+}
+function simpRead(html,text){const im=scr.imp;if(!im)return;try{const p=simpParse(simpCells(html,text));Object.assign(im,p,{err:''})}catch(e){im.err='That could not be read: '+e.message}render()}
+async function simpGo(){
+ const im=scr.imp,plan=simpPlan().map(g=>({...g,rows:g.rows.filter(r=>r.status!=='have')})).filter(g=>g.rows.length);if(!plan.length||im.busy)return;
+ im.busy=true;render();const job=actStart('Importing scrims');let done=0,maps=0;const fails=[];
+ for(const g of plan){
+  actSet(job,{detail:`${done+1} of ${plan.length}: ${g.opp}, ${fmtD(g.date)}`,pct:Math.round(done/plan.length*100)});
+  try{
+   let s=g.ex;
+   if(s){const want=[...s.maps,...g.rows.map(r=>r.map).filter(m=>!s.maps.some(x=>norm(x)===norm(m)))];if(want.length!==s.maps.length){const r=await sb.from('scrims').update({maps:want}).eq('id',s.id).select().single();if(r.error)throw r.error;s=r.data}}
+   else{const r=await sb.from('scrims').insert({team_id:scr.tid,scrim_date:g.date,opponent:g.opp,maps:g.rows.map(r=>r.map),notes:''}).select().single();if(r.error)throw r.error;s=r.data}
+   const rows=g.rows.filter(r=>r.score||r.split||r.side||r.vod||[...r.ours.atk,...r.ours.def,...r.theirs.atk,...r.theirs.def].length).map(r=>({scrim_id:s.id,team_id:scr.tid,map:r.map,score:r.score,split:r.split,started_on:r.side||null,our_atk_bans:r.ours.atk,our_def_bans:r.ours.def,their_atk_bans:r.theirs.atk,their_def_bans:r.theirs.def,vod_link:r.vod}));
+   if(rows.length){const r=await sb.from('scrim_map_results').upsert(rows);if(r.error)throw r.error}
+   const m=await sb.from('scrim_map_results').select('map,score').eq('scrim_id',s.id);if(m.error)throw m.error;
+   const sc=m.data.map(x=>parseScore(x.score)).filter(Boolean),text=sc.length?(s.maps.length===1?fmtPair(sc[0]):sc.filter(p=>p.a>p.b).length+'-'+sc.filter(p=>p.a<p.b).length):null;
+   if(text&&text!==s.score){const r=await sb.from('scrims').update({score:text}).eq('id',s.id);if(r.error)throw r.error}
+   g.rows.forEach(r=>{im.have.push({scrim_id:s.id,map:r.map})});done++;maps+=g.rows.length;
+  }catch(e){fails.push(`${g.opp}, ${fmtD(g.date)}: ${sErr(e)}`)}
+ }
+ im.busy=false;await fetchScrims();
+ actEnd(job,fails.length?'warn':'ok',`${plural(done,'scrim')}, ${plural(maps,'map')} imported${fails.length?'. '+plural(fails.length,'scrim')+' failed: '+fails.join(' · '):''}`);
+ if(scr.st==='import')render();
+}
 const KIND={scrim:'Scrim',gameday:'Gameday',off_day:'Off day',other:'Other'};
 const schE=e=>/schema cache|does not exist/i.test(e.message)?'The schedule database tables are not set up yet. Paste stage2.sql into the Supabase SQL Editor and run it.':/schedule_entries_kind|check constraint/i.test(e.message)?'The schedule update is not set up yet. Paste stage2.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
 const canSeeSch=()=>staff()||!!mem[cur?.id],canEditSch=()=>hasR(['coach','assistant_coach']),canOwnOff=()=>(mem[cur?.id]||[]).some(r=>r==='player'||r==='analyst');
@@ -1034,15 +1126,16 @@ function mapBlock(m,o,form,ro=''){
  return `<div class="mapd" data-map="${esc(m||'')}"><div class="mph">${mapPhoto(m)}</div>
  ${form?`<div class="row" style="gap:8px"><select class="fi" data-c="mapsel" aria-label="Map">${mapOptions(m)}</select><button type="button" class="no" data-a="fmaprm">Remove</button></div>`:`<b class="mpn">${esc(m)}</b>`}
  <div class="mr">${f('split','Split (after 6 rounds)','e.g. 4-2')}${f('score','Score','e.g. 7-5')}<div><label>Started on<select class="fi" data-f="started_on"${ro?' disabled':''}><option value="">Choose</option><option value="attack"${st==='attack'?' selected':''}>Attack</option><option value="defense"${st==='defense'?' selected':''}>Defense</option></select></label></div></div>
+ <div class="row" style="gap:8px;align-items:flex-end"><div style="flex:1;min-width:0"><label>VOD link<input class="fi" data-f="vod_link" type="url" maxlength="1000" placeholder="https://…" value="${esc(o?.vod_link||'')}"${ro}></label></div>${/^https?:\/\//i.test(o?.vod_link||'')?`<a class="vod" style="margin-bottom:8px" href="${esc(o.vod_link)}" target="_blank" rel="noopener noreferrer">VOD</a>`:''}</div>
  <div class="bans">${BANS.map(x=>`<div><span class="lb">${x[1]}</span><div class="ban3">${[0,1,2].map(i=>`<input class="fi" list="${x[2]}" data-b="${x[0]}" maxlength="40" aria-label="${x[1]}, ban ${i+1}" value="${esc(o?.[x[0]]?.[i]||'')}"${ro}>`).join('')}</div></div>`).join('')}</div></div>`;
 }
 function readBlocks(){
  const rows=[];let err='';
  document.querySelectorAll('.mapd').forEach(el=>{
   const sel=el.querySelector('[data-c=mapsel]'),map=sel?sel.value:el.dataset.map,val=k=>el.querySelector(`[data-f=${k}]`).value.trim();
-  const v={score:null,split:null,started_on:val('started_on')||null};
+  const v={score:null,split:null,started_on:val('started_on')||null,vod_link:val('vod_link')};
   BANS.forEach(b=>v[b[0]]=[...el.querySelectorAll(`[data-b=${b[0]}]`)].map(i=>i.value.trim()).filter(Boolean));
-  const any=!!(val('score')||val('split')||v.started_on||BANS.some(b=>v[b[0]].length));
+  const any=!!(val('score')||val('split')||v.started_on||v.vod_link||BANS.some(b=>v[b[0]].length));
   if(!map){if(any)err=err||'Choose a map for each entry';return}
   if(rows.some(r=>norm(r.map)===norm(map))){err=err||map+' is added twice';return}
   const sc=parseScore(val('score')),sp=parseScore(val('split'));
@@ -1050,6 +1143,7 @@ function readBlocks(){
   if(val('split')&&!sp)err=err||`Enter the ${map} split like 4-2`;
   if(sc&&sp&&(sp.a>sc.a||sp.b>sc.b))err=err||`The ${map} split cannot be more than its score`;
   if(sp&&sp.a+sp.b!==6)err=err||`The ${map} split is the score after 6 rounds, so it should add up to 6`;
+  if(v.vod_link&&!/^https?:\/\/\S+$/i.test(v.vod_link))err=err||`The ${map} VOD must be a full link starting with https://`;
   if(sc)v.score=fmtPair(sc);if(sp)v.split=fmtPair(sp);
   rows.push({map,any,v});
  });
@@ -1213,7 +1307,7 @@ function parseCsv(text){
 }
 function parseDate(s){
  s=String(s).trim();let m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s),y,mo,d;
- if(m)[y,mo,d]=[+m[1],+m[2],+m[3]];else if((m=/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(s)))[mo,d,y]=[+m[1],+m[2],+m[3]<100?2000+ +m[3]:+m[3]];else return null;
+ if(m)[y,mo,d]=[+m[1],+m[2],+m[3]];else if((m=/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2}|\d{4})$/.exec(s)))[mo,d,y]=[+m[1],+m[2],+m[3]<100?2000+ +m[3]:+m[3]];else return null;
  const t=new Date(Date.UTC(y,mo-1,d));
  return t.getUTCFullYear()===y&&t.getUTCMonth()===mo-1&&t.getUTCDate()===d?`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`:null;
 }
@@ -2335,6 +2429,7 @@ const A={
  sodelp:d=>{const t=sco.teams.find(x=>x.id===d.id);if(staff()&&t.site_team_id&&t.site_team_id!==cur.id&&teams.some(x=>x.id===t.site_team_id))return A.tdel({id:t.site_team_id});askDel('Delete this team?',t.name+' is removed from your opponents. Imported matches, rounds and vetoes stay in your libraries.','sodelyes',t.id)},
  rdedit:d=>rdOpen(d.id),rdadd:()=>rdOpen(null),rdsave:(d,b)=>rdSave(b),rddel:(d,b)=>rdDel(b),rdclose:async()=>{await autoFlush();$('#dlg').close()},
  rdscore:async(d,b)=>{const g=sco.m.find(x=>x.id===sco.matchId),t=g&&roundTally(g);if(!t)return;b.disabled=true;const row={round_score:t.w+'-'+t.l,total_rounds:t.w+t.l,result:t.w>t.l?'W':t.w<t.l?'L':'D',check_status:'',check_notes:''};const r=await sb.from('scout_matches').update(row).eq('id',g.id).select().single();if(r.error){b.disabled=false;return toast(scErr(r.error))}Object.assign(g,r.data);sdirty=false;render();toast('Score set to '+row.round_score)},
+ simp:()=>simpOpen(),simpback:()=>{scr.st='list';scr.imp=null;render()},simpgo:()=>simpGo(),
  sodr:d=>{const n=+d.k;sco.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},
  sotab:d=>{sco.plr=null;sdirty=false;sco.tab=d.t;sco.oppMap='';sco.oppF='';render()},
  soadd:d=>{sco.form={name:d.n||''};render()},
@@ -2455,6 +2550,7 @@ document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='dkout'
  if(c==='lpopt'){sco.lp[e.target.dataset.id]=e.target.checked}
  if(c==='recop'){const cc=recRc(e.target.dataset.k);(cc.ops=cc.ops||{})[e.target.dataset.r+'|'+norm(e.target.dataset.u)]=e.target.value;recPaint();recAutoAll()}
  if(c==='sodr'){const r=sco.dr={...(sco.dr||{}),[e.target.dataset.k]:e.target.value};if(r.from&&r.to&&r.from>r.to)[r.from,r.to]=[r.to,r.from];const id=e.target.id;render();document.getElementById(id)?.focus()}
+ if(c==='simpf'&&e.target.files[0]){e.target.files[0].text().then(t=>simpRead('',t))}
  if(c==='sofm'){sco.oppF=e.target.value;render();document.getElementById('sofm')?.focus()}
  if(c==='scf'){const f=sco.f[sco.kind]=sco.f[sco.kind]||{};f[e.target.dataset.k]=e.target.value;const id=e.target.id;render();document.getElementById(id)?.focus()}
  if(c==='xteam'){e.target.checked?sco.x.teams.add(e.target.dataset.id):sco.x.teams.delete(e.target.dataset.id);xDraw()}
