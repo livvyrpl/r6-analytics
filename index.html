@@ -258,7 +258,7 @@ function scrimsV(){
 }
 function scrimList(){
  const ready=scr.list&&!scr.err,body=!scr.list?'<p class="mu">Loading scrims…</p>':scr.err?`<div class="cd"><p>${esc(scr.err)}</p></div>`:!scr.list.length?`<div class="cd"><p class="mu">No scrims yet.${canEditS()?' Add the first one.':''}</p></div>`:
- `<div style="display:flex;flex-direction:column;gap:10px">${scr.list.map(s=>`<button class="c" data-a="sopen" data-id="${s.id}"><span style="flex:1;min-width:0"><b style="overflow-wrap:anywhere">vs ${esc(s.opponent)}</b><small>${fmtD(s.scrim_date)}${s.maps.length?' · '+esc(s.maps.join(', ')):''}</small></span>${s.score?`<span class="badge">${esc(s.score)}</span>`:''}${s.split?`<span class="mu">Split ${esc(s.split)}</span>`:''}</button>`).join('')}</div>`;
+ `${scrChips()}<div style="display:flex;flex-direction:column;gap:10px">${scrShown().map(s=>`<button class="c" data-a="sopen" data-id="${s.id}"><span style="flex:1;min-width:0"><b style="overflow-wrap:anywhere">vs ${esc(s.opponent)}</b><small>${fmtD(s.scrim_date)}${s.maps.length?' · '+esc(s.maps.join(', ')):''}</small></span>${s.score?`<span class="badge">${esc(s.score)}</span>`:''}${s.split?`<span class="mu">Split ${esc(s.split)}</span>`:''}${scrimGaps(s).length?'<span class="over" style="font-size:12px;font-weight:600;white-space:nowrap">⚠ Needs info</span>':''}</button>`).join('')}</div>`;
  return `<div class="row wrap" style="margin-bottom:20px">${tile(cur,48)}<div><h1 class="serif" style="font-size:24px">Scrims</h1><p class="mu">${esc(cur.name)}, newest first.</p></div><span class="sp"></span>${backDash}${ready&&canEditS()?'<button class="no" data-a="simp">Import scrims</button><button class="go" data-a="sform">Add scrim</button>':''}</div>${body}`;
 }
 function scrimForm(embed=false){
@@ -280,11 +280,12 @@ function scrimDetail(){
  <div class="cd"><h2 style="font-size:15px;font-weight:600">Player notes</h2>${scr.people.length?scr.people.map(p=>`<div><label for="spn-${p.id}" class="row" style="gap:10px;color:var(--tx)"><span class="av">${esc(p.name[0].toUpperCase())}</span><span style="overflow-wrap:anywhere">${esc(p.name)}${p.former?' <span class="mu">(no longer a player on this team)</span>':''}</span></label><textarea id="spn-${p.id}" class="fi ta" data-p="${p.id}" aria-label="Notes for ${esc(p.name)}"${ro}>${esc(scr.notes[p.id]||'')}</textarea></div>`).join(''):'<p class="mu">This team has no one with the Player role yet. Add players in Manage Users.</p>'}</div>
  ${can?'<div class="row" style="justify-content:flex-end"><button class="go" data-a="snotes">Save</button></div>':''}</div>`;
  return `<div class="row wrap" style="margin-bottom:20px"><div style="flex:1 1 280px;min-width:0"><h1 class="serif" style="font-size:24px;overflow-wrap:anywhere">vs ${esc(s.opponent)}</h1><p class="mu">${fmtD(s.scrim_date)}</p></div><div class="row"><button class="no" data-a="sback">Back to scrims</button>${can?'<button class="no" data-a="sedit">Edit</button><button class="no" data-a="sdel">Delete</button>':''}</div></div>
- <div class="cd facts" style="display:grid;margin-bottom:16px">${fact('Map(s)',s.maps.join(', '))}${s.our_bans.length?fact('Older bans (ours)',s.our_bans.join(', ')):''}${s.their_bans.length?fact('Older bans (theirs)',s.their_bans.join(', ')):''}${fact('Score',s.score)}${s.split?fact('Split',s.split):''}</div>${notes}`;
+ <div id="sgaps">${scrGapBox(s)}</div><div class="cd facts" style="display:grid;margin-bottom:16px">${fact('Map(s)',s.maps.join(', '))}${s.our_bans.length?fact('Older bans (ours)',s.our_bans.join(', ')):''}${s.their_bans.length?fact('Older bans (theirs)',s.their_bans.join(', ')):''}${fact('Score',s.score)}${s.split?fact('Split',s.split):''}</div>${notes}`;
 }
 async function fetchScrims(){
  const tid=scr.tid,r=await sb.from('scrims').select('*').eq('team_id',tid).order('scrim_date',{ascending:false}).order('created_at',{ascending:false});
  if(scr?.tid!==tid)return;
+ const mr=await allRows(()=>sb.from('scrim_map_results').select('*').eq('team_id',tid).order('scrim_id').order('map'));if(scr?.tid!==tid)return;scr.allMr=mr.error?null:mr.data;
  scr.err=r.error?sErr(r.error):'';scr.list=r.data||[];
 }
 async function loadDetail(id){
@@ -320,7 +321,7 @@ const mb=readBlocks();if(mb.err)return say(qt,mb.err);const s=curScrim(),gen=$('
   if(gen!==s.notes){const r=await sb.from('scrims').update({notes:gen}).eq('id',s.id).select().single();if(r.error){b.disabled=false;return say(qt,sErr(r.error))}s.notes=gen}
   if(rows.length){const r=await sb.from('scrim_player_notes').upsert(rows);if(r.error){b.disabled=false;return say(qt,sErr(r.error))}rows.forEach(x=>scr.notes[x.user_id]=x.notes)}
   if(!scr.mrErr&&s.maps.length){const me2=await saveMapRows(s.id,scr.tid,mb.rows,scr.mr||[],s);if(me2){b.disabled=false;return say(qt,me2)}}
-  b.disabled=false;if(qt)return{};sdirty=false;render();toast('Saved')
+  b.disabled=false;if(qt){const gb=$('#sgaps');if(gb)gb.innerHTML=scrGapBox(s);return{}}sdirty=false;render();toast('Saved')
 }
 // AUTOSAVE: changes save themselves a moment after you stop typing, and straight away when you leave the page. The Save buttons still work.
 const say=(qt,m)=>qt?{err:m}:toast(m);
@@ -352,9 +353,12 @@ const MAP_SHORT={club:'Clubhouse',labs:'Nighthaven Labs',nh:'Nighthaven Labs',ka
 const OP_SHORT={bb:'Blackbeard',monty:'Montagne',tachanks:'Tachanka',chanka:'Tachanka',lord:'Tachanka',valk:'Valkyrie',hib:'Hibana',therm:'Thermite',mav:'Maverick',cap:'Capitão',snake:'Solid Snake',jager:'Jäger',jaeger:'Jäger',iq:'IQ',tb:'Thunderbird',thunder:'Thunderbird',mozz:'Mozzie',kap:'Kapkan',doc:'Doc',rook:'Rook',buck:'Buck',sledge:'Sledge',zof:'Zofia',zero:'Zero',amaru:'Amaru',nok:'Nøkk',nokk:'Nøkk',melus:'Melusi',ori:'Oryx',tubarao:'Tubarão',skopos:'Skopós'};
 const mapGuess=n=>{const t=String(n||'').trim(),k=norm(t);if(!k)return '';if(MAP_SHORT[k])return MAP_SHORT[k];const c=mapCanon(t);if(MAP_POOL.some(m=>m[0]===c))return c;const hit=MAP_POOL.filter(m=>norm(m[0]).startsWith(k)||norm(m[0]).split(' ').some(w=>w.startsWith(k)));return hit.length===1?hit[0][0]:t};
 const opGuess=n=>{const k=opKey(String(n||'').trim());if(!k)return null;const ex=OPS.find(o=>opKey(o[0])===k);if(ex)return ex[0];if(OP_SHORT[k])return OP_SHORT[k];if(k.length<3)return null;const hit=OPS.filter(o=>opKey(o[0]).startsWith(k));return hit.length===1?hit[0][0]:null};
+// "AceSnake" is two operators written without a slash
+const opExact=k=>{k=opKey(k);return OPS.find(o=>opKey(o[0])===k)?.[0]||OP_SHORT[k]||null};
+const opPair=x=>{for(let i=2;i<=x.length-2;i++){const a=opExact(x.slice(0,i)),b=opExact(x.slice(i));if(a&&b)return[a,b]}return null};
 function banSplit(v,warn,who){
  const out={atk:[],def:[]};
- String(v||'').split('+').forEach(grp=>{const l=grp.split(/[\/,&;]+/).map(x=>x.trim()).filter(Boolean).map(x=>({raw:x,op:opGuess(x)}));const sides=l.map(x=>x.op&&opSide(x.op)).filter(Boolean),lean=sides.filter(s=>s==='attack').length>=sides.filter(s=>s==='defense').length?'attack':'defense';
+ String(v||'').split('+').forEach(grp=>{const l=grp.split(/[\/,&;]+/).map(x=>x.trim()).filter(Boolean).flatMap(x=>{const op=opGuess(x);if(op)return[{raw:x,op}];const two=opPair(x);return two?two.map(o=>({raw:o,op:o})):[{raw:x,op:null}]});const sides=l.map(x=>x.op&&opSide(x.op)).filter(Boolean),lean=sides.filter(s=>s==='attack').length>=sides.filter(s=>s==='defense').length?'attack':'defense';
   l.forEach(x=>{if(!x.op)warn.push(`${who}: "${x.raw}" is not an operator we know, so it was left out`);else(opSide(x.op)||lean)==='attack'?out.atk.push(x.op):out.def.push(x.op)})});
  ['atk','def'].forEach(s=>{if(out[s].length>3){warn.push(`${who}: more than 3 ${s==='atk'?'attackers':'defenders'}, so only the first 3 were kept`);out[s]=out[s].slice(0,3)}});
  return out;
@@ -368,23 +372,25 @@ function simpCells(html,text){
 function simpParse(cells){
  const hk=s=>String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
  let hi=cells.findIndex(r=>{const h=r.map(c=>hk(c.t));return h.includes('date')&&h.includes('map')}),col={};
- if(hi>=0){const h=cells[hi].map(c=>hk(c.t));Object.entries(SIMP_COLS).forEach(([k,names])=>{const i=h.findIndex(x=>names.includes(x));if(i>=0)col[k]=i});if(col.our===undefined){const i=h.findIndex((x,j)=>x.endsWith('bans')&&!/opp|their/.test(x)&&j!==col.opb);if(i>=0)col.our=i}}
- else{hi=-1;['date','opp','map','type','out','score','our','opb','side','split','vod'].forEach((k,i)=>col[k]=i)}
+ if(hi>=0){const h=cells[hi].map(c=>hk(c.t));Object.entries(SIMP_COLS).forEach(([k,names])=>{const i=h.findIndex(x=>names.includes(x));if(i>=0)col[k]=i});if(col.our===undefined){const i=h.findIndex((x,j)=>x.endsWith('bans')&&!/opp|their/.test(x)&&j!==col.opb);if(i>=0)col.our=i}if(col.vod!==undefined&&(!h[col.vod+1]||/link|vod/.test(h[col.vod+1])))col.vod2=col.vod+1}
+ else{hi=-1;['date','opp','map','type','out','score','our','opb','side','split','vod','vod2'].forEach((k,i)=>col[k]=i)}
  const out=[];let skipped=0;
  cells.slice(hi+1).forEach((r,n)=>{
   const c=k=>col[k]===undefined?{t:'',href:''}:(r[col[k]]||{t:'',href:''}),v=k=>c(k).t;
-  if(!v('date')&&!v('map'))return;
-  if(col.type!==undefined&&!/scrim/i.test(v('type'))){skipped++;return}
+  if(!v('map')&&!v('opp'))return;
+  if(col.type!==undefined&&v('type')&&!/scrim/i.test(v('type'))){skipped++;return}
   const warn=[],date=parseDate(v('date')),map=mapGuess(v('map')),raw=v('opp'),sc=parseScore(v('score')),sp=parseScore(v('split')),res=normRes(v('out')),sd=/^att/i.test(v('side'))?'attack':/^def/i.test(v('side'))?'defense':'';
   if(!date)warn.push(`"${v('date')}" is not a date we understand, so this row is skipped`);
-  if(!raw)warn.push('No opponent, so this row is skipped');if(!map)warn.push('No map, so this row is skipped');
+  if(!raw)warn.push('No opponent, so this row is skipped');
   if(v('score')&&!sc)warn.push(`The score "${v('score')}" was left out. Write it like 7-5`);
   let split=sp?fmtPair(sp):null;if(v('split')&&!sp)warn.push(`The split "${v('split')}" was left out. Write it like 4-2`);if(sp&&sp.a+sp.b!==6){warn.push(`The split ${v('split')} does not add up to 6 rounds, so it was left out`);split=null}if(sp&&sc&&split&&(sp.a>sc.a||sp.b>sc.b)){warn.push('The split is more than the score, so it was left out');split=null}
   if(sc&&res&&((res==='W'&&sc.a<=sc.b)||(res==='L'&&sc.a>=sc.b)||(res==='D'&&sc.a!==sc.b)))warn.push(`The outcome says ${res} but the score is ${fmtPair(sc)}. The score is kept`);
   if(!sc&&res)warn.push(`Outcome ${res} has no score, so only the map is saved`);
   const vod=c('vod').href||(/^https?:\/\/\S+$/i.test(v('vod'))?v('vod'):'');if(v('vod')&&!vod)warn.push(`The link "${v('vod')}" did not come through. Paste straight from Google Sheets to keep links`);
+  const vod2=c('vod2').href||(/^https?:\/\/\S+$/i.test(v('vod2'))?v('vod2'):'');
   const ours=banSplit(v('our'),warn,'Our bans'),theirs=banSplit(v('opb'),warn,'Opponent bans');
-  out.push({n:hi+2+n,date,raw,map,score:sc?fmtPair(sc):null,split,side:sd,ours,theirs,vod,warn,bad:!date||!raw||!map});
+  const miss=!map?['map']:mrMiss({score:sc,split,started_on:sd,our_atk_bans:ours.atk,our_def_bans:ours.def,their_atk_bans:theirs.atk,their_def_bans:theirs.def});
+  out.push({n:hi+2+n,date,raw,map,score:sc?fmtPair(sc):null,split,side:sd,ours,theirs,vod,vod2:vod2===vod?'':vod2,warn,miss,bad:!date||!raw});
  });
  return{rows:out,skipped,header:hi>=0};
 }
@@ -392,10 +398,10 @@ function simpParse(cells){
 function simpPlan(){
  const im=scr.imp,teamsS=im.teams||[],res=n=>{const t=teamsS.find(x=>scSame(x,n)||(x.short_name&&norm(x.short_name)===norm(n)));return t?t.name:n.trim()};
  const groups=[];
- im.rows.filter(r=>!r.bad).forEach(r=>{r.opp=res(r.raw);const k=r.date+'|'+norm(r.opp);let g=groups.find(x=>x.k===k&&!x.rows.some(y=>norm(y.map)===norm(r.map)));if(!g){g={k,date:r.date,opp:r.opp,rows:[]};groups.push(g)}g.rows.push(r)});
+ im.rows.filter(r=>!r.bad).forEach(r=>{r.opp=res(r.raw);const k=r.date+'|'+norm(r.opp);let g=groups.find(x=>x.k===k&&!x.rows.some(y=>r.map&&norm(y.map)===norm(r.map)));if(!g){g={k,date:r.date,opp:r.opp,rows:[]};groups.push(g)}g.rows.push(r)});
  const used=new Set();
  groups.forEach(g=>{const ex=(scr.list||[]).find(s=>!used.has(s.id)&&s.scrim_date===g.date&&(norm(s.opponent)===norm(g.opp)||sameName(s.opponent,g.opp)||norm(res(s.opponent))===norm(g.opp)));if(ex)used.add(ex.id);g.ex=ex||null;
-  g.rows.forEach(r=>{const have=ex&&(im.have||[]).some(h=>h.scrim_id===ex.id&&norm(h.map)===norm(r.map));r.status=have?'have':ex?'add':'new'})});
+  g.rows.forEach(r=>{const res2=ex&&(im.have||[]).some(h=>h.scrim_id===ex.id&&norm(h.map)===norm(r.map)),listed=ex&&ex.maps.some(m=>norm(m)===norm(r.map)),empty=!r.score&&!r.split&&!r.side&&!r.vod&&!r.vod2&&![...r.ours.atk,...r.ours.def,...r.theirs.atk,...r.theirs.def].length;r.status=!ex?'new':!r.map||res2||(listed&&empty)?'have':'add'})});
  return groups;
 }
 function scrimImport(){
@@ -403,9 +409,10 @@ function scrimImport(){
  const bans=b=>[...b.atk,...b.def].length?`<span style="white-space:normal">${esc(b.atk.join(', ')||'—')} <span class="mu">+</span> ${esc(b.def.join(', ')||'—')}</span>`:'<span class="mu">—</span>';
  const tag={new:'<span style="color:#34c46a;font-weight:600">New scrim</span>',add:'<span style="color:#34c46a;font-weight:600">Adds to a scrim</span>',have:'<span class="mu">Already saved</span>'};
  const preview=!im.rows?'':!im.rows.length?`<div class="cd"><p>No scrim rows found${im.skipped?`. ${plural(im.skipped,'row')} did not say Scrim and ${im.skipped===1?'was':'were'} skipped`:''}. Include the header row (Date, Opponent, Map…) when you copy.</p></div>`:
- `<section class="cd" style="gap:8px"><div class="row wrap" style="justify-content:space-between;gap:8px"><p><b style="font-weight:600">${plural(plan.filter(g=>g.rows.some(r=>r.status!=='have')).length,'scrim')}, ${plural(todo.length,'map')} to import.</b> <span class="mu">${[im.skipped?plural(im.skipped,'row')+' not marked Scrim skipped':'',all.length-todo.length?plural(all.length-todo.length,'map')+' already saved':'',bad.length?plural(bad.length,'row')+' could not be read':''].filter(Boolean).join(' · ')}</span></p><button class="go" data-a="simpgo"${todo.length&&!im.busy?'':' disabled'}>${im.busy?'Importing…':`Import ${plural(todo.length,'map')}`}</button></div>
+ `<section class="cd" style="gap:8px"><div class="row wrap" style="justify-content:space-between;gap:8px"><p><b style="font-weight:600">${plural(plan.filter(g=>g.rows.some(r=>r.status!=='have')).length,'scrim')}, ${plural(todo.length,'row')} to import.</b> <span class="mu">${[im.skipped?plural(im.skipped,'row')+' not marked Scrim skipped':'',all.length-todo.length?plural(all.length-todo.length,'map')+' already saved':'',bad.length?plural(bad.length,'row')+' could not be read':''].filter(Boolean).join(' · ')}</span></p><button class="go" data-a="simpgo"${todo.length&&!im.busy?'':' disabled'}>${im.busy?'Importing…':`Import ${plural(todo.length,'row')}`}</button></div>
+ ${todo.some(r=>r.miss.length)?`<p class="over"><span aria-hidden="true">⚠</span> ${plural(todo.filter(r=>r.miss.length).length,'row')} ${todo.filter(r=>r.miss.length).length===1?'is':'are'} missing info. ${todo.filter(r=>r.miss.length).length===1?'It':'They'} will still be imported, and flagged under Needs info on the Scrims page so you can fill ${todo.filter(r=>r.miss.length).length===1?'it':'them'} in.</p>`:''}
  ${warns.length?`<details${warns.length<6?' open':''}><summary style="cursor:pointer;font-weight:600" class="over">⚠ ${plural(warns.length,'row')} to check</summary><ul style="margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px;overflow-wrap:anywhere">${warns.map(r=>`<li>Row ${r.n}${r.date?', '+esc(fmtD(r.date)):''}${r.raw?' vs '+esc(r.raw):''}${r.map?', '+esc(r.map):''}: ${esc(r.warn.join('. '))}.</li>`).join('')}</ul></details>`:''}
- ${scTbl(['Date','Opponent','Map','Score','Split','Started','Our bans','Their bans','VOD',''],plan.flatMap(g=>g.rows.map(r=>[esc(fmtD(r.date)),esc(r.opp)+(norm(r.opp)!==norm(r.raw)?` <span class="mu">(${esc(r.raw)})</span>`:''),esc(r.map),esc(r.score||'—'),esc(r.split||'—'),r.side?r.side[0].toUpperCase()+r.side.slice(1):'—',bans(r.ours),bans(r.theirs),r.vod?safeLink(r.vod,'VOD'):'—',tag[r.status]])))}</section>`;
+ ${scTbl(['Date','Opponent','Map','Score','Split','Started','Our bans','Their bans','VOD',''],plan.flatMap(g=>g.rows.map(r=>[esc(fmtD(r.date)),esc(r.opp)+(norm(r.opp)!==norm(r.raw)?` <span class="mu">(${esc(r.raw)})</span>`:''),esc(r.map),esc(r.score||'—'),esc(r.split||'—'),r.side?r.side[0].toUpperCase()+r.side.slice(1):'—',bans(r.ours),bans(r.theirs),[r.vod,r.vod2].filter(Boolean).map((u,i)=>safeLink(u,i?'VOD 2':'VOD')).join(' ')||'—',tag[r.status]+(r.status!=='have'&&r.miss.length?`<span class="over" style="display:block;font-size:12px;white-space:normal">Needs ${esc(r.miss.join(', '))}</span>`:'')])))}</section>`;
  return `<div class="row wrap" style="margin-bottom:16px"><div style="flex:1 1 240px;min-width:0"><h1 class="serif" style="font-size:24px">Import scrims</h1><p class="mu">${esc(cur.name)}. One row per map.</p></div><button class="no" data-a="simpback">Back to scrims</button></div>
  <section class="cd" style="gap:8px;margin-bottom:12px"><p>In Google Sheets, select your rows <b style="font-weight:600">including the header row</b> (Date, Opponent, Map, League/Scrim, Outcome, Map Score, Our Bans, Opponent Bans, Starting Side, Split Score, Link), copy, then click the box below and paste. Rows that don't say Scrim are skipped. Map Score is your score first, like 7-5. Bans can be short names, like Valk/Hib/Therm + BB/Monty.</p>
  <textarea id="simpx" class="fi ta" style="min-height:110px" placeholder="Click here and paste (Ctrl+V)" aria-label="Paste scrim rows here"></textarea>
@@ -424,20 +431,29 @@ async function simpGo(){
   actSet(job,{detail:`${done+1} of ${plan.length}: ${g.opp}, ${fmtD(g.date)}`,pct:Math.round(done/plan.length*100)});
   try{
    let s=g.ex;
-   if(s){const want=[...s.maps,...g.rows.map(r=>r.map).filter(m=>!s.maps.some(x=>norm(x)===norm(m)))];if(want.length!==s.maps.length){const r=await sb.from('scrims').update({maps:want}).eq('id',s.id).select().single();if(r.error)throw r.error;s=r.data}}
-   else{const r=await sb.from('scrims').insert({team_id:scr.tid,scrim_date:g.date,opponent:g.opp,maps:g.rows.map(r=>r.map),notes:''}).select().single();if(r.error)throw r.error;s=r.data}
-   const rows=g.rows.filter(r=>r.score||r.split||r.side||r.vod||[...r.ours.atk,...r.ours.def,...r.theirs.atk,...r.theirs.def].length).map(r=>({scrim_id:s.id,team_id:scr.tid,map:r.map,score:r.score,split:r.split,started_on:r.side||null,our_atk_bans:r.ours.atk,our_def_bans:r.ours.def,their_atk_bans:r.theirs.atk,their_def_bans:r.theirs.def,vod_link:r.vod}));
+   if(s){const want=[...s.maps,...g.rows.map(r=>r.map).filter(m=>m&&!s.maps.some(x=>norm(x)===norm(m)))];if(want.length!==s.maps.length){const r=await sb.from('scrims').update({maps:want}).eq('id',s.id).select().single();if(r.error)throw r.error;s=r.data}}
+   else{const r=await sb.from('scrims').insert({team_id:scr.tid,scrim_date:g.date,opponent:g.opp,maps:g.rows.map(r=>r.map).filter(Boolean),notes:''}).select().single();if(r.error)throw r.error;s=r.data}
+   const rows=g.rows.filter(r=>r.map&&(r.score||r.split||r.side||r.vod||r.vod2||[...r.ours.atk,...r.ours.def,...r.theirs.atk,...r.theirs.def].length)).map(r=>({scrim_id:s.id,team_id:scr.tid,map:r.map,score:r.score,split:r.split,started_on:r.side||null,our_atk_bans:r.ours.atk,our_def_bans:r.ours.def,their_atk_bans:r.theirs.atk,their_def_bans:r.theirs.def,vod_link:r.vod,vod_link_2:r.vod2}));
    if(rows.length){const r=await sb.from('scrim_map_results').upsert(rows);if(r.error)throw r.error}
    const m=await sb.from('scrim_map_results').select('map,score').eq('scrim_id',s.id);if(m.error)throw m.error;
    const sc=m.data.map(x=>parseScore(x.score)).filter(Boolean),text=sc.length?(s.maps.length===1?fmtPair(sc[0]):sc.filter(p=>p.a>p.b).length+'-'+sc.filter(p=>p.a<p.b).length):null;
    if(text&&text!==s.score){const r=await sb.from('scrims').update({score:text}).eq('id',s.id);if(r.error)throw r.error}
-   g.rows.forEach(r=>{im.have.push({scrim_id:s.id,map:r.map})});done++;maps+=g.rows.length;
+   g.rows.forEach(r=>{im.have.push({scrim_id:s.id,map:r.map})});done++;maps+=g.rows.filter(r=>r.map).length;
   }catch(e){fails.push(`${g.opp}, ${fmtD(g.date)}: ${sErr(e)}`)}
  }
  im.busy=false;await fetchScrims();
  actEnd(job,fails.length?'warn':'ok',`${plural(done,'scrim')}, ${plural(maps,'map')} imported${fails.length?'. '+plural(fails.length,'scrim')+' failed: '+fails.join(' · '):''}`);
  if(scr.st==='import')render();
 }
+// A scrim map still missing something gets flagged on the Scrims page until it is filled in
+const mrMiss=o=>[...(o?.score?[]:['score']),...(o?.split?[]:['split']),...(o?.started_on?[]:['starting side']),...(o?.our_atk_bans?.length&&o?.our_def_bans?.length?[]:['our bans']),...(o?.their_atk_bans?.length&&o?.their_def_bans?.length?[]:['their bans'])];
+function scrimGaps(s,mrs){
+ const l=mrs||scr?.allMr;if(!l)return[];if(!s.maps.length)return['No maps yet'];
+ return s.maps.map(m=>{const o=l.find(x=>x.scrim_id===s.id&&norm(x.map)===norm(m)),miss=mrMiss(o);return miss.length?`${m}: ${miss.join(', ')}`:''}).filter(Boolean);
+}
+const scrGapBox=s=>{const g=scrimGaps(s,scr.mr);return g.length?`<section class="cd" style="gap:6px;margin-bottom:12px;border-color:#ff8a8a"><h2 style="font-size:14px;font-weight:600"><span aria-hidden="true">⚠</span> Still to fill in</h2><ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px;overflow-wrap:anywhere">${g.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section>`:''};
+const scrShown=()=>scr.f==='gaps'?scr.list.filter(s=>scrimGaps(s).length):scr.list;
+const scrChips=()=>{const n=scr.list.filter(s=>scrimGaps(s).length).length;return scr.allMr?`<div class="row wrap" style="gap:6px;margin-bottom:10px" role="group" aria-label="Show scrims"><button class="ch" data-a="scrf" data-k="" aria-pressed="${scr.f!=='gaps'}">All (${scr.list.length})</button><button class="ch" data-a="scrf" data-k="gaps" aria-pressed="${scr.f==='gaps'}">Needs info <b style="font-weight:700;margin-left:3px;color:${n?'#ff8a8a':'#34c46a'}">${n}</b></button></div>`:''};
 const KIND={scrim:'Scrim',gameday:'Gameday',off_day:'Off day',other:'Other'};
 const schE=e=>/schema cache|does not exist/i.test(e.message)?'The schedule database tables are not set up yet. Paste stage2.sql into the Supabase SQL Editor and run it.':/schedule_entries_kind|check constraint/i.test(e.message)?'The schedule update is not set up yet. Paste stage2.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
 const canSeeSch=()=>staff()||!!mem[cur?.id],canEditSch=()=>hasR(['coach','assistant_coach']),canOwnOff=()=>(mem[cur?.id]||[]).some(r=>r==='player'||r==='analyst');
@@ -1126,16 +1142,16 @@ function mapBlock(m,o,form,ro=''){
  return `<div class="mapd" data-map="${esc(m||'')}"><div class="mph">${mapPhoto(m)}</div>
  ${form?`<div class="row" style="gap:8px"><select class="fi" data-c="mapsel" aria-label="Map">${mapOptions(m)}</select><button type="button" class="no" data-a="fmaprm">Remove</button></div>`:`<b class="mpn">${esc(m)}</b>`}
  <div class="mr">${f('split','Split (after 6 rounds)','e.g. 4-2')}${f('score','Score','e.g. 7-5')}<div><label>Started on<select class="fi" data-f="started_on"${ro?' disabled':''}><option value="">Choose</option><option value="attack"${st==='attack'?' selected':''}>Attack</option><option value="defense"${st==='defense'?' selected':''}>Defense</option></select></label></div></div>
- <div class="row" style="gap:8px;align-items:flex-end"><div style="flex:1;min-width:0"><label>VOD link<input class="fi" data-f="vod_link" type="url" maxlength="1000" placeholder="https://…" value="${esc(o?.vod_link||'')}"${ro}></label></div>${/^https?:\/\//i.test(o?.vod_link||'')?`<a class="vod" style="margin-bottom:8px" href="${esc(o.vod_link)}" target="_blank" rel="noopener noreferrer">VOD</a>`:''}</div>
+ <div class="row wrap" style="gap:8px;align-items:flex-end">${[['vod_link','VOD link','VOD'],['vod_link_2','VOD link 2','VOD 2']].map(([k,l,b])=>`<div style="flex:1 1 200px;min-width:0"><label>${l}<input class="fi" data-f="${k}" type="url" maxlength="1000" placeholder="https://…" value="${esc(o?.[k]||'')}"${ro}></label></div>${/^https?:\/\//i.test(o?.[k]||'')?`<a class="vod" style="margin-bottom:8px" href="${esc(o[k])}" target="_blank" rel="noopener noreferrer">${b}</a>`:''}`).join('')}</div>
  <div class="bans">${BANS.map(x=>`<div><span class="lb">${x[1]}</span><div class="ban3">${[0,1,2].map(i=>`<input class="fi" list="${x[2]}" data-b="${x[0]}" maxlength="40" aria-label="${x[1]}, ban ${i+1}" value="${esc(o?.[x[0]]?.[i]||'')}"${ro}>`).join('')}</div></div>`).join('')}</div></div>`;
 }
 function readBlocks(){
  const rows=[];let err='';
  document.querySelectorAll('.mapd').forEach(el=>{
   const sel=el.querySelector('[data-c=mapsel]'),map=sel?sel.value:el.dataset.map,val=k=>el.querySelector(`[data-f=${k}]`).value.trim();
-  const v={score:null,split:null,started_on:val('started_on')||null,vod_link:val('vod_link')};
+  const v={score:null,split:null,started_on:val('started_on')||null,vod_link:val('vod_link'),vod_link_2:val('vod_link_2')};
   BANS.forEach(b=>v[b[0]]=[...el.querySelectorAll(`[data-b=${b[0]}]`)].map(i=>i.value.trim()).filter(Boolean));
-  const any=!!(val('score')||val('split')||v.started_on||v.vod_link||BANS.some(b=>v[b[0]].length));
+  const any=!!(val('score')||val('split')||v.started_on||v.vod_link||v.vod_link_2||BANS.some(b=>v[b[0]].length));
   if(!map){if(any)err=err||'Choose a map for each entry';return}
   if(rows.some(r=>norm(r.map)===norm(map))){err=err||map+' is added twice';return}
   const sc=parseScore(val('score')),sp=parseScore(val('split'));
@@ -1144,6 +1160,7 @@ function readBlocks(){
   if(sc&&sp&&(sp.a>sc.a||sp.b>sc.b))err=err||`The ${map} split cannot be more than its score`;
   if(sp&&sp.a+sp.b!==6)err=err||`The ${map} split is the score after 6 rounds, so it should add up to 6`;
   if(v.vod_link&&!/^https?:\/\/\S+$/i.test(v.vod_link))err=err||`The ${map} VOD must be a full link starting with https://`;
+  if(v.vod_link_2&&!/^https?:\/\/\S+$/i.test(v.vod_link_2))err=err||`The ${map} second VOD must be a full link starting with https://`;
   if(sc)v.score=fmtPair(sc);if(sp)v.split=fmtPair(sp);
   rows.push({map,any,v});
  });
@@ -1155,7 +1172,7 @@ async function saveMapRows(sid,tid,rows,prev,scrim){
  if(up.length){const r=await sb.from('scrim_map_results').upsert(up);if(r.error)return aErr(r.error)}
  if(del.length){const r=await sb.from('scrim_map_results').delete().eq('scrim_id',sid).in('map',del);if(r.error)return aErr(r.error)}
  const m=await sb.from('scrim_map_results').select('*').eq('scrim_id',sid);if(m.error)return aErr(m.error);
- scr.mr=m.data||[];
+ scr.mr=m.data||[];if(scr.allMr)scr.allMr=[...scr.allMr.filter(x=>x.scrim_id!==sid),...scr.mr];
  const sc=scr.mr.filter(x=>rows.some(r=>r.map===x.map)).map(x=>parseScore(x.score)).filter(Boolean);
  if(sc.length){const text=rows.length===1?fmtPair(sc[0]):sc.filter(p=>p.a>p.b).length+'-'+sc.filter(p=>p.a<p.b).length;if(text!==scrim.score){const r=await sb.from('scrims').update({score:text}).eq('id',sid).select().single();if(r.error)return sErr(r.error);scrim.score=text}}
  return '';
@@ -2429,7 +2446,7 @@ const A={
  sodelp:d=>{const t=sco.teams.find(x=>x.id===d.id);if(staff()&&t.site_team_id&&t.site_team_id!==cur.id&&teams.some(x=>x.id===t.site_team_id))return A.tdel({id:t.site_team_id});askDel('Delete this team?',t.name+' is removed from your opponents. Imported matches, rounds and vetoes stay in your libraries.','sodelyes',t.id)},
  rdedit:d=>rdOpen(d.id),rdadd:()=>rdOpen(null),rdsave:(d,b)=>rdSave(b),rddel:(d,b)=>rdDel(b),rdclose:async()=>{await autoFlush();$('#dlg').close()},
  rdscore:async(d,b)=>{const g=sco.m.find(x=>x.id===sco.matchId),t=g&&roundTally(g);if(!t)return;b.disabled=true;const row={round_score:t.w+'-'+t.l,total_rounds:t.w+t.l,result:t.w>t.l?'W':t.w<t.l?'L':'D',check_status:'',check_notes:''};const r=await sb.from('scout_matches').update(row).eq('id',g.id).select().single();if(r.error){b.disabled=false;return toast(scErr(r.error))}Object.assign(g,r.data);sdirty=false;render();toast('Score set to '+row.round_score)},
- simp:()=>simpOpen(),simpback:()=>{scr.st='list';scr.imp=null;render()},simpgo:()=>simpGo(),
+ scrf:d=>{scr.f=d.k;render()},simp:()=>simpOpen(),simpback:()=>{scr.st='list';scr.imp=null;render()},simpgo:()=>simpGo(),
  sodr:d=>{const n=+d.k;sco.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},
  sotab:d=>{sco.plr=null;sdirty=false;sco.tab=d.t;sco.oppMap='';sco.oppF='';render()},
  soadd:d=>{sco.form={name:d.n||''};render()},
