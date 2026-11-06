@@ -1210,10 +1210,13 @@ const loadScript=src=>new Promise((ok,no)=>{if(document.querySelector(`script[sr
 function driveAuth(){
  return new Promise((ok,no)=>{
   // read-only access, so a picked folder can be looked through. The site never changes or deletes anything in Drive.
-  if(!gdrv.client)gdrv.client=google.accounts.oauth2.initTokenClient({client_id:siteSet.google_client_id,scope:'https://www.googleapis.com/auth/drive.readonly',callback:()=>{}});
-  gdrv.client.callback=r=>{if(r.error)return no(new Error(r.error==='access_denied'?'Google Drive access was not allowed.':'Google sign-in did not finish: '+r.error));gdrv.tok=r.access_token;gdrv.exp=Date.now()+(+r.expires_in||3600)*1000-60000;ok(gdrv.tok)};
+  if(!gdrv.client)gdrv.client=google.accounts.oauth2.initTokenClient({client_id:siteSet.google_client_id,scope:DRIVE_SCOPE,callback:()=>{}});
+  gdrv.client.callback=r=>{if(r.error)return no(new Error(r.error==='access_denied'?'Google Drive access was not allowed.':'Google sign-in did not finish: '+r.error));
+   // Google lets people untick permissions. Without this one, folders look empty, so say so and ask again next time.
+   const ga=google.accounts.oauth2;if(ga.hasGrantedAllScopes&&!ga.hasGrantedAllScopes(r,DRIVE_SCOPE)){gdrv.tok=null;gdrv.consent=true;return no(new Error('Liv Analytics needs to see your Google Drive files to look inside folders. Click Google Drive again, and when Google asks, tick "See and download all your Google Drive files".'))}
+   gdrv.consent=false;gdrv.tok=r.access_token;gdrv.exp=Date.now()+(+r.expires_in||3600)*1000-60000;ok(gdrv.tok)};
   gdrv.client.error_callback=e=>no(new Error(e?.type==='popup_closed'?'The Google window was closed before signing in.':'Google sign-in could not open. Allow pop-ups for this site and try again.'));
-  gdrv.client.requestAccessToken({prompt:gdrv.tok?'':'select_account'});
+  gdrv.client.requestAccessToken({prompt:gdrv.consent?'consent':gdrv.tok?'':'select_account'});
  });
 }
 async function drivePick(b){
@@ -1229,30 +1232,33 @@ async function drivePick(b){
  }catch(e){toast(e.message||String(e))}finally{b.disabled=false}
 }
 // a picked folder is looked through, subfolders too; the folder names become the path so matches group as usual
-const DRIVE_FOLDER='application/vnd.google-apps.folder';
+const DRIVE_FOLDER='application/vnd.google-apps.folder',DRIVE_SCOPE='https://www.googleapis.com/auth/drive.readonly';
 // Looks through folders level by level, asking about up to 40 folders at once, so a big tournament folder takes seconds, not minutes
 const recZipCount=l=>{const r=l.filter(x=>/\.rec$/i.test(x.name)).length,z=l.filter(x=>/\.zip$/i.test(x.name)).length;return plural(r,'replay file')+(z?' and '+plural(z,'zip file'):'')};
 async function driveListAll(roots,job,stop){
- const path=new Map(roots.map(r=>[r.id,r.name])),seen=new Set(roots.map(r=>r.id)),out=[];let level=[...seen],folders=level.length;
+ const path=new Map(roots.map(r=>[r.id,r.name])),seen=new Set(roots.map(r=>r.id)),out=[];let level=[...seen],folders=level.length,items=0;
  const say=()=>actSet(job,{detail:`${plural(folders,'folder')} · ${recZipCount(out)} so far`});say();
  for(let depth=0;level.length&&!stop.v&&depth<20;depth++){
   const next=[];
   for(let i=0;i<level.length&&!stop.v;i+=40){
    const q=encodeURIComponent('('+level.slice(i,i+40).map(id=>`'${id.replace(/'/g,"\'")}' in parents`).join(' or ')+') and trashed=false');let pt='';
    do{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${encodeURIComponent('nextPageToken,files(id,name,mimeType,size,parents)')}&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true${pt?'&pageToken='+encodeURIComponent(pt):''}`,{},job),j=await r.json();
-    for(const f of j.files||[]){const par=(f.parents||[]).find(x=>path.has(x)),p=(par?path.get(par)+'/':'')+f.name;
+    for(const f of j.files||[]){items++;const par=(f.parents||[]).find(x=>path.has(x)),p=(par?path.get(par)+'/':'')+f.name;
      if(f.mimeType===DRIVE_FOLDER){if(!seen.has(f.id)){seen.add(f.id);path.set(f.id,p);next.push(f.id);folders++}}
      else if(f.mimeType!=='application/vnd.google-apps.shortcut')out.push({id:f.id,name:f.name,path:p,sizeBytes:f.size})}
     pt=j.nextPageToken||'';say()}while(pt&&!stop.v);
   }
   level=next;
  }
+ out.folders=folders;out.items=items;
  return out;
 }
 async function drivePicked(picked){
  const folders=picked.filter(d=>d.mimeType===DRIVE_FOLDER);let docs=picked.filter(d=>d.mimeType!==DRIVE_FOLDER);
  if(folders.length){const stop={v:false},job=actStart('Looking through '+(folders.length===1?folders[0].name:plural(folders.length,'folder')),()=>{stop.v=true});
-  try{docs=docs.concat(await driveListAll(folders.map(f=>({id:f.id,name:f.name})),job,stop));
+  try{const found=await driveListAll(folders.map(f=>({id:f.id,name:f.name})),job,stop);
+   if(!found.items&&!stop.v){gdrv.tok=null;gdrv.consent=true;const m='Google showed nothing inside '+(folders.length===1?'that folder':'those folders')+'. This usually means Liv Analytics was not allowed to see your Drive files. Click Google Drive again, and when Google asks, tick "See and download all your Google Drive files".';actEnd(job,'warn',m);return toast(m)}
+   docs=docs.concat(found);
    const n=docs.filter(d=>/\.(rec|zip)$/i.test(d.name)).length;actEnd(job,stop.v?'warn':'ok',(stop.v?'Stopped. ':'')+recZipCount(docs)+' found'+(stop.v&&n?', and added':''))}
   catch(e){actEnd(job,'warn',e.message);return toast(e.message)}}
  const list=[];
