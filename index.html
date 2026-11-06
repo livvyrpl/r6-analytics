@@ -1230,37 +1230,59 @@ async function drivePick(b){
 }
 // a picked folder is looked through, subfolders too; the folder names become the path so matches group as usual
 const DRIVE_FOLDER='application/vnd.google-apps.folder';
-async function driveList(id,base,out,seen=new Set(),depth=0){
- if(seen.has(id)||depth>15)return;seen.add(id);let pt='';
- do{const q=encodeURIComponent(`'${id.replace(/'/g,"\\'")}' in parents and trashed=false`),r=await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${encodeURIComponent('nextPageToken,files(id,name,mimeType,size)')}&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true${pt?'&pageToken='+encodeURIComponent(pt):''}`),j=await r.json();
-  for(const f of j.files||[]){const p=base+'/'+f.name;if(f.mimeType===DRIVE_FOLDER)await driveList(f.id,p,out,seen,depth+1);else out.push({id:f.id,name:f.name,path:p,sizeBytes:f.size})}
-  pt=j.nextPageToken||''}while(pt);
+// Looks through folders level by level, asking about up to 40 folders at once, so a big tournament folder takes seconds, not minutes
+const recZipCount=l=>{const r=l.filter(x=>/\.rec$/i.test(x.name)).length,z=l.filter(x=>/\.zip$/i.test(x.name)).length;return plural(r,'replay file')+(z?' and '+plural(z,'zip file'):'')};
+async function driveListAll(roots,job,stop){
+ const path=new Map(roots.map(r=>[r.id,r.name])),seen=new Set(roots.map(r=>r.id)),out=[];let level=[...seen],folders=level.length;
+ const say=()=>actSet(job,{detail:`${plural(folders,'folder')} · ${recZipCount(out)} so far`});say();
+ for(let depth=0;level.length&&!stop.v&&depth<20;depth++){
+  const next=[];
+  for(let i=0;i<level.length&&!stop.v;i+=40){
+   const q=encodeURIComponent('('+level.slice(i,i+40).map(id=>`'${id.replace(/'/g,"\'")}' in parents`).join(' or ')+') and trashed=false');let pt='';
+   do{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${encodeURIComponent('nextPageToken,files(id,name,mimeType,size,parents)')}&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true${pt?'&pageToken='+encodeURIComponent(pt):''}`,{},job),j=await r.json();
+    for(const f of j.files||[]){const par=(f.parents||[]).find(x=>path.has(x)),p=(par?path.get(par)+'/':'')+f.name;
+     if(f.mimeType===DRIVE_FOLDER){if(!seen.has(f.id)){seen.add(f.id);path.set(f.id,p);next.push(f.id);folders++}}
+     else if(f.mimeType!=='application/vnd.google-apps.shortcut')out.push({id:f.id,name:f.name,path:p,sizeBytes:f.size})}
+    pt=j.nextPageToken||'';say()}while(pt&&!stop.v);
+  }
+  level=next;
+ }
+ return out;
 }
 async function drivePicked(picked){
  const folders=picked.filter(d=>d.mimeType===DRIVE_FOLDER);let docs=picked.filter(d=>d.mimeType!==DRIVE_FOLDER);
- if(folders.length){const job=actStart('Looking through '+(folders.length===1?folders[0].name:plural(folders.length,'folder')));
-  try{for(const f of folders){const out=[];await driveList(f.id,f.name,out);docs=docs.concat(out)}
-   actEnd(job,'ok',plural(docs.filter(d=>/\.(rec|zip)$/i.test(d.name)).length,'replay file')+' found')}
+ if(folders.length){const stop={v:false},job=actStart('Looking through '+(folders.length===1?folders[0].name:plural(folders.length,'folder')),()=>{stop.v=true});
+  try{docs=docs.concat(await driveListAll(folders.map(f=>({id:f.id,name:f.name})),job,stop));
+   const n=docs.filter(d=>/\.(rec|zip)$/i.test(d.name)).length;actEnd(job,stop.v?'warn':'ok',(stop.v?'Stopped. ':'')+recZipCount(docs)+' found'+(stop.v&&n?', and added':''))}
   catch(e){actEnd(job,'warn',e.message);return toast(e.message)}}
  const list=[];
- for(const d of docs){let size=+d.sizeBytes||0;if(!size&&!/\.(rec|zip)$/i.test(d.name)){an.skipped++;continue}if(!size){try{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(d.id)}?fields=size&supportsAllDrives=true`);size=+(await r.json()).size||0}catch{}}
+ for(const d of docs){let size=+d.sizeBytes||0;if(!/\.(rec|zip)$/i.test(d.name)){an.skipped++;continue}if(!size){try{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(d.id)}?fields=size&supportsAllDrives=true`);size=+(await r.json()).size||0}catch{}}
   const src={name:d.name,size,read:(a,b)=>driveRead(d.id,a,b)};
-  if(/\.zip$/i.test(d.name))list.push({name:d.name,src});else if(/\.rec$/i.test(d.name))list.push({name:d.name,path:d.path||d.name,size,load:()=>driveRead(d.id,0,size).then(x=>new Blob([x]))});else an.skipped++}
+  if(/\.zip$/i.test(d.name))list.push({name:d.name,src});else list.push({name:d.name,path:d.path||d.name,size,load:()=>driveRead(d.id,0,size).then(x=>new Blob([x]))})}
  if(!list.length)return toast(folders.length?'No .rec or .zip files were found in that folder.':'Choose folders, .zip or .rec files');
  const zips=list.filter(x=>x.src);if(list.length>zips.length)addRecs(list.filter(x=>!x.src));if(zips.length)addZips(zips.map(x=>x.src));
 }
 // Google sign-ins last about an hour. A long run pauses and asks to reconnect, then carries on where it was.
-function driveWaitAuth(){if(!gdrv.wait){gdrv.wait={};gdrv.wait.p=new Promise(ok=>{gdrv.wait.ok=ok})}if(an)recPaint();return gdrv.wait.p}
-async function driveFetch(url,headers={}){
- for(let i=0;i<3;i++){
-  if(!gdrv.tok||Date.now()>gdrv.exp)await driveWaitAuth();
-  const r=await fetch(url,{headers:{...headers,Authorization:'Bearer '+gdrv.tok}});
+function driveWaitAuth(job){
+ if(!gdrv.wait){gdrv.wait={};gdrv.wait.p=new Promise(ok=>{gdrv.wait.ok=ok});toast('Google Drive needs you to sign in again. Click Reconnect Google Drive on the Parse page.')}
+ if(job)actSet(job,{detail:'Waiting: click Reconnect Google Drive on the Parse page'});if(an)recPaint();return gdrv.wait.p;
+}
+const nap=ms=>new Promise(ok=>setTimeout(ok,ms));
+// Busy or slow answers from Google are tried again, waiting a little longer each time
+async function driveFetch(url,headers={},job){
+ for(let i=0;i<6;i++){
+  if(!gdrv.tok||Date.now()>gdrv.exp)await driveWaitAuth(job);
+  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),60000);let r;
+  try{r=await fetch(url,{headers:{...headers,Authorization:'Bearer '+gdrv.tok},signal:ctl.signal})}catch{clearTimeout(tm);if(i<5){await nap(1500*(i+1));continue}throw new Error('Google Drive did not answer. Check your connection and try again.')}
+  clearTimeout(tm);
   if(r.status===401){gdrv.tok=null;continue}
-  if(r.status===403){const t=await r.text().catch(()=>'');throw new Error(/insufficient|scope|PERMISSION_DENIED/i.test(t)?'Google Drive did not allow reading this. In Google Cloud, add the drive.readonly scope (Admin, Site Settings, Google Drive, step 4), then click Google Drive again.':'Google Drive refused the download. Try again in a minute.')}
-  if(!r.ok)throw new Error(r.status===404?'That file is no longer in Google Drive, or you no longer have access to it.':'Google Drive answered '+r.status+'.');
+  if(r.status===429||r.status>=500){await nap(2000*(i+1));continue}
+  if(r.status===403){const t=await r.text().catch(()=>'');if(/rateLimit|quota|userRateLimitExceeded/i.test(t)&&i<5){await nap(3000*(i+1));continue}
+   throw new Error(/insufficient|scope/i.test(t)?'Google Drive did not allow looking inside folders. When Google asks, allow Liv Analytics to see your Drive files, or see Admin, Site Settings, Google Drive, step 4.':/PERMISSION_DENIED|forbidden/i.test(t)?'Google Drive refused access to this. Check you can open it in Drive with the same Google account.':'Google Drive refused the download. Try again in a minute.')}
+  if(!r.ok)throw new Error(r.status===404?'That file or folder is no longer in Google Drive, or you no longer have access to it.':'Google Drive answered '+r.status+'.');
   return r;
  }
- throw new Error('Google Drive sign-in did not work.');
+ throw new Error('Google Drive is busy and did not answer. Try again in a few minutes.');
 }
 async function driveRead(id,a,b){
  const r=await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media&supportsAllDrives=true`,{Range:`bytes=${a}-${b-1}`}),buf=await r.arrayBuffer();
