@@ -935,9 +935,10 @@ function recSummarize(g){
  s.players=[...pl.values()];
  return s;
 }
-// A team can only pick each operator once a round, so a repeat is a misread to fix before saving
+// Operators are not fixed during import: a repeated, missing or unknown operator saves as read,
+// and the round is flagged afterwards under Missing data, Looks wrong, to fix in the round editor.
 const recOp=(c,r,p)=>c.ops?.[r.roundNumber+'|'+norm(p.username)]||repOp(p.operator);
-const recDups=(s,c,done)=>{const out=[];s.rounds.forEach(r=>{if(done.has(r.roundNumber))return;[0,1].forEach(i=>{const ps=r.players.filter(p=>p.teamIndex===i),d=opDup(ps.map(p=>recOp(c,r,p)));if(d.length)out.push({r,i,ps,d})})});return out};
+const recDups=()=>[];
 function recDupH(g,s,c,dups){
  const fixed=Object.keys(c.ops||{}).length;
  if(!dups.length)return fixed?`<p class="mu">You changed ${plural(fixed,'operator')}. ${fixed===1?'It':'They'} will be saved with this replay.</p>`:'';
@@ -2368,7 +2369,8 @@ const opOptions=(v,side)=>{const grp=(lbl,atk)=>`<optgroup label="${lbl}">${OPS.
 const roundTeams=r=>{const sd=startNorm(r.side);return[{who:r.team,side:sd,ops:[1,2,3,4,5].flatMap(i=>opNames(r['operator_'+i]))},{who:r.opponent,side:otherSide(sd),ops:opNames(r.opponent_operators)}]};
 function roundWrong(r){
  const out=[];
- roundTeams(r).forEach(t=>{const who=t.who||'A team',d=opDup(t.ops);if(d.length)out.push(`${who} has ${d.join(' and ')} twice`);if(t.ops.length>5)out.push(`${who} has ${t.ops.length} operators`);if(t.side){const bad=t.ops.filter(o=>{const s=opSide(o);return s&&s!==t.side});if(bad.length)out.push(`${who} is on ${t.side} but has ${bad.join(', ')}`)}});
+ roundTeams(r).forEach(t=>{const who=t.who||'A team',d=opDup(t.ops);if(d.length)out.push(`${who} has ${d.join(' and ')} twice`);if(t.ops.length>5)out.push(`${who} has ${t.ops.length} operators`);else if(t.ops.length&&t.ops.length<5)out.push(`${who} has only ${t.ops.length} operator${t.ops.length===1?'':'s'}`);
+  const unk=t.ops.filter(o=>/^Unknown \(\d+\)$/.test(o));if(unk.length)out.push(`${who} has an operator the parser does not know: ${unk.join(', ')}`);if(t.side){const bad=t.ops.filter(o=>{const s=opSide(o);return s&&s!==t.side});if(bad.length)out.push(`${who} is on ${t.side} but has ${bad.join(', ')}`)}});
  return out;
 }
 const roundIdx=()=>{if(sco._ri?.src!==sco.r||sco._ri.n!==sco.r.length){const m=new Map();sco.r.forEach(x=>{const k=norm(x.match_id);(m.get(k)||m.set(k,[]).get(k)).push(x)});sco._ri={src:sco.r,n:sco.r.length,m}}return sco._ri.m};
