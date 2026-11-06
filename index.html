@@ -922,14 +922,14 @@ function recSummarize(g){
  g.files.filter(x=>x.res?.ok).forEach(x=>{if(by.has(x.res.roundNumber))warn.push(`Round ${x.res.roundNumber} appears twice, so ${x.name} was ignored.`);else by.set(x.res.roundNumber,x.res)});
  const rounds=[...by.values()].sort((a,b)=>a.roundNumber-b.roundNumber),s={g,rounds,warn,fails,pending:g.files.some(x=>!x.res)};
  if(!rounds.length)return s;
- const ids=[...new Set(rounds.map(r=>r.matchId).filter(Boolean))],maps=[...new Set(rounds.map(r=>repMap(r.map)))];
+ const ids=[...new Set(rounds.map(r=>r.matchId).filter(Boolean))],mf=mapFix(rounds[0].map,g.files.map(x=>x.path));
  s.mixed=ids.length>1;if(s.mixed)warn.push('These files come from more than one match. Put each match in its own folder, then try again.');
- s.id=ids[0]||g.label;s.map=maps[0];s.names=[0,1].map(i=>rounds[0].teams[i]?.name||'Team '+(i+1));
+ s.id=ids[0]||g.label;s.map=mf.map;s.mapInfo=mf;s.names=[0,1].map(i=>rounds[0].teams[i]?.name||'Team '+(i+1));
  const last=rounds[rounds.length-1];s.score=[0,1].map(i=>last.teams[i]?.score||0);s.max=last.roundNumber;
  s.date=(rounds[0].timestamp||'').slice(0,10)||(/(\d{4}-\d{2}-\d{2})/.exec(g.files[0].name)||[])[1]||today();
  const miss=[];for(let i=1;i<s.max;i++)if(!by.has(i))miss.push(i);s.gaps=miss.length>0;
  if(miss.length)warn.push(`${plural(miss.length,'round')} missing: ${miss.join(', ')}. The saved game will not include ${miss.length===1?'it':'them'}.`);
- rounds.forEach(r=>{if(r.winningTeam===null)warn.push(`Round ${r.roundNumber}: no winner found. It will be saved with no result.`);(r.warnings||[]).forEach(w=>warn.push(`Round ${r.roundNumber}: ${w}`))});
+ rounds.forEach(r=>{if(r.winningTeam===null)warn.push(`Round ${r.roundNumber}: no winner found. It will be saved with no result.`);(r.warnings||[]).forEach(w=>{if(!(mf.id&&!mf.unknown&&/map is not in the parser/.test(w)))warn.push(`Round ${r.roundNumber}: ${w}`)})});
  const pl=new Map();
  rounds.forEach(r=>r.players.forEach(p=>{const k=p.teamIndex+'|'+norm(p.username),e=pl.get(k)||{name:p.username,team:p.teamIndex,k:0,d:0,a:0,h:0,score:0,ops:[]};e.k+=p.kills;e.d+=p.deaths;e.a+=p.assists;e.h+=p.headshots;e.score=p.score;const o=repOp(p.operator);if(!e.ops.includes(o))e.ops.push(o);pl.set(k,e)}));
  s.players=[...pl.values()];
@@ -947,12 +947,21 @@ function recDupH(g,s,c,dups){
 // Replays save themselves: each match once its teams are known, every few files while it is being read, and whatever was read if reading stops
 function recCan(a,key){
  if(an!==a)return false;const g=recGroups().find(x=>x.key===key);if(!g)return false;const s=recSummary(g);if(!s.rounds.length||s.mixed)return false;
- const c=recRc(key),ex=a.rex?.[s.id],done=new Set(ex?.done||[]);if(!s.rounds.some(r=>!done.has(r.roundNumber))||recDups(s,c,done).length)return false;
+ const c=recRc(key),ex=a.rex?.[s.id],done=new Set(ex?.done||[]);if(!s.rounds.some(r=>!done.has(r.roundNumber))||recDups(s,c,done).length||s.mapInfo?.unknown)return false;
  return !!ex||recReady(recSides(s,c));
 }
 function recAutoKey(a,key){if(!recCan(a,key))return;a.saveQ=(a.saveQ||Promise.resolve()).then(()=>recCan(a,key)?recSave(key,{},false,true):null).catch(()=>{})}
 function recAutoAll(){const a=an;if(!a)return;recGroups().filter(g=>g.files.every(x=>x.res)).forEach(g=>recAutoKey(a,g.key))}
 function recStopRead(){const a=an,p=a?.rp;if(!p)return;a.rp=null;p.abort?.();p.w?.terminate();const left=a.recs.filter(x=>!x.res).length;a.recs=a.recs.filter(x=>x.res);a.rsum=null;if(left)toast(`Stopped. ${plural(left,'file')} not read ${left===1?'was':'were'} taken off the list.`);recPaint()}
+// Maps the parser does not know yet: ones listed here, ones picked before on this device, or a guess from the folder name
+const MAP_IDS={'409325881472':'Villa'};
+const mapIdsMine=()=>{try{return JSON.parse(localStorage.getItem('liv-mapids')||'{}')}catch{return{}}};
+function mapFix(name,paths){
+ const m=/^Unknown \((\d+)\)$/.exec(String(name||''));if(!m)return{map:repMap(name)};
+ const id=m[1],k=MAP_IDS[id]||mapIdsMine()[id];if(k)return{map:k,id,known:true};
+ const hay=paths.map(squash).join(' '),g=MAP_POOL.map(x=>x[0]).find(n=>hay.includes(squash(n).replace(/dostoyevsky|labs/,'')));
+ return{map:g||name,id,guess:!!g,unknown:!g};
+}
 const recRc=k=>an.rc[k]||(an.rc[k]={names:{}});
 // Falcons and Falcons Esports are the same team. Sharing another word is only a reason to ask.
 const TEAM_FILLER=new Set(['esports','esport','gaming','team','club','gg','the']);
@@ -1023,9 +1032,9 @@ function recCard(g){
  const roundsH=`<details><summary style="cursor:pointer;font-weight:600">Who won each round</summary><div style="overflow-x:auto;margin-top:8px"><table class="tbl"><thead><tr><th scope="col" class="num">Round</th><th scope="col">Winner</th><th scope="col" class="num">Score</th><th scope="col">Site</th></tr></thead><tbody>${s.rounds.map(r=>`<tr><td class="num">${r.roundNumber}</td><td>${r.winningTeam===null?'Unknown':esc(s.names[r.winningTeam])}</td><td class="num">${r.teams[0].score}-${r.teams[1].score}</td><td>${esc(r.site||'Not found')}</td></tr>`).join('')}</tbody></table></div></details>`;
  const sides=ex||s.mixed?null:recSides(s,c);
  const pick=s.mixed?'':ex?`<p>${fresh?`Already in the library as ${esc(row.team)} vs ${esc(row.opponent)}. ${plural(fresh,'new round')} will be added.`:'Already imported. Nothing new to save.'}</p>`:!sides?'<p class="mu">Checking teams…</p>':`<div style="display:flex;flex-direction:column;gap:8px">${sides.map(x=>recTeamLine(x,g)).join('')}${sides.same?`<p role="alert">Both sides match ${esc(sides[0].name)}. Check that team's aliases in its settings.</p>`:''}</div>`;
- const can=!s.mixed&&fresh>0&&!dups.length&&(ex||recReady(sides));
+ const can=!s.mixed&&fresh>0&&!dups.length&&!s.mapInfo?.unknown&&(ex||recReady(sides));
  return `<article class="cd" style="gap:12px"><div class="row wrap" style="gap:8px 14px"><div style="flex:1 1 220px;min-width:0"><h3 style="font-size:17px;font-weight:600;overflow-wrap:anywhere">${esc(s.map)}: ${esc(s.names[0])} vs ${esc(s.names[1])}</h3><p class="mu" style="overflow-wrap:anywhere">${esc(fmtD(s.date))} · ${plural(s.rounds.length,'round')} · ${esc(g.label)}</p></div><span class="badge" style="font-variant-numeric:tabular-nums">${s.score[0]}-${s.score[1]}</span></div>
-  ${recGroups().length>3?`<details><summary style="cursor:pointer;font-weight:600">Scoreboard and rounds</summary><div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">${sb2(0)}${sb2(1)}${roundsH}</div></details>`:sb2(0)+sb2(1)+roundsH}${warnH}${recDupH(g,s,c,dups)}${pick}${!ex&&!s.mixed&&sides?recLibLine(s,sides):''}${s.mixed||(ex&&!fresh)?'':`<div class="row wrap" style="justify-content:flex-end;gap:10px">${can?'':`<span class="mu">${dups.length?'Fix the operators above to save.':'Choose the team above to save.'}</span>`}<button class="go" data-a="recsave" data-k="${esc(g.key)}"${can?'':' disabled'}>Save ${plural(fresh,'round')}</button></div>`}</article>`;
+  ${recGroups().length>3?`<details><summary style="cursor:pointer;font-weight:600">Scoreboard and rounds</summary><div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">${sb2(0)}${sb2(1)}${roundsH}</div></details>`:sb2(0)+sb2(1)+roundsH}${s.mapInfo?.id&&!s.mapInfo.known?`<div class="cd" style="gap:6px;padding:10px 12px;${s.mapInfo.unknown?'border-color:#ff8a8a':''}"><label for="rcm-${esc(s.mapInfo.id)}" style="margin:0;color:var(--tx);font-weight:600">${s.mapInfo.unknown?'Which map is this?':'Is this the right map?'}</label><p class="mu" style="font-size:12.5px">${s.mapInfo.unknown?'The replay uses a map the parser does not know yet. Pick it to save.':'The replay uses a map the parser does not know yet, so it was guessed from the folder name.'} Your choice is remembered for every replay on this map.</p><select id="rcm-${esc(s.mapInfo.id)}" class="fi" style="max-width:260px;height:36px" data-c="recmap" data-id="${esc(s.mapInfo.id)}"><option value="">Choose the map</option>${MAP_POOL.map(m=>`<option${s.map===m[0]?' selected':''}>${esc(m[0])}</option>`).join('')}</select></div>`:''}${warnH}${recDupH(g,s,c,dups)}${pick}${!ex&&!s.mixed&&sides?recLibLine(s,sides):''}${s.mixed||(ex&&!fresh)?'':`<div class="row wrap" style="justify-content:flex-end;gap:10px">${can?'':`<span class="mu">${dups.length?'Fix the operators above to save.':'Choose the team above to save.'}</span>`}<button class="go" data-a="recsave" data-k="${esc(g.key)}"${can?'':' disabled'}>Save ${plural(fresh,'round')}</button></div>`}</article>`;
 }
 function recList(){
  const r=an.recs,total=r.reduce((a,x)=>a+x.size,0),done=r.filter(x=>x.res).length,pct=r.length?Math.round(done/r.length*100):0,cur=r.find(x=>!x.res),busy=an.rp&&cur;
@@ -1118,7 +1127,7 @@ async function recGame(s,c,tid){
  if(r.error){if(r.error.code==='23505'){const again=await sb.from('scout_matches').select('*').eq('owner_team_id',tid).eq('replay_match_id',s.id).maybeSingle();if(again.data)return again.data}throw r.error}
  return r.data;
 }
-const recSaveable=()=>recGroups().filter(g=>{if(g.files.some(x=>!x.res))return false;const s=recSummary(g);if(!s.rounds.length||s.mixed)return false;const ex=an.rex?.[s.id];if(recDups(s,recRc(g.key),new Set(ex?.done||[])).length)return false;if(ex)return s.rounds.some(r=>!ex.done.includes(r.roundNumber));return recReady(recSides(s,recRc(g.key)))});
+const recSaveable=()=>recGroups().filter(g=>{if(g.files.some(x=>!x.res))return false;const s=recSummary(g);if(!s.rounds.length||s.mixed)return false;const ex=an.rex?.[s.id];if(s.mapInfo?.unknown||recDups(s,recRc(g.key),new Set(ex?.done||[])).length)return false;if(ex)return s.rounds.some(r=>!ex.done.includes(r.roundNumber));return recReady(recSides(s,recRc(g.key)))});
 async function recSaveAll(){
  const a=an,keys=recSaveable().map(g=>g.key);let stop=false,ok=0;const job=actStart('Saving replays',()=>{stop=true});
  for(const k of keys){if(stop||an!==a)break;actSet(job,{detail:(ok+1)+' of '+keys.length,pct:Math.round(ok/keys.length*100)});await recSave(k,{},true);ok++}
@@ -1242,10 +1251,11 @@ async function driveListAll(roots,job,stop){
   const next=[];
   for(let i=0;i<level.length&&!stop.v;i+=40){
    const q=encodeURIComponent('('+level.slice(i,i+40).map(id=>`'${id.replace(/'/g,"\'")}' in parents`).join(' or ')+') and trashed=false');let pt='';
-   do{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${encodeURIComponent('nextPageToken,files(id,name,mimeType,size,parents)')}&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true${pt?'&pageToken='+encodeURIComponent(pt):''}`,{},job),j=await r.json();
+   do{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=${encodeURIComponent('nextPageToken,files(id,name,mimeType,size,parents,shortcutDetails)')}&pageSize=1000&corpora=allDrives&supportsAllDrives=true&includeItemsFromAllDrives=true${pt?'&pageToken='+encodeURIComponent(pt):''}`,{},job),j=await r.json();
     for(const f of j.files||[]){items++;const par=(f.parents||[]).find(x=>path.has(x)),p=(par?path.get(par)+'/':'')+f.name;
-     if(f.mimeType===DRIVE_FOLDER){if(!seen.has(f.id)){seen.add(f.id);path.set(f.id,p);next.push(f.id);folders++}}
-     else if(f.mimeType!=='application/vnd.google-apps.shortcut')out.push({id:f.id,name:f.name,path:p,sizeBytes:f.size})}
+     const isSc=f.mimeType==='application/vnd.google-apps.shortcut',sc=isSc?f.shortcutDetails:null;if(isSc&&!sc?.targetId)continue;const fid=sc?.targetId||f.id,mt=sc?sc.targetMimeType:f.mimeType;
+     if(mt===DRIVE_FOLDER){if(!seen.has(fid)){seen.add(fid);path.set(fid,p);next.push(fid);folders++}}
+     else if(!sc||sc.targetId)out.push({id:fid,name:f.name,path:p,sizeBytes:sc?undefined:f.size})}
     pt=j.nextPageToken||'';say()}while(pt&&!stop.v);
   }
   level=next;
@@ -1259,7 +1269,7 @@ async function drivePicked(picked){
   try{const found=await driveListAll(folders.map(f=>({id:f.id,name:f.name})),job,stop);
    if(!found.items&&!stop.v){gdrv.tok=null;gdrv.consent=true;const m='Google showed nothing inside '+(folders.length===1?'that folder':'those folders')+'. This usually means Liv Analytics was not allowed to see your Drive files. Click Google Drive again, and when Google asks, tick "See and download all your Google Drive files".';actEnd(job,'warn',m);return toast(m)}
    docs=docs.concat(found);
-   const n=docs.filter(d=>/\.(rec|zip)$/i.test(d.name)).length;actEnd(job,stop.v?'warn':'ok',(stop.v?'Stopped. ':'')+recZipCount(docs)+' found'+(stop.v&&n?', and added':''))}
+   const n=docs.filter(d=>/\.(rec|zip)$/i.test(d.name)).length;actEnd(job,stop.v?'warn':'ok',(stop.v?'Stopped. ':'')+'Looked through '+plural(found.folders,'folder')+': '+recZipCount(docs)+' found'+(stop.v&&n?', and added':''))}
   catch(e){actEnd(job,'warn',e.message);return toast(e.message)}}
  const list=[];
  for(const d of docs){let size=+d.sizeBytes||0;if(!/\.(rec|zip)$/i.test(d.name)){an.skipped++;continue}if(!size){try{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(d.id)}?fields=size&supportsAllDrives=true`);size=+(await r.json()).size||0}catch{}}
@@ -3048,6 +3058,7 @@ if(c==='sodr'){const r=sco.dr={...(sco.dr||{}),[e.target.dataset.k]:e.target.val
  if(c==='rpteam'){adm.rt=e.target.value;render()}
  if(c==='lgf'){(adm.lf=adm.lf||{})[e.target.dataset.k]=e.target.value;logLoad()}
  if(c==='scrsort'){scr.sort=e.target.value;render();document.getElementById('scrsort')?.focus()}
+ if(c==='recmap'&&e.target.value){const m=mapIdsMine();m[e.target.dataset.id]=e.target.value;try{localStorage.setItem('liv-mapids',JSON.stringify(m))}catch{}an.rsum=null;recPaint();recAutoAll()}
  if(c==='simpf'&&e.target.files[0]){e.target.files[0].text().then(t=>simpRead('',t))}
  if(c==='sofm'){sco.oppF=e.target.value;render();document.getElementById('sofm')?.focus()}
  if(c==='scf'){const f=sco.f[sco.kind]=sco.f[sco.kind]||{};f[e.target.dataset.k]=e.target.value;const id=e.target.id;render();document.getElementById(id)?.focus()}
