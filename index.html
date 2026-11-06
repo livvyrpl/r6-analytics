@@ -12,7 +12,7 @@
 h1,h2,h3,p{margin:0}button,input,select,textarea{font:inherit}
 .serif{font-family:'Cormorant Garamond',serif;font-weight:600}
 header{display:flex;align-items:center;gap:12px;padding:6px 20px;border-bottom:1px solid #1d1923;flex-wrap:wrap}
-.sp{flex:1}.hban{flex:1 1 260px;min-width:0;display:flex;align-items:center;justify-content:center;gap:10px;margin:0 6px;padding:7px 64px;position:relative;border-radius:999px;border:1px solid rgba(var(--pk-rgb),.45);background:radial-gradient(ellipse 60% 120% at 50% 50%,rgba(var(--pk-rgb),.22),transparent 75%),rgba(6,5,9,.6);box-shadow:0 0 18px -6px rgba(var(--pk-rgb),.6),inset 0 0 12px -6px rgba(var(--pk-rgb),.5)}.hbt{min-width:0;text-align:center;white-space:pre-wrap;overflow-wrap:anywhere;font-weight:600;color:var(--pk-lt);text-shadow:0 0 10px rgba(var(--pk-rgb),.5)}.hbs{flex:none;color:var(--pk);font-size:12px;text-shadow:0 0 8px var(--pk)}.hban .actx{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:var(--cd)}@media(max-width:900px){.hban{order:9;flex-basis:100%;margin:2px 0 0}}
+.sp{flex:1}.prs{padding:10px 12px;border:1px solid rgba(var(--pk-rgb),.35);border-radius:10px;background:linear-gradient(135deg,rgba(var(--pk-rgb),.1),transparent 70%);display:flex;flex-direction:column;gap:8px}.hban{flex:1 1 260px;min-width:0;display:flex;align-items:center;justify-content:center;gap:10px;margin:0 6px;padding:7px 64px;position:relative;border-radius:999px;border:1px solid rgba(var(--pk-rgb),.45);background:radial-gradient(ellipse 60% 120% at 50% 50%,rgba(var(--pk-rgb),.22),transparent 75%),rgba(6,5,9,.6);box-shadow:0 0 18px -6px rgba(var(--pk-rgb),.6),inset 0 0 12px -6px rgba(var(--pk-rgb),.5)}.hbt{min-width:0;text-align:center;white-space:pre-wrap;overflow-wrap:anywhere;font-weight:600;color:var(--pk-lt);text-shadow:0 0 10px rgba(var(--pk-rgb),.5)}.hbs{flex:none;color:var(--pk);font-size:12px;text-shadow:0 0 8px var(--pk)}.hban .actx{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:var(--cd)}@media(max-width:900px){.hban{order:9;flex-basis:100%;margin:2px 0 0}}
 #sky{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}#sky .sk{width:100%;height:100%;display:block}#sky .tl{display:none;position:absolute;top:90px;right:3vw;width:clamp(220px,30vw,420px);height:clamp(220px,30vw,420px);object-fit:contain;opacity:.28;filter:drop-shadow(0 0 30px rgba(var(--pk-rgb),.6))}#sky.logo .tl{display:block}#sky.logo .mn{display:none}#sky .mn{position:absolute;top:84px;right:-3vw;width:clamp(220px,30vw,430px);filter:drop-shadow(0 0 40px rgba(var(--pk-rgb),.35))}
 #sky .g1{stop-color:var(--pk);stop-opacity:.1}#sky .g0{stop-color:var(--pk);stop-opacity:0}
 #sky .dots{fill:#f4eef8;opacity:.85}#sky .dots .sa{fill:var(--pk-lt)}
@@ -179,7 +179,7 @@ async function load(){
 }
 const hexRgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
 const lum=c=>{const[r,g,b]=c.map(x=>{x/=255;return x<=.03928?x/12.92:((x+.055)/1.055)**2.4});return .2126*r+.7152*g+.0722*b};
-const TEAM_VIEWS=new Set(['dash','scrims','schedule','player','roster','analyst','strats','cover','tset']);
+const TEAM_VIEWS=new Set(['dash','scrims','schedule','player','roster','analyst','strats','prep','cover','tset']);
 // the logo is pink; turn it toward the team colour (grey for white, grey or black teams)
 function logoFilter(c){const[r,g,b]=c.map(x=>x/255),mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn,l=(mx+mn)/2,s=d?d/(1-Math.abs(2*l-1)):0;if(s<.18)return 'grayscale(1) brightness(1.25)';let h=mx===r?((g-b)/d)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h=(h*60+360)%360;return `hue-rotate(${Math.round(h-322)}deg) saturate(1.3)`}
 // the background shows the team's logo when it has one, otherwise the moon
@@ -206,6 +206,7 @@ function navPlace(){
  if(view==='player'&&pl)p.s={page:pl.page,uid:pl.uid,fromRoster:!!pl.fromRoster};
  if(view==='scrims'&&scr)p.s={st:scr.st,id:scr.id,tab:scr.tab||'over',sort:scr.sort||'',dr:scr.dr||null};
  if(view==='strats'&&stra)p.s={st:stra.st,id:stra.id};
+ if(view==='prep'&&prep)p.s={kind:prep.kind,team:prep.team,map:prep.map,side:prep.side,site:prep.site||''};
  if(view==='schedule'&&sch)p.s={st:sch.st,forUser:sch.forUser,fromHub:!!sch.fromHub};
  return p;
 }
@@ -229,6 +230,7 @@ async function navGo(p){
  if(p.view==='analyst'){await openAnalyst(s.page||'over');if(an){an.opp=s.opp||null;render()}return}
  if(p.view==='player'){if(!pl||pl.tid!==cur?.id)pl={tid:cur.id,uid:s.uid,names:{},players:[]};else pl.uid=s.uid;view='player';await openPlayer(s.page||'over');pl.fromRoster=s.fromRoster;render();return}
  if(p.view==='scrims'){await A.scrims();if(scr){scr.tab=s.tab||'over';scr.sort=s.sort||'';scr.dr=s.dr||null}if(s.st==='detail'&&s.id)await A.sopen({id:s.id});else render();return}
+ if(p.view==='prep'){await openPrep(s.kind||'drone');if(prep){Object.assign(prep,{team:s.team||'',map:s.map||'',side:s.side||'attack',site:s.site||''});render()}return}
  if(p.view==='strats'){await openStrats();if(s.st==='view'&&s.id)A.stview({id:s.id});return}
  if(p.view==='schedule')return openSch(s.forUser||'',s.fromHub);
  if(p.view==='roster')return openRoster();
@@ -255,7 +257,7 @@ function render(){
  ${mine.length>1?`<select class="tb" data-c="sw" aria-label="Switch team">${mine.map(t=>`<option value="${t.id}"${cur&&t.id===cur.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`:''}
  <button class="tb" data-a="go" data-v="dash">Dashboard</button><button class="tb" data-a="settings">Settings</button><button class="tb" data-a="profile">Profile</button></header>
  ${viewing&&view==='dash'&&cur?`<div class="bar"><span>Viewing ${esc(cur.name)} as ${me.site_role}</span><button class="no" data-a="go" data-v="teamsV">Back to teams</button></div>`:''}
- <main>${({dash:dashV,admin:adminV,teamsV,users:usersV,roles:()=>admGuard(rolesV),invitesV:()=>admGuard(invitesV),pulls:()=>admGuard(pullsV),actlog:()=>admGuard(actlogV),siteset:()=>admGuard(sitesetV),backup:()=>admGuard(backupV),create:createV,scrims:scrimsV,schedule:scheduleV,player:playerV,roster:rosterV,analyst:analystV,strats:stratsV,cover:coverV,sc:scoutV,tset:teamSetV})[view]()}</main><footer>Map and operator images © Ubisoft. Some data from Liquipedia, CC-BY-SA. Liv Analytics is not affiliated with Ubisoft.</footer>`;
+ <main>${({dash:dashV,admin:adminV,teamsV,users:usersV,roles:()=>admGuard(rolesV),invitesV:()=>admGuard(invitesV),pulls:()=>admGuard(pullsV),actlog:()=>admGuard(actlogV),siteset:()=>admGuard(sitesetV),backup:()=>admGuard(backupV),create:createV,scrims:scrimsV,schedule:scheduleV,player:playerV,roster:rosterV,analyst:analystV,strats:stratsV,prep:prepV,cover:coverV,sc:scoutV,tset:teamSetV})[view]()}</main><footer>Map and operator images © Ubisoft. Some data from Liquipedia, CC-BY-SA. Liv Analytics is not affiliated with Ubisoft.</footer>`;
  if(view==='analyst')drawCharts();
  if(view==='sc')scDraw();
 }
@@ -270,7 +272,7 @@ function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analyt
  <button type="button" class="no" style="border:0" data-a="mode">${mode==='in'?'Invited? Create your account':'I already have an account'}</button></form>
  <p class="mu">Access is by invitation. Ask your team owner to add you.</p></div>`}
 const HUBS=[['Scouting',['coach','assistant_coach','analyst'],'<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>',[['Scouting','tracked opponents by region and league','sct'],['Match Library','all teams, every game','slm'],['Round Library','all teams, every round','slr'],['Vetoes','bans and picks per team','slv'],['Export to Sheets','pick league and teams, then export','sx']]],
-['Coach Deck',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches','cover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Player Hub','stats, journals, off days for every player','phub'],['Team Settings','name, region, league, color, logo','tset']]],
+['Coach Deck',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches','cover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Player Hub','stats, journals, off days for every player','phub'],['Drone Prep','where drones sit at 2:40, per map','dprep'],['Strat Prep','operators and rooms at 2:40 and 1:30, per site','sprep'],['Team Settings','name, region, league, color, logo','tset']]],
 ['Analyst Deck',['analyst','coach','assistant_coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary','aover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Stats','your team and opponents','astats'],['Import','replays and scrims','aimport'],['Parse','drop in .rec replay files','aparse']]],
 ['Player Deck',['player'],'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>',[['Overview','your week at a glance','pover'],['My Schedule','team schedule, add off days','pmysch'],['Journal','goals with deadlines','pjournal'],['My Stats','KOST, K/D, operators','pstats'],['Strats','open slides in the site','strats']]]];
 function dashV(){
@@ -1444,6 +1446,139 @@ const stErr=e=>/schema cache|does not exist/i.test(e.message)?'The strats databa
 const slidesInfo=u=>{const m=/^https:\/\/docs\.google\.com\/presentation\/(?:u\/\d+\/)?d\/(e\/)?([A-Za-z0-9_-]{10,})(?:[/?#]|$)/.exec(String(u||'').trim().replace(/^http:\/\//i,'https://').replace(/^docs\.google/i,'https://docs.google'));return m?{pub:!!m[1],id:m[2]}:null};
 const slidesPath=i=>`https://docs.google.com/presentation/d/${i.pub?'e/':''}${i.id}`;
 const slidesNorm=u=>{const i=slidesInfo(u);return i?slidesPath(i)+(i.pub?'/pub':'/edit'):null};
+// ---------- Drone Prep and Strat Prep: where a team's drones and players are at set times, logged by hand for each round ----------
+// Replays don't store rooms, so coaches type them in. The rounds, sites, results and operators come from the Round Library.
+let prep=null;
+const prepErr=e=>/prep_logs|schema cache|does not exist/i.test(e.message)?'Drone Prep and Strat Prep are not set up yet. Paste stage24.sql into the Supabase SQL Editor and run it.':scErr(e);
+async function openPrep(kind){
+ view='prep';
+ if(prep&&prep.tid===cur.id&&prep.loaded&&!prep.err){prep.kind=kind;render();return}
+ if(!prep||prep.tid!==cur.id)prep={tid:cur.id,team:'',map:'',side:'attack',dr:{from:'',to:''}};
+ Object.assign(prep,{kind,loaded:false,err:''});render();
+ if(!canSeeS())return;
+ const p=prep,q=t=>sb.from(t).select('*').eq('owner_team_id',p.tid);
+ const [t,m,r,l]=await Promise.all([q('scout_teams'),allRows(()=>q('scout_matches').order('id')),allRows(()=>q('scout_rounds').order('id')),allRows(()=>q('prep_logs').order('id'))]);
+ if(prep!==p)return;
+ const bad=t.error||m.error||r.error;
+ Object.assign(p,{loaded:true,err:bad?scErr(bad):l.error?prepErr(l.error):'',teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],r:r.data||[],logs:l.error?[]:l.data||[]});
+ if(view==='prep')render();
+}
+const prepTeam=()=>prep.teams.find(x=>x.id===prep.team);
+// every round this team played, once each, seen from this team's side
+function prepRounds(all){
+ const t=prepTeam();if(!t)return[];const k=scKeys(t),{from,to}=prep.dr||{},seen=new Map();
+ for(const r of prep.r){
+  const tm=roundTeams(r),i=tm.findIndex(x=>k.has(norm(x.who)));if(i<0)continue;
+  const d=r.round_date||'';if(!all&&((from&&(!d||d<from))||(to&&(!d||d>to))))continue;
+  const id=norm(r.match_id)+'|'+r.round_number,old=seen.get(id);if(old&&old.i===0)continue;
+  const w=normRes(r.result),res=i===0?w:w==='W'?'L':w==='L'?'W':w;
+  seen.set(id,{r,i,side:tm[i].side,ops:tm[i].ops,who:tm[i].who,foe:tm[1-i].who,map:mapCanon(r.map),site:(r.site||'').trim(),res,date:d});
+ }
+ return [...seen.values()].sort((a,b)=>b.date.localeCompare(a.date)||a.r.match_id.localeCompare(b.r.match_id)||a.r.round_number-b.r.round_number);
+}
+const prepLog=x=>{const k=scKeys(prepTeam()||{name:x.who});return prep.logs.find(l=>l.scout_round_id===x.r.id&&(k.has(norm(l.team_name))||sameName(l.team_name,x.who)))};
+const prepRooms=map=>{const s=new Set();prep.logs.filter(l=>mapCanon(l.map)===map).forEach(l=>{(l.drones||[]).forEach(v=>s.add(v));[...(l.at_240||[]),...(l.at_130||[])].forEach(e=>e.room&&s.add(e.room))});prep.r.filter(r=>mapCanon(r.map)===map).forEach(r=>String(r.site||'').split(/\s*[,/&]\s*/).forEach(v=>v.trim()&&s.add(v.trim())));return [...s].sort((a,b)=>a.localeCompare(b))};
+// how often each name comes up, counted once per round
+const prepCount=lists=>{const m=new Map();lists.forEach(l=>new Set(l.filter(Boolean).map(v=>v.trim())).forEach(v=>{const k=norm(v),e=m.get(k)||{name:v,n:0};e.n++;m.set(k,e)}));return [...m.values()].sort((a,b)=>b.n-a.n||a.name.localeCompare(b.name))};
+const prepBars=(l,den,word)=>l.length?l.map(x=>{const p=den?Math.min(100,Math.round(x.n/den*100)):0;return `<div class="obar" style="grid-template-columns:minmax(0,46%) minmax(0,1fr) 40px 42px"><span style="overflow-wrap:anywhere;font-weight:500">${esc(x.name)}${x.n===den&&den>1?` <span class="badge" style="padding:1px 7px;font-size:10.5px;white-space:nowrap">Every ${word}</span>`:''}</span><span><i style="width:${p}%"></i></span><span class="nr">${x.n}/${den}</span><span class="mu nr">${p}%</span></div>`}).join(''):'<p class="mu" style="font-size:12.5px">Nothing logged yet.</p>';
+const resTag=r=>r==='W'?'<b style="color:#34c46a">W</b>':r==='L'?'<b style="color:#ff8a8a">L</b>':r||'—';
+const prepWhen=x=>`${x.date?esc(fmtD(x.date)):'—'}`;
+function prepV(){
+ if(!cur||!prep||prep.tid!==cur.id)return `<div class="cd"><p>Open Drone Prep or Strat Prep from a team's dashboard.</p><div>${backDash}</div></div>`;
+ if(!canSeeS())return `<div class="cd"><p>Drone Prep and Strat Prep are for this team's coaches, assistant coaches and analysts.</p><div>${backDash}</div></div>`;
+ const dr=prep.kind==='drone';
+ const head=`<div class="row wrap" style="justify-content:space-between;gap:10px;margin-bottom:12px"><div style="min-width:0;flex:1 1 320px"><h1 class="serif" style="font-size:26px">${dr?'Drone Prep':'Strat Prep'}</h1><p class="mu">${dr?'Where a team’s drones are sitting at 2:40 on attack, map by map. Log the rooms for each round to find the spots they pre-place drones every time.':'Pick a map, a side and a site to see the strats a team runs there: the operators they play together and where each one is at 2:40 and 1:30. Log rounds to fill in the rooms.'}</p></div><div class="row wrap" style="gap:8px"><button class="no" data-a="${dr?'sprep':'dprep'}">${dr?'Strat Prep':'Drone Prep'}</button>${backDash}</div></div>`;
+ if(!prep.loaded)return head+none2('Loading…');
+ if(prep.err)return head+`<div class="cd"><p>${esc(prep.err)}</p></div>`;
+ const pick=`<section class="cd" style="gap:10px;margin-bottom:12px"><div><label for="prept">Team</label><select id="prept" class="fi" data-c="prept"><option value="">Choose a team</option>${prep.teams.map(t=>`<option value="${t.id}"${t.id===prep.team?' selected':''}>${esc(t.name)}</option>`).join('')}</select></div></section>`;
+ if(!prepTeam())return head+pick+none2('Choose a team to see its rounds.');
+ // Drone Prep is attack only. Strat Prep goes map, then side, then site.
+ const every=prepRounds(true).filter(x=>!dr||x.side==='attack'),rows=prepRounds().filter(x=>!dr||x.side==='attack');
+ const maps=prepCount(rows.map(x=>[x.map]));
+ if(!every.length)return head+pick+none2(`No ${dr?'attack ':''}rounds for ${esc(prepTeam().name)} yet. Rounds come from imported replays and the Round Library.`);
+ if(!maps.some(m=>m.name===prep.map))prep.map=maps[0]?.name||'';
+ const range=drBar(rows.length,every.length,{r:prep.dr,a:'prepdr',word:dr?'attack round':'round',p:'prepdr'});
+ const chips=(a,l,on,label,lbl)=>`<div class="row wrap" style="gap:6px;margin-bottom:12px" role="group" aria-label="${label}">${l.map(m=>`<button class="ch" style="height:30px" data-a="${a}" data-k="${esc(m.name)}" aria-pressed="${m.name===on}">${esc(lbl?lbl(m.name):m.name)} (${m.n})</button>`).join('')}</div>`;
+ const mp=maps.length?chips('prepmap',maps,prep.map,'Map'):'';
+ const onMap=rows.filter(x=>x.map===prep.map);
+ if(!dr&&!onMap.some(x=>x.side===prep.side)&&onMap.length)prep.side=onMap.some(x=>x.side==='attack')?'attack':'defense';
+ const side=dr?'attack':prep.side,here=onMap.filter(x=>x.side===side);
+ const sideBtns=dr?'':`<div class="row wrap" style="gap:8px;margin-bottom:12px" role="group" aria-label="Side">${['attack','defense'].map(s=>`<button class="${prep.side===s?'go':'no'}" data-a="prepside" data-k="${s}" aria-pressed="${prep.side===s}">${SIDE[s]} (${onMap.filter(x=>x.side===s).length})</button>`).join('')}</div>`;
+ const siteList=dr?[]:prepCount(here.map(x=>[x.site||'Site not known']));
+ if(!dr&&!siteList.some(s=>s.name===prep.site))prep.site=siteList[0]?.name||'';
+ const siteBtns=dr||!siteList.length?'':`<p class="lb" style="margin-bottom:6px">${side==='attack'?'Site attacked':'Site defended'}</p>`+chips('prepsite',siteList,prep.site,'Site');
+ const mapHead=`<div class="row" style="gap:12px;margin-bottom:10px">${mapPhoto(prep.map,'t')}<h2 style="font-size:19px;font-weight:600;min-width:0;overflow-wrap:anywhere">${esc(prep.map)}${dr?' · Attack':''}</h2></div>`+sideBtns+siteBtns;
+ const can=canEditS(),logBtn=x=>can?`<button class="no" style="height:30px" data-a="preplog" data-id="${x.r.id}">${prepLog(x)?'Edit':'Log'}</button>`:'';
+ const vs=x=>`<td style="overflow-wrap:anywhere">${esc(x.foe||'—')}</td>`;
+ let body;
+ if(dr){
+  const done=here.map(x=>({x,l:prepLog(x)})).filter(o=>o.l&&(o.l.drones||[]).length),n=done.length,tot=done.reduce((s,o)=>s+o.l.drones.length,0);
+  const sum=`<section class="cd" style="gap:6px;margin-bottom:12px"><h3 class="oph">Drone spots at 2:40</h3><p class="mu" style="font-size:12.5px">${n?`${plural(n,'round')} logged · ${plural(tot,'drone')} · how many of those rounds had a drone in each room`:'Log the drone rooms for a few rounds below and the spots they use every time show up here.'}</p>${n?prepBars(prepCount(done.map(o=>o.l.drones)),n,'round'):''}</section>`;
+  const tbl=here.length?`<section class="cd" style="gap:6px"><div style="overflow-x:auto;position:relative"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">Against</th><th scope="col" class="num">Round</th><th scope="col">Site attacked</th><th scope="col">Result</th><th scope="col">Drones at 2:40</th><th scope="col"><span class="sr">Log</span></th></tr></thead><tbody>${here.map(x=>{const l=prepLog(x);return `<tr><td>${prepWhen(x)}</td>${vs(x)}<td class="num">${x.r.round_number}</td><td>${esc(x.site||'—')}</td><td>${resTag(x.res)}</td><td>${(l?.drones||[]).length?`<div class="row wrap" style="gap:4px">${l.drones.map(d=>`<span class="ch" style="height:auto;padding:2px 8px;cursor:default">${esc(d)}</span>`).join('')}</div>`:'<span class="mu">Not logged</span>'}</td><td>${logBtn(x)}</td></tr>`}).join('')}</tbody></table></div></section>`:none2('No attack rounds on this map in this date range.');
+  body=sum+tbl;
+ }else{
+  body=siteList.length?siteList.filter(s=>s.name===prep.site).map(s=>{
+   const l=here.filter(x=>(x.site||'Site not known')===s.name),done=l.map(x=>({x,l:prepLog(x)})).filter(o=>o.l&&[...(o.l.at_240||[]),...(o.l.at_130||[])].some(e=>e.room)),n=done.length;
+   const col=(key,t)=>{const ent=done.map(o=>(o.l[key]||[]).filter(e=>e.room));const ops=new Map();ent.flat().forEach(e=>{const k=norm(opCanon(e.op||'')),v=ops.get(k)||{op:e.op||'',rooms:[],r:0};v.rooms.push(e.room);ops.set(k,v)});done.forEach(o=>new Set((o.l[key]||[]).filter(e=>e.room).map(e=>norm(opCanon(e.op||'')))).forEach(k=>ops.get(k)&&ops.get(k).r++));
+    const byOp=[...ops.values()].sort((a,b)=>b.r-a.r||a.op.localeCompare(b.op)).map(v=>`<div class="orow" style="align-items:flex-start"><span class="opr">${v.op?opIcon(v.op):''}<span style="overflow-wrap:anywhere">${esc(v.op||'Operator not set')}</span></span><span style="font-size:12.5px;overflow-wrap:anywhere">${prepCount(v.rooms.map(r=>[r])).map(r=>`${esc(r.name)} <span class="mu">${r.n}/${v.r}</span>`).join(' · ')}</span></div>`).join('');
+    return `<div style="min-width:0;display:flex;flex-direction:column;gap:6px"><span class="lb">At ${t}</span><p class="mu" style="font-size:12px">Rooms the team held (rounds with a player there)</p>${prepBars(prepCount(ent.map(e=>e.map(x=>x.room))),n,'round')}<p class="mu" style="font-size:12px;margin-top:4px">By operator</p>${byOp||'<p class="mu" style="font-size:12.5px">Nothing logged yet.</p>'}</div>`};
+   const where=(o,key)=>{const e=(o?.[key]||[]).filter(v=>v.room);return e.length?e.map(v=>`<div style="white-space:nowrap">${v.op?opIcon(v.op):''} ${esc(v.room||'—')}</div>`).join(''):'<span class="mu">—</span>'};
+   return `<section class="cd" style="gap:10px;margin-bottom:12px" aria-label="${esc(s.name)}"><div class="row wrap" style="justify-content:space-between;gap:8px"><h3 class="oph" style="overflow-wrap:anywhere">${esc(s.name)}</h3><span class="mu" style="font-size:12.5px">${plural(l.length,'round')} · ${n} logged</span></div>${prepSetups(l)}${n?`<h4 style="font-size:14px;font-weight:600;margin:6px 0 0">All rounds on this site</h4><div class="o2">${col('at_240','2:40')}${col('at_130','1:30')}</div>`:`<p class="mu" style="font-size:12.5px">Log rounds below to see where each operator sets up on ${esc(s.name)}.</p>`}<div style="overflow-x:auto;position:relative"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">Against</th><th scope="col" class="num">Round</th><th scope="col">Result</th><th scope="col">Operators</th><th scope="col">2:40</th><th scope="col">1:30</th><th scope="col"><span class="sr">Log</span></th></tr></thead><tbody>${l.map(x=>{const g=prepLog(x);return `<tr><td>${prepWhen(x)}</td>${vs(x)}<td class="num">${x.r.round_number}</td><td>${resTag(x.res)}</td><td><div class="row" style="gap:2px;flex-wrap:nowrap">${x.ops.map(o=>`<span title="${esc(o)}">${opIcon(o)}</span>`).join('')||'—'}</div></td><td style="font-size:12.5px">${where(g,'at_240')}</td><td style="font-size:12.5px">${where(g,'at_130')}</td><td>${logBtn(x)}</td></tr>`}).join('')}</tbody></table></div></section>`}).join(''):none2(`No ${side} rounds on this map in this date range.`);
+ }
+ return head+pick+range+mp+(prep.map?mapHead+body:'');
+}
+// SETUPS THEY REPEAT: rounds on one site with the same operators, and where each of them was at 2:40 and 1:30.
+// The lineup comes from every round; the rooms only from rounds that were logged.
+function prepSetups(l){
+ const groups=new Map();
+ l.forEach(x=>{const ops=[...new Set(x.ops.map(o=>opCanon(o)).filter(Boolean))].sort((a,b)=>a.localeCompare(b));if(ops.length<2)return;const k=ops.map(norm).join('|');if(!groups.has(k))groups.set(k,{ops,rows:[]});groups.get(k).rows.push(x)});
+ const list=[...groups.values()].sort((a,b)=>b.rows.length-a.rows.length);
+ if(!list.length)return '';
+ const at=(g,key)=>{
+  const rounds=g.rows.map(x=>{const lg=prepLog(x),m=new Map();(lg?.[key]||[]).forEach(e=>{if(e.room&&e.op)m.set(norm(opCanon(e.op)),e.room.trim())});return m}).filter(m=>m.size);
+  if(!rounds.length)return null;
+  const per=g.ops.map(o=>{const c=prepCount(rounds.map(m=>[m.get(norm(o))||''])),top=c[0];return{op:o,room:top?.name||'',n:top?.n||0}});
+  // rounds where every player was in that operator's usual room
+  const full=rounds.filter(m=>per.every(p=>p.room&&norm(m.get(norm(p.op))||'')===norm(p.room))).length;
+  return{per,full,logged:rounds.length};
+ };
+ const side=(g,key,time)=>{
+  const a=at(g,key);if(!a)return `<p class="mu" style="font-size:12.5px">At ${time}: not logged yet.</p>`;
+  const head=a.full>=2?`<b style="color:var(--pk-lt)">Same rooms for all ${g.ops.length} at ${time}: ${a.full} times</b>`:`<b>At ${time}</b>`;
+  const line=p=>`<div class="orow"><span class="opr">${opIcon(p.op)}<span style="overflow-wrap:anywhere">${esc(p.op)}</span></span><span style="font-size:12.5px;overflow-wrap:anywhere;text-align:right">${p.room?`${esc(p.room)} <b class="${p.n===a.logged&&a.logged>1?'':'mu'}">${p.n}/${a.logged}</b>`:'<span class="mu">—</span>'}</span></div>`;
+  return `<div style="min-width:0;display:flex;flex-direction:column;gap:4px"><span style="font-size:13px">${head} <span class="mu">(${plural(a.logged,'round')} logged)</span></span>${a.per.map(line).join('')}</div>`;
+ };
+ const card=(g,i)=>{const w=g.rows.filter(x=>x.res==='W').length,lo=g.rows.filter(x=>x.res==='L').length;return `<div class="prs"><p style="font-size:14px"><b>Strat ${i+1}: ran ${g.ops.map(esc).join(', ')} ${g.rows.length===1?'once':g.rows.length+' times'}</b> <span class="mu">on this site · ${w}-${lo}</span></p><div class="o2">${side(g,'at_240','2:40')}${side(g,'at_130','1:30')}</div></div>`};
+ return `<div style="display:flex;flex-direction:column;gap:8px"><h4 style="font-size:14px;font-weight:600;margin:0">Their strats on this site</h4><p class="mu" style="font-size:12.5px">Each strat is a lineup of operators, most played first, with where each operator usually is. Rooms come from the rounds you log.</p>${list.slice(0,8).map(card).join('')}${list.length>8?`<p class="mu" style="font-size:12.5px">And ${plural(list.length-8,'more lineup')}, each run once.</p>`:''}</div>`;
+}
+async function prepOpen(id){
+ const x=prepRounds(true).find(o=>o.r.id===id);if(!x)return;
+ const l=prepLog(x),dr=prep.kind==='drone';let players=[];
+ if(!dr){const g=prep.m.find(m=>matchId(m)===x.r.match_id&&m.replay_match_id);if(g){const q=await sb.from('player_round_stats').select('player_username,team_name,operator').eq('owner_team_id',prep.tid).eq('scout_match_id',g.id).eq('round_number',x.r.round_number);if(!q.error)players=(q.data||[]).filter(p=>sameName(p.team_name,x.who)).map(p=>({player:p.player_username,op:repOp(p.operator)}))}}
+ const a=l?.at_240||[],b=l?.at_130||[],n=Math.max(5,a.length,b.length);
+ const slots=Array.from({length:n},(_,j)=>({player:a[j]?.player||b[j]?.player||players[j]?.player||'',op:a[j]?.op||b[j]?.op||players[j]?.op||x.ops[j]||'',r240:a[j]?.room||'',r130:b[j]?.room||''}));
+ prep.dlg={id:x.r.id,team:l?.team_name||prepTeam().name};
+ const rooms=`<datalist id="preprooms">${prepRooms(x.map).map(r=>`<option value="${esc(r)}">`).join('')}</datalist>`;
+ const inp=(id,v,lbl,extra='')=>`<input id="${id}" class="fi" list="preprooms" maxlength="80" value="${esc(v)}" aria-label="${esc(lbl)}" placeholder="Room"${extra}>`;
+ const drones=l?.drones||[],dn=Math.max(6,drones.length+2);
+ const main=dr?`<p class="mu" style="font-size:12.5px">Type the room each drone is in at 2:40. Rooms used before on ${esc(x.map)} are suggested as you type.</p><div id="prepdl" class="ov" style="gap:6px;grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr))">${Array.from({length:dn},(_,j)=>inp('pdr'+j,drones[j]||'','Drone '+(j+1),' data-pdr="1"')).join('')}</div><div><button class="no" style="height:30px" data-a="prepadd">Add another drone</button></div>`
+  :`<p class="mu" style="font-size:12.5px">For each player, the operator and the room they're in at 2:40 and at 1:30. Rooms used before on ${esc(x.map)} are suggested as you type.</p><div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col">Player</th><th scope="col">Operator</th><th scope="col">Room at 2:40</th><th scope="col">Room at 1:30</th></tr></thead><tbody>${slots.map((s,j)=>`<tr><td><input id="ppp${j}" class="fi" maxlength="60" value="${esc(s.player)}" aria-label="Player ${j+1}" placeholder="Player" style="min-width:110px"></td><td><select id="ppo${j}" class="fi" aria-label="Operator for player ${j+1}" style="min-width:130px"><option value="">—</option>${opOptions(repOp(s.op),x.side)}</select></td><td>${inp('pa'+j,s.r240,'Room at 2:40 for player '+(j+1),' style="min-width:140px"')}</td><td>${inp('pb'+j,s.r130,'Room at 1:30 for player '+(j+1),' style="min-width:140px"')}</td></tr>`).join('')}</tbody></table></div>`;
+ const d=$('#dlg');d.className='dkw';d.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px"><div class="row" style="justify-content:space-between;gap:8px"><div style="min-width:0"><h2 class="serif" style="font-size:20px;overflow-wrap:anywhere">Round ${x.r.round_number} · ${esc(x.who)} vs ${esc(x.foe||'—')}</h2><p class="mu" style="font-size:12.5px">${prepWhen(x)} · ${esc(x.map)} · ${SIDE[x.side]||''}${x.site?' · '+esc(x.site):''} · ${x.res==='W'?'Won':x.res==='L'?'Lost':'Result not known'}</p></div><button class="no" style="height:28px" data-a="prepclose">Close</button></div>${rooms}${main}<div><label for="prepn">Notes</label><textarea id="prepn" class="fi" rows="2" maxlength="2000">${esc(l?.notes||'')}</textarea></div><div class="row" style="justify-content:flex-end;gap:8px"><button class="no" data-a="prepclose">Cancel</button><button class="go" data-a="prepsave">Save</button></div></div>`;
+ if(!d.open)d.showModal();
+ const n0=d.querySelector('input.fi,select.fi');n0?.focus();
+}
+async function prepSave(b){
+ const f=prep.dlg;if(!f)return;const x=prepRounds(true).find(o=>o.r.id===f.id);if(!x)return;
+ const v=id=>String($('#'+id)?.value||'').trim().slice(0,80),row={owner_team_id:prep.tid,scout_round_id:f.id,team_name:f.team,map:x.map,notes:String($('#prepn').value||'').trim().slice(0,2000)};
+ if(prep.kind==='drone')row.drones=[...document.querySelectorAll('[data-pdr]')].map(i=>i.value.trim().slice(0,80)).filter(Boolean).slice(0,20);
+ else{const s=[];for(let j=0;$('#ppp'+j);j++){const e={player:v('ppp'+j),op:$('#ppo'+j).value,a:v('pa'+j),b:v('pb'+j)};if(e.player||e.op||e.a||e.b)s.push(e)}const l=s.slice(0,10);row.at_240=l.map(e=>({player:e.player,op:e.op,room:e.a}));row.at_130=l.map(e=>({player:e.player,op:e.op,room:e.b}))}
+ b.disabled=true;b.textContent='Saving…';
+ const r=await sb.from('prep_logs').upsert(row,{onConflict:'owner_team_id,scout_round_id,team_name'}).select().single();
+ b.disabled=false;b.textContent='Save';
+ if(r.error)return toast('Could not save: '+prepErr(r.error));
+ const i=prep.logs.findIndex(l=>l.id===r.data.id);if(i<0)prep.logs.push(r.data);else prep.logs[i]=r.data;
+ prep.dlg=null;$('#dlg').close();toast(`Saved round ${x.r.round_number} on ${x.map}.`);render();
+}
 async function openStrats(){
  view='strats';
  stra={tid:cur.id,st:'list',list:null,err:'',id:null,map:'',side:'',q:'',embed:''};
@@ -2688,7 +2823,7 @@ async function refreshTeams(){const r=await sb.from('teams').select('*').order('
 async function linkScout(team){const keys=new Set(teamKeys(team)),ids=allScout.filter(t=>teamKeys(t).some(k=>keys.has(k))).map(t=>t.id);if(ids.length)await sb.from('scout_teams').update({site_team_id:team.id}).in('id',ids)}
 // ADMIN PANEL PAGES
 const adm={},admGuard=f=>staff()?f():'<div class="cd"><p>The admin panel is for the owner and admins.</p></div>';
-const ADM_NOUN={teams:['team','teams'],team_members:['team member','team members'],invites:['invite','invites'],profiles:['profile','profiles'],scout_teams:['scouted team','scouted teams'],scout_matches:['game','games'],scout_vetoes:['veto','vetoes'],scout_settings:['rating setting','rating settings'],scrims:['scrim','scrims'],scrim_map_results:['scrim map','scrim maps'],scrim_player_notes:['player note','player notes'],scrim_vod_notes:['timestamp note','timestamp notes'],schedule_entries:['schedule entry','schedule entries'],strats:['strat','strats'],team_roster:['roster name','roster names'],journal_goals:['goal','goals'],journal_notes:['journal note','journal notes'],site_settings:['site setting','site settings']};
+const ADM_NOUN={teams:['team','teams'],team_members:['team member','team members'],invites:['invite','invites'],profiles:['profile','profiles'],scout_teams:['scouted team','scouted teams'],scout_matches:['game','games'],scout_vetoes:['veto','vetoes'],scout_settings:['rating setting','rating settings'],scrims:['scrim','scrims'],scrim_map_results:['scrim map','scrim maps'],scrim_player_notes:['player note','player notes'],scrim_vod_notes:['timestamp note','timestamp notes'],prep_logs:['prep log','prep logs'],schedule_entries:['schedule entry','schedule entries'],strats:['strat','strats'],team_roster:['roster name','roster names'],journal_goals:['goal','goals'],journal_notes:['journal note','journal notes'],site_settings:['site setting','site settings']};
 const admHead=(t,sub)=>`<div class="row wrap" style="margin-bottom:16px"><div style="flex:1 1 240px;min-width:0"><h1 class="serif" style="font-size:24px">${t}</h1><p class="mu">${sub}</p></div><button class="no" data-a="go" data-v="admin">Back to admin</button></div>`;
 const ownerOnly=t=>admHead(t,'Owner only.')+'<div class="cd"><p>Only the site owner can open this page.</p></div>';
 const setupMsg=f=>`<div class="cd"><p>This page is not set up yet. Paste ${f} into the Supabase SQL Editor and run it.</p></div>`;
@@ -2825,7 +2960,7 @@ const sbKey=()=>'sbhide:'+(siteSet?.updated_at||'');
 function siteBanner(){const s=siteSet,none='<span id="sitebanner" class="sp"></span>';if(!s?.announcement_on||!s.announcement.trim())return none;let hid=false;try{hid=localStorage.getItem(sbKey())==='1'}catch{}return hid?none:`<div id="sitebanner" class="hban" role="status"><span class="hbs" aria-hidden="true">✦</span><span class="hbt">${esc(s.announcement)}</span><span class="hbs" aria-hidden="true">✦</span><button class="actx" data-a="sbhide">Hide</button></div>`}
 
 // BACKUPS AND EXPORT (owner)
-const BK=[['teams','Teams','id'],['team_members','Team members','team_id,user_id'],['profiles','People','id'],['invites','Invites','email'],['team_roster','Rosters','id'],['schedule_entries','Schedule','id'],['strats','Strats','id'],['journal_goals','Journal goals','id'],['journal_notes','Journal notes','id'],['scrims','Scrims','id'],['scrim_map_results','Scrim maps','scrim_id,map'],['scrim_player_notes','Scrim player notes','scrim_id,user_id'],['scrim_vod_notes','Timestamp notes','id'],['scout_teams','Scouted teams','id'],['scout_matches','Match library','id'],['scout_vetoes','Vetoes','id'],['scout_rounds','Round library','id'],['scout_settings','Rating settings','owner_team_id'],['player_round_stats','Player round stats','id'],['site_settings','Site settings','id'],['activity_log','Activity log','id']];
+const BK=[['teams','Teams','id'],['team_members','Team members','team_id,user_id'],['profiles','People','id'],['invites','Invites','email'],['team_roster','Rosters','id'],['schedule_entries','Schedule','id'],['strats','Strats','id'],['journal_goals','Journal goals','id'],['journal_notes','Journal notes','id'],['scrims','Scrims','id'],['scrim_map_results','Scrim maps','scrim_id,map'],['scrim_player_notes','Scrim player notes','scrim_id,user_id'],['scrim_vod_notes','Timestamp notes','id'],['scout_teams','Scouted teams','id'],['scout_matches','Match library','id'],['scout_vetoes','Vetoes','id'],['scout_rounds','Round library','id'],['scout_settings','Rating settings','owner_team_id'],['prep_logs','Drone and Strat Prep','id'],['player_round_stats','Player round stats','id'],['site_settings','Site settings','id'],['activity_log','Activity log','id']];
 const bkFetch=(t,ord)=>allRows(()=>{let q=sb.from(t).select('*');ord.split(',').forEach(c=>{q=q.order(c)});return q});
 const csvOf=rows=>{const cols=[...new Set(rows.flatMap(r=>Object.keys(r)))],cell=v=>{if(v==null)return '';const s=typeof v==='object'?JSON.stringify(v):String(v);return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};return [cols.join(','),...rows.map(r=>cols.map(c=>cell(r[c])).join(','))].join('\r\n')};
 function backupV(){
@@ -2981,6 +3116,10 @@ const A={
  xgo:(d,b)=>xExport(b),
  cover:()=>openCover(),
  strats:()=>openStrats(),
+ dprep:()=>openPrep('drone'),sprep:()=>openPrep('strat'),prepmap:d=>{prep.map=d.k;prep.site='';render()},prepside:d=>{prep.side=d.k;prep.site='';render()},prepsite:d=>{prep.site=d.k;render()},
+ prepdr:d=>{const n=+d.k;prep.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},
+ preplog:d=>prepOpen(d.id),prepsave:(d,b)=>prepSave(b),prepclose:()=>{prep&&(prep.dlg=null);$('#dlg').close()},
+ prepadd:()=>{const w=$('#prepdl');if(!w)return;const j=w.querySelectorAll('input').length;if(j>=20)return toast('A round can have up to 20 drones.');w.insertAdjacentHTML('beforeend',`<input id="pdr${j}" class="fi" list="preprooms" maxlength="80" aria-label="Drone ${j+1}" placeholder="Room" data-pdr="1">`);$('#pdr'+j).focus()},
  stropen:async d=>{await openStrats();A.stview(d)},
  stadd:d=>{stra.st='form';stra.id=null;stra.pre=d.map?{map:d.map,side:d.side}:null;render()},
  stedit:()=>{stra.st='form';render()},
@@ -3092,6 +3231,8 @@ document.addEventListener('change',e=>{const c=e.target.dataset.c;if(c==='dkout'
  if(c==='lpopt'){sco.lp[e.target.dataset.id]=e.target.checked}
  if(c==='recop'){const cc=recRc(e.target.dataset.k);(cc.ops=cc.ops||{})[e.target.dataset.r+'|'+norm(e.target.dataset.u)]=e.target.value;recPaint();recAutoAll()}
  if(c==='scrdr'){const r=scr.dr={...(scr.dr||{}),[e.target.dataset.k]:e.target.value};if(r.from&&r.to&&r.from>r.to)[r.from,r.to]=[r.to,r.from];const id=e.target.id;render();document.getElementById(id)?.focus()}
+if(c==='prept'){prep.team=e.target.value;prep.map='';prep.site='';render()}
+if(c==='prepdr'){const r=prep.dr={...(prep.dr||{}),[e.target.dataset.k]:e.target.value};if(r.from&&r.to&&r.from>r.to)[r.from,r.to]=[r.to,r.from];const id=e.target.id;render();document.getElementById(id)?.focus()}
 if(c==='sodr'){const r=sco.dr={...(sco.dr||{}),[e.target.dataset.k]:e.target.value};if(r.from&&r.to&&r.from>r.to)[r.from,r.to]=[r.to,r.from];const id=e.target.id;render();document.getElementById(id)?.focus()}
  if(c==='sfo'){const w=$('#sfonw');if(w)w.hidden=e.target.value!=='__new';if(e.target.value==='__new')$('#sfon')?.focus()}
  if(c==='rpteam'){adm.rt=e.target.value;render()}
