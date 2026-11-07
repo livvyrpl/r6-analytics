@@ -144,7 +144,8 @@ const $=s=>document.querySelector(s),ico=p=>`<svg viewBox="0 0 24 24" width="20"
 let siteSet=null,allScout=[],me=null,teams=[],mem={},allMem=[],profs=[],invs=[],cur=null,view='dash',viewing=false,fm=null,sel=null,mode='in',scr=null,sch=null,pl=null,ros=null,an=null,stra=null,cov=null,sco=null,rost=null,sdirty=false;
 const staff=()=>me&&['owner','admin'].includes(me.site_role),owner=()=>me&&me.site_role==='owner';
 // The Activity panel, bottom right. toast() logs something finished; actStart() logs something still running.
-const act={items:[],closed:false,pinned:false,seq:0};
+// hidden by the person stays hidden, even after a refresh, until they click Show
+const act={items:[],closed:false,pinned:false,seq:0,hid:(()=>{try{return localStorage.getItem('liv-act-hidden')==='1'}catch{return false}})()};if(act.hid)act.closed=true;
 const actAge=x=>{const n=Math.max(0,Math.round(((x.end||Date.now())-x.start)/1000)),since=x.state==='run'?n:Math.round((Date.now()-x.end)/1000);return since<60?since+'s':since<3600?Math.round(since/60)+'m':Math.round(since/3600)+'h'};
 function actDraw(){
  const b=$('#toast');if(!b)return;b.hidden=!act.items.length;b.classList.toggle('min',act.closed);if(!act.items.length){b.innerHTML='';document.body.style.setProperty('--actpad','0px');return}
@@ -155,7 +156,7 @@ function actDraw(){
 }
 // Shrinks a few seconds after everything finishes, so it never sits on top of a button. New activity opens it again.
 function actIdle(){clearTimeout(act.t);if(act.items.some(x=>x.state==='run')||act.pinned)return;act.t=setTimeout(()=>{if(!act.pinned&&!act.items.some(x=>x.state==='run')){act.closed=true;actDraw()}},6000)}
-const actAdd=x=>{x.id=++act.seq;x.start=x.start||Date.now();act.items.push(x);while(act.items.length>25){const i=act.items.findIndex(y=>y.state!=='run');if(i<0)break;act.items.splice(i,1)}if(!act.pinned)act.closed=false;actDraw();actIdle();return x};
+const actAdd=x=>{x.id=++act.seq;x.start=x.start||Date.now();act.items.push(x);while(act.items.length>25){const i=act.items.findIndex(y=>y.state!=='run');if(i<0)break;act.items.splice(i,1)}if(!act.pinned&&!act.hid)act.closed=false;actDraw();actIdle();return x};
 const actStart=(title,stop)=>actAdd({title,stop,state:'run',detail:'',pct:null});
 const actSet=(x,o)=>{Object.assign(x,o);actDraw()};
 const actEnd=(x,state,detail)=>{toast.last=Date.now();Object.assign(x,{state,detail:detail??x.detail,end:Date.now(),pct:null,stop:null});actDraw();actIdle()};
@@ -3681,7 +3682,7 @@ const A={
  recpick:d=>$('#'+d.t).click(),
  recclear:()=>{const p=rx.rp;rx.rp=null;p?.abort?.();p?.w?.terminate();if(rx.zipJob){rx.zipStop=true;actEnd(rx.zipJob,'warn','Stopped');}Object.assign(rx,{zipJob:null,zipTotal:0,zipDone:0,zipSkip:0,recs:[],skipped:0,skipNames:[],zipNested:0,driveSkip:0,preSaved:0,rc:{},rex:{},rpick:{},rerr:'',rlib:null,rsum:null});recPaint()},
  actclear:()=>{act.items=act.items.filter(x=>x.state==='run');actDraw()},
- acttog:()=>{act.closed=!act.closed;act.pinned=!act.closed;actDraw();actIdle()},
+ acttog:()=>{act.closed=!act.closed;act.hid=act.closed;act.pinned=!act.closed;try{localStorage.setItem('liv-act-hidden',act.hid?'1':'0')}catch{}actDraw();actIdle()},
  actstop:d=>{act.items.find(x=>x.id===+d.id)?.stop?.()},
  recsave:(d,b)=>recSave(d.k,b),
  recsaveall:()=>recSaveAll(),
