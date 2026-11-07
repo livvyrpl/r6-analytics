@@ -967,7 +967,7 @@ function recSummarize(g){
  if(miss.length)warn.push(`${plural(miss.length,'round')} missing: ${miss.join(', ')}. The saved game will not include ${miss.length===1?'it':'them'}.`);
  rounds.forEach(r=>{if(r.winningTeam===null)warn.push(`Round ${r.roundNumber}: no winner found. It will be saved with no result.`);(r.warnings||[]).forEach(w=>{if(!(mf.id&&!mf.unknown&&/map is not in the parser/.test(w)))warn.push(`Round ${r.roundNumber}: ${w}`)})});
  const pl=new Map();
- rounds.forEach(r=>r.players.forEach(p=>{const k=p.teamIndex+'|'+norm(p.username),e=pl.get(k)||{name:p.username,team:p.teamIndex,k:0,d:0,a:0,h:0,score:0,ops:[]};e.k+=p.kills;e.d+=p.deaths;e.a+=p.assists;e.h+=p.headshots;e.score=p.score;const o=repOp(p.operator);if(!e.ops.includes(o))e.ops.push(o);pl.set(k,e)}));
+ rounds.forEach(r=>(r.players||[]).forEach(p=>{const k=p.teamIndex+'|'+norm(p.username),e=pl.get(k)||{name:p.username,team:p.teamIndex,k:0,d:0,a:0,h:0,score:0,ops:[]};e.k+=p.kills;e.d+=p.deaths;e.a+=p.assists;e.h+=p.headshots;e.score=p.score;const o=repOp(p.operator);if(!e.ops.includes(o))e.ops.push(o);pl.set(k,e)}));
  s.players=[...pl.values()];
  return s;
 }
@@ -1136,7 +1136,8 @@ async function recRun(){
    try{
     let f=x.file;if(!f){try{f=await x.load()}catch(err){if(a.rp!==p)break;x.res={ok:false,error:err.message||String(err)};tick();if(rx===a)recPaint();continue}if(a.rp!==p)break}
     const res=await parseRec(q,f);f=null;if(a.rp!==p||!res)break;
-    (res?.players||[]).forEach(p=>['kills','deaths','assists','headshots','score'].forEach(k=>{if(typeof p[k]==='number')p[k]=i32(p[k])}));x.res=res;
+    // a replay read without any players (a damaged or cut-short file) counts as unreadable, so the rest of the match still saves
+    if(res.ok&&!(Array.isArray(res.players)&&res.players.length))x.res={ok:false,error:'No players were found in this replay. The file may be damaged or cut short.'};else{if(res.ok&&!Array.isArray(res.teams))res.teams=[];(res?.players||[]).forEach(p=>['kills','deaths','assists','headshots','score'].forEach(k=>{if(typeof p[k]==='number')p[k]=i32(p[k])}));x.res=res}
    }finally{x.busy=false}
    tick();if(rx===a)recPaint();
    await recCheck(a,k);
