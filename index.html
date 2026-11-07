@@ -1175,7 +1175,15 @@ function morphNode(a,b){
  for(const x of [...b.attributes])if(a.getAttribute(x.name)!==x.value)a.setAttribute(x.name,x.value);
  morphKids(a,b);
 }
-const recPaint=()=>{const l=$('#recl');if(!l||rx?.tid!==cur?.id)return;const t=document.createElement('template');t.innerHTML=recList();morphKids(l,t.content)};
+const recPaintNow=()=>{recPaint.last=Date.now();const l=$('#recl');if(!l||rx?.tid!==cur?.id)return;const t=document.createElement('template');t.innerHTML=recList();morphKids(l,t.content)};
+// redraws at most every half second, so a long list of matches does not slow the whole site while replays are read
+const recPaint=()=>{if(recPaint.t)return;const wait=500-(Date.now()-(recPaint.last||0));if(wait<=0)return recPaintNow();recPaint.t=setTimeout(()=>{recPaint.t=0;recPaintNow()},wait)};
+// after replays save, Scouting's games and rounds are read again at most once a minute, and only while Scouting is open
+function scoSoon(tid){
+ if(scoSoon.t)return;scoSoon.t=setTimeout(async()=>{scoSoon.t=0;if(!sco||sco.tid!==tid)return;if(view!=='sc'){sco.stale=true;return}
+  const s=sco,[m,r]=await Promise.all([allRows(()=>sb.from('scout_matches').select('*').eq('owner_team_id',tid).order('id')),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',tid).order('id'))]);
+  if(sco!==s)return;if(!m.error)s.m=m.data;if(!r.error)s.r=r.data;if(rx?.rteams&&rx.tid===tid)s.teams=rx.rteams;if(view==='sc'&&!sdirty)render()},60000);
+}
 function parseRec(p,file){
  return new Promise(ok=>{
   if(!p.w)p.w=new Worker('parser-build/parser-worker.js');
@@ -1307,8 +1315,8 @@ async function recSave(key,b,quiet,auto){
   const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:recOp(c,r,p),operator_id:recOp(c,r,p)===repOp(p.operator)?p.operatorId||'':'',side:side(p.role),kills:i32(p.kills),deaths:i32(p.deaths),assists:i32(p.assists),headshots:Math.min(i32(p.headshots),i32(p.kills)),match_score:i32(p.score),kost_point:repKost(r,p)})));
   const w1=await sb.from('scout_rounds').upsert(rounds,{onConflict:'owner_team_id,round_number,dedupe_key',ignoreDuplicates:true});if(w1.error)throw w1.error;
   const w2=await sb.from('player_round_stats').upsert(stats,{onConflict:'owner_team_id,match_id,round_number,player_key',ignoreDuplicates:true});if(w2.error)throw w2.error;
-  a.rlib=null;await recCheck(a,key);ddAdd(g.files.filter(x=>x.res?.ok).flatMap(x=>[x.driveKey,x.fkey]));
-  if(sco&&sco.tid===tid){const[m,r]=await Promise.all([allRows(()=>sb.from('scout_matches').select('*').eq('owner_team_id',tid).order('id')),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',tid).order('id'))]);if(!m.error)sco.m=m.data;if(!r.error)sco.r=r.data;if(a.rteams)sco.teams=a.rteams}
+  if(a.rlib){const i=a.rlib.findIndex(x=>x.id===game.id);if(i<0)a.rlib.push(game);else a.rlib[i]=game}await recCheck(a,key);ddAdd(g.files.filter(x=>x.res?.ok).flatMap(x=>[x.driveKey,x.fkey]));
+  if(sco&&sco.tid===tid)scoSoon(tid);
   if(rx===a)recPaint();if(!quiet||note)toast((auto?`Saved ${s.names.join(' vs ')}, ${s.map}: ${plural(fresh.length,'round')}.`:'Saved '+plural(fresh.length,'round')+'.')+note);
  }catch(e){b.disabled=false;b.textContent='Save';toast('Could not save '+g.label+': '+repErr(e))}
 }
