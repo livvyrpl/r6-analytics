@@ -2185,16 +2185,21 @@ const normRes=s=>{const k=norm(s);return['w','win','won'].includes(k)?'W':['l','
 const safeLink=(u,l)=>/^https?:\/\//i.test(u||'')?`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer" style="color:var(--pk)">${esc(l)}</a>`:esc(l===u?'':l);
 const canSc=()=>canAn();
 // Supabase returns at most 1,000 rows per request, so long lists are read in pages
-async function allRows(q){const out=[];for(let i=0;;i+=1000){const r=await q().range(i,i+999);if(r.error)return r;out.push(...r.data);if(r.data.length<1000)return{data:out}}}
+async function allRows(q){
+ const first=await q().range(0,999);if(first.error||first.data.length<1000)return first.error?first:{data:first.data};
+ const out=[...first.data];
+ for(let i=1000;;i+=6000){const rs=await Promise.all([0,1,2,3,4,5].map(k=>q().range(i+k*1000,i+k*1000+999)));for(const r of rs){if(r.error)return r;out.push(...r.data);if(r.data.length<1000)return{data:out}}}
+}
 const statRows=async tid=>{const r=await allRows(()=>sb.from('player_round_stats').select('*').eq('owner_team_id',tid).order('id'));return r.error?r:{data:r.data.map(x=>({...x,died:x.deaths>0}))}};
 const scErr=e=>/schema cache|does not exist/i.test(e.message)?'The scouting database tables are not set up yet. Paste stage8.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
 async function openSc(page,kind,oppId){
  view='sc';
  if(!sco||sco.tid!==cur.id)sco={tid:cur.id,league:'',q:'',f:{}};
- Object.assign(sco,{page,kind:kind||sco.kind,form:null,imp:null,loaded:false,err:'',tab:'over'});if(oppId)sco.oppId=oppId;
+ const had=Array.isArray(sco.m)&&!sco.err;
+ Object.assign(sco,{page,kind:kind||sco.kind,form:null,imp:null,loaded:had,err:'',tab:'over'});if(oppId)sco.oppId=oppId;
  render();
  if(!canSc())return;
- if(canEditS())await sb.rpc('scout_fill',{p_owner:sco.tid});
+ if(canEditS()&&!openSc.filled?.has(sco.tid)){(openSc.filled||(openSc.filled=new Set())).add(sco.tid);const s0=sco;sb.rpc('scout_fill',{p_owner:sco.tid}).then(r=>{if(r.data>0&&sco===s0)sb.from('scout_teams').select('*').eq('owner_team_id',s0.tid).then(q=>{if(!q.error&&sco===s0){s0.teams=q.data.sort((a,b)=>a.name.localeCompare(b.name));if(view==='sc'&&!s0.form)render()}})})}
  const s=sco,tid=s.tid,q=t=>sb.from(t).select('*').eq('owner_team_id',tid),[t,m,v,r,c,x,st]=await Promise.all([q('scout_teams'),allRows(()=>q('scout_matches').order('id')),allRows(()=>q('scout_vetoes').order('id')),allRows(()=>q('scout_rounds').order('id')),sb.from('scrims').select('*').eq('team_id',tid),sb.from('scrim_map_results').select('*').eq('team_id',tid),q('scout_settings')]);
  if(sco!==s)return;
  const bad=t.error||m.error||v.error||r.error;
@@ -2202,7 +2207,8 @@ async function openSc(page,kind,oppId){
  if(!an||an.tid!==tid)an={tid,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,rc:{},rex:{},rpick:{},rp:null,rerr:'',rteams:null,rroster:[],page:'over'};
  an.list=c.data||[];an.res=x.data||[];s.st=(st.data||[])[0]||null;
  sb.from('scout_events').select('*').eq('owner_team_id',tid).then(r=>{if(sco!==s)return;s.events=r.error?[]:r.data||[];if(view==='sc'&&s.events.length)render()});
- if(view==='sc')render();
+ // a refresh behind a page already showing does not redraw over a form or dialog being filled in
+ if(view==='sc'&&!(had&&(s.form||sdirty||$('#dlg')?.open)))render();
 }
 const scKeys=t=>new Set([norm(t.name),norm(t.short_name),norm(t.source_ids?.liquipedia||''),...(t.aliases||[]).map(norm)].filter(Boolean));
 const aliasList=v=>[...new Set(String(v||'').split(',').map(x=>x.trim()).filter(Boolean))];
