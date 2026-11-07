@@ -273,7 +273,7 @@ function loginV(){return `<div class="login"><img src="logo.png" alt="Liv Analyt
  <p class="mu">Access is by invitation. Ask your team owner to add you.</p></div>`}
 const HUBS=[['Scouting',['coach','assistant_coach','analyst'],'<circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/>',[['Scouting','tracked opponents by region and league','sct'],['Match Library','all teams, every game','slm'],['Round Library','all teams, every round','slr'],['Vetoes','bans and picks per team','slv'],['Export to Sheets','pick league and teams, then export','sx']]],
 ['Coach Deck',['coach','assistant_coach'],'<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',[['Overview','everything for coaches','cover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Player Hub','stats, journals, off days for every player','phub'],['Drone Prep','where drones sit at 2:40, per map','dprep'],['Anti-Strat','their strats per site, with VODs, bans and the map','sprep'],['Team Settings','name, region, league, color, logo','tset']]],
-['Analyst Deck',['analyst','coach','assistant_coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary','aover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Stats','your team and opponents','astats'],['Import','replays and scrims','aimport'],['Parse','drop in .rec replay files','aparse']]],
+['Analyst Deck',['analyst','coach','assistant_coach'],'<path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/>',[['Overview','analyst summary','aover'],['Scrims','results, bans, notes per player','scrims'],['Schedule','scrims, gamedays, off days','schedule'],['Strats','open slides in the site','strats'],['Stats','your team and opponents','astats'],['Import','replays and scrims','aimport'],['Parse','drop in .rec replay files','aparse'],['Events','Liquipedia events to filter Scouting by','aevents']]],
 ['Player Deck',['player'],'<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>',[['Overview','your week at a glance','pover'],['My Schedule','team schedule, add off days','pmysch'],['Journal','goals with deadlines','pjournal'],['My Stats','KOST, K/D, operators','pstats'],['Strats','open slides in the site','strats']]]];
 function dashV(){
  if(!cur)return `<div class="cd"><h2 class="serif" style="font-size:28px">No team yet</h2><p class="mu">${staff()?'Create a team in Admin, or open one from the Teams list.':'Ask the owner to add you to a team.'}</p></div>`;
@@ -841,14 +841,80 @@ async function openAnalyst(page){
  s.err=bad?aErr(bad):'';s.list=r.data||[];s.res=m.data||[];
  if(view==='analyst'&&!(page==='import'&&sdirty))render();
 }
+// EVENTS: a Liquipedia event link gives the teams playing in it, so Scouting can show only those teams
+const evSq=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const evHas=(e,t)=>{const s=e._s||(e._s=new Set((e.teams||[]).map(evSq)));return [t.name,t.short_name,t.source_ids?.liquipedia,...(t.aliases||[])].some(x=>x&&s.has(evSq(x)))};
+const evName=title=>String(title||'').replace(/_/g,' ');
+const evErr=e=>/scout_events|schema cache|does not exist/i.test(e.message||'')?'Events need a database update. Paste stage32.sql into the Supabase SQL Editor and run it.':e.message||String(e);
+const evCall=async b=>{let r;try{r=await sb.functions.invoke('liquipedia-pull',{body:{team_id:an.tid,...b}})}catch(e){throw new Error('The pull service could not be reached.')}
+ if(r.error){let m='';try{m=(await r.error.context?.json?.())?.error||''}catch{}throw new Error(m||r.error.message)}if(r.data?.error)throw new Error(r.data.error);return r.data};
+async function evLoad(){
+ const a=an;a.ev=a.ev||{url:'',quals:false,busy:false,err:'',found:null};a.ev.list=null;render();
+ const [e,s]=await Promise.all([sb.from('scout_events').select('*').eq('owner_team_id',a.tid).order('name'),sb.from('scout_teams').select('*').eq('owner_team_id',a.tid)]);
+ if(an!==a)return;a.ev.list=e.error?[]:e.data||[];a.ev.err=e.error?evErr(e.error):'';a.ev.st=s.data||[];if(view==='analyst')render();
+}
+// reads the event's pages on Liquipedia and lists every team in them; nothing is saved yet
+async function evScan(title,quals){
+ const r=await evCall({action:'resolve',url:/^https?:/.test(title)?title:'https://liquipedia.net/rainbowsix/'+encodeURI(title.replace(/ /g,'_'))});
+ const pages=r.pages.filter(p=>quals||!p.qualifier||p.title===r.title).slice(0,40).map(p=>p.title),teams=new Set(),fails=[];
+ for(let i=0;i<pages.length;i+=5){const s=await evCall({action:'scan',pages:pages.slice(i,i+5)});s.pages.forEach(p=>{if(p.error&&p.title===r.title)fails.push(p.error);(p.teams||[]).forEach(x=>{if(x&&!/^tbd$/i.test(x))teams.add(x)})})}
+ return{title:r.title,pages,teams:[...teams].sort((a,b)=>a.localeCompare(b)),fails};
+}
+async function evFind(b){
+ const v=an.ev,url=($('#evu')?.value||'').trim();v.url=url;v.quals=!!$('#evq')?.checked;v.err='';
+ if(!/^https?:\/\/(www\.)?liquipedia\.net\/rainbowsix\/[^?#]+/i.test(url))return void(v.err='Paste a Liquipedia Rainbow Six event link, like https://liquipedia.net/rainbowsix/BLAST/Major/2026/November',render());
+ v.busy=true;render();
+ try{const r=await evScan(url.replace(/[?#].*$/,""),v.quals);if(!r.teams.length)throw new Error('No teams were found on that event yet.');v.found={...r,name:evName(r.title),url}}catch(e){v.err=e.message}
+ v.busy=false;if(view==='analyst')render();
+}
+// saves the event, and adds teams that are not in Scouting yet so they show under it
+async function evSave(b){
+ const a=an,v=a.ev,fd=v.found;if(!fd)return;const name=($('#evn')?.value||'').trim()||fd.name;b.disabled=true;const job=actStart('Adding '+name);
+ try{
+  const w=await sb.from('scout_events').upsert({owner_team_id:a.tid,name,page:fd.title,url:fd.url,pages:fd.pages,teams:fd.teams,updated_at:new Date().toISOString()},{onConflict:'owner_team_id,page'}).select().single();if(w.error)throw w.error;
+  const miss=fd.teams.filter(n=>!(v.st||[]).some(t=>evHas({teams:[n]},t)));let added=0;
+  for(let i=0;i<miss.length;i+=10){actSet(job,{detail:'Adding teams to Scouting: '+Math.min(i+10,miss.length)+' of '+miss.length});try{const r=await evCall({action:'teams',names:miss.slice(i,i+10),league:''});added+=r.added.length}catch(e){}}
+  v.found=null;if(sco?.tid===a.tid){sco.events=null;sco.loaded=false;sco.event=''}if(added)refreshTeams();
+  actEnd(job,'ok',name+' added: '+plural(fd.teams.length,'team')+(added?' · '+plural(added,'new team')+' added to Scouting':''));
+ }catch(e){actEnd(job,'warn','Could not add the event: '+evErr(e));b.disabled=false}
+ if(an===a)evLoad();
+}
+async function evRefresh(id,b){
+ const a=an,e=a.ev.list.find(x=>x.id===id);if(!e)return;b.disabled=true;const job=actStart('Updating '+e.name);
+ try{const r=await evScan(e.page,e.pages.length>1&&e.pages.some(p=>/qualif|open|last chance|lcq/i.test(p)));const w=await sb.from('scout_events').update({teams:r.teams,pages:r.pages,updated_at:new Date().toISOString()}).eq('id',id);if(w.error)throw w.error;
+  const miss=r.teams.filter(n=>!(a.ev.st||[]).some(t=>evHas({teams:[n]},t)));let added=0;for(let i=0;i<miss.length;i+=10){try{added+=(await evCall({action:'teams',names:miss.slice(i,i+10),league:''})).added.length}catch{}}
+  if(sco?.tid===a.tid){sco.events=null;sco.loaded=false}if(added)refreshTeams();
+  actEnd(job,'ok',e.name+': '+plural(r.teams.length,'team')+(added?' · '+plural(added,'new team')+' added to Scouting':''))}
+ catch(x){actEnd(job,'warn','Could not update '+e.name+': '+evErr(x))}
+ if(an===a)evLoad();
+}
+async function evDel(id){
+ const e=an.ev.list.find(x=>x.id===id);if(!e||!confirm('Remove '+e.name+'? The teams stay in Scouting.'))return;
+ const r=await sb.from('scout_events').delete().eq('id',id);if(r.error)return toast(evErr(r.error));if(sco?.tid===an.tid)sco.events=(sco.events||[]).filter(x=>x.id!==id);evLoad();
+}
+function eventsB(){
+ const v=an.ev;if(!v||!v.list)return '<p class="mu">Loading…</p>';
+ const fd=v.found,tracked=n=>(v.st||[]).some(t=>evHas({teams:[n]},t));
+ const add=fd?`<section class="cd" style="gap:12px"><h2 style="font-size:15px;font-weight:600">${plural(fd.teams.length,'team')} in this event</h2>
+  <div><label for="evn">Name on the Scouting page</label><input id="evn" class="fi" value="${esc(fd.name)}"></div>
+  <div class="row wrap" style="gap:6px">${fd.teams.map(n=>`<span class="ch" style="cursor:default${tracked(n)?'':';border-style:dashed'}">${esc(n)}</span>`).join('')}</div>
+  ${fd.teams.some(n=>!tracked(n))?`<p class="mu">Dashed teams are not in Scouting yet. They will be added, with their region and logo from Liquipedia.</p>`:''}
+  <div class="row" style="justify-content:flex-end;gap:8px"><button class="no" data-a="evcancel">Cancel</button><button class="go" data-a="evsave">Add event</button></div></section>`
+ :`<section class="cd" style="gap:10px"><h2 style="font-size:15px;font-weight:600">Add an event</h2><p class="mu">Paste the event's Liquipedia link. Its teams become a filter on the Scouting page, so you can see only the teams playing in it.</p>
+  <div class="row wrap" style="gap:8px"><input id="evu" class="fi" style="flex:1 1 280px;min-width:0" inputmode="url" aria-label="Liquipedia event link" placeholder="https://liquipedia.net/rainbowsix/BLAST/Major/2026/November" value="${esc(v.url)}"><button class="go" data-a="evfind" ${v.busy?'disabled':''}>${v.busy?'Finding teams…':'Find teams'}</button></div>
+  <label class="row" style="gap:8px;color:var(--tx);margin:0;font-size:14px"><input id="evq" type="checkbox"${v.quals?' checked':''}><span>Include qualifier teams</span></label>${v.err?`<p class="over">${esc(v.err)}</p>`:''}</section>`;
+ const list=v.list.length?v.list.map(e=>`<div class="row wrap" style="gap:8px;padding:10px 0;border-top:1px solid var(--bd)"><div style="flex:1 1 220px;min-width:0"><b style="font-weight:600;overflow-wrap:anywhere">${esc(e.name)}</b><p class="mu" style="font-size:13px">${plural(e.teams.length,'team')} · updated ${esc(fmtD(String(e.updated_at).slice(0,10)))}${e.url?` · <a href="${esc(e.url)}" target="_blank" rel="noopener noreferrer">Liquipedia</a>`:''}</p></div><button class="no" style="height:32px" data-a="evre" data-id="${e.id}">Update teams</button><button class="no" style="height:32px" data-a="evdel" data-id="${e.id}">Remove</button></div>`).join(''):'<p class="mu">No events yet.</p>';
+ return `<div style="display:flex;flex-direction:column;gap:16px">${add}<section class="cd" style="gap:4px"><h2 style="font-size:15px;font-weight:600;margin-bottom:6px">Events on the Scouting page</h2>${list}</section></div>`;
+}
 function analystV(){
  if(!cur||!an||an.tid!==cur.id)return `<div class="cd"><p>Open the Analyst Deck from a team's dashboard.</p><div>${backDash}</div></div>`;
  if(!canAn())return `<div class="cd"><p>This page is for this team's analysts, coaches and assistant coaches.</p><div>${backDash}</div></div>`;
- const T={over:'Overview',stats:'Stats',import:'Import',parse:'Parse',scout:'Scouting'}[an.page];
- const tabs=`<div class="row wrap" style="gap:8px;margin-bottom:20px" role="group" aria-label="Analyst pages">${[['aover','Overview','over'],['astats','Stats','stats'],['aimport','Import','import'],['aparse','Parse','parse']].map(x=>`<button class="ch" data-a="${x[0]}" aria-pressed="${x[2]===an.page}">${x[1]}</button>`).join('')}</div>`;
+ const T={over:'Overview',stats:'Stats',import:'Import',parse:'Parse',scout:'Scouting',events:'Events'}[an.page];
+ const tabs=`<div class="row wrap" style="gap:8px;margin-bottom:20px" role="group" aria-label="Analyst pages">${[['aover','Overview','over'],['astats','Stats','stats'],['aimport','Import','import'],['aparse','Parse','parse'],['aevents','Events','events']].map(x=>`<button class="ch" data-a="${x[0]}" aria-pressed="${x[2]===an.page}">${x[1]}</button>`).join('')}</div>`;
  const head=`<div class="row wrap" style="margin-bottom:16px">${tile(cur,48)}<div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:24px">${T}</h1><p class="mu">${esc(cur.name)}</p></div><div class="row wrap">${an.page==='scout'?'<button class="no" data-a="sct">All scouting</button>':''}${backDash}</div></div>${an.page==='scout'?'':tabs}`;
  if(an.page==='import')return head+importB();
  if(an.page==='parse')return head+replayBox();
+ if(an.page==='events')return head+eventsB();
  const body=!an.list?'<p class="mu">Loading…</p>':an.err?`<div class="cd"><p>${esc(an.err)}</p></div>`:an.page==='stats'?aStatsB():an.page==='scout'?scoutB():aOverB();
  return head+body;
 }
@@ -2111,6 +2177,7 @@ async function openSc(page,kind,oppId){
  Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
  if(!an||an.tid!==tid)an={tid,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,rc:{},rex:{},rpick:{},rp:null,rerr:'',rteams:null,rroster:[],page:'over'};
  an.list=c.data||[];an.res=x.data||[];s.st=(st.data||[])[0]||null;
+ sb.from('scout_events').select('*').eq('owner_team_id',tid).then(r=>{if(sco!==s)return;s.events=r.error?[]:r.data||[];if(view==='sc'&&s.events.length)render()});
  if(view==='sc')render();
 }
 const scKeys=t=>new Set([norm(t.name),norm(t.short_name),norm(t.source_ids?.liquipedia||''),...(t.aliases||[]).map(norm)].filter(Boolean));
@@ -2134,15 +2201,17 @@ const scOwn=t=>[t.name,...(t.aliases||[])].some(isOwnName)||t.site_team_id===cur
 function homeB(){
  const leagues=[...new Set(scShown().map(t=>t.league).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
  const chips=`<div class="row wrap" style="gap:8px;margin-bottom:12px" role="group" aria-label="League"><button class="ch" data-a="scleague" data-l="" aria-pressed="${!sco.league}">All (${scShown().length})</button>${leagues.map(l=>`<button class="ch" data-a="scleague" data-l="${esc(l)}" aria-pressed="${sco.league===l}">${esc(l)} (${scShown().filter(t=>t.league===l).length})</button>`).join('')}</div>`;
+ const evs=(sco.events||[]).filter(e=>scShown().some(t=>evHas(e,t))).sort((a,b)=>a.name.localeCompare(b.name));if(sco.event&&!evs.some(e=>e.id===sco.event))sco.event='';
+ const evChips=evs.length?`<div class="row wrap" style="gap:8px;margin-bottom:12px" role="group" aria-label="Event"><span class="mu" style="font-size:13px">Events</span><button class="ch" data-a="scevent" data-id="" aria-pressed="${!sco.event}">All events</button>${evs.map(e=>`<button class="ch" data-a="scevent" data-id="${e.id}" aria-pressed="${sco.event===e.id}">${esc(e.name)} · ${scShown().filter(t=>evHas(e,t)).length}</button>`).join('')}</div>`:'';
  const tracked=new Set(sco.teams.flatMap(t=>[...scKeys(t)]));
  const untracked=topCount(anPlayed().map(s=>s.opponent)).filter(x=>norm(x.name)!=='tbd'&&!tracked.has(norm(x.name)));
  const trackedS=new Set([...tracked].map(squash));teams.filter(x=>x.id!==cur.id&&!teamKeys(x).some(k=>trackedS.has(k))&&!untracked.some(u=>squash(u.name)===squash(x.name))).forEach(x=>untracked.push({name:x.name,n:0}));
  const extra=`<section class="cd" style="gap:10px;margin-top:16px"><div class="row wrap" style="justify-content:space-between"><h2 style="font-size:15px;font-weight:600">From your scrims</h2><button class="no" style="height:32px" data-a="scout">Bans from your scrims</button></div>${untracked.length?`<div class="row wrap" style="gap:8px">${untracked.map(x=>`<button class="no" style="height:32px" data-a="soadd" data-n="${esc(x.name)}" aria-label="Track ${esc(x.name)}">+ ${esc(x.name)}</button>`).join('')}</div>`:'<p class="mu">Everyone you have scrimmed is already tracked.</p>'}</section>`;
  if(!scShown().length)return `${hubIssues()}<div class="cd"><p>No opponents tracked yet. Add your first one to start scouting them.</p></div>${extra}`;
- return `${hubIssues()}${chips}<div style="margin-bottom:12px"><input class="fi" type="search" style="height:38px" data-c="scq" aria-label="Search opponents" placeholder="Search opponents" value="${esc(sco.q)}"></div><div id="scl">${homeCards()}</div>${extra}`;
+ return `${hubIssues()}${chips}${evChips}<div style="margin-bottom:12px"><input class="fi" type="search" style="height:38px" data-c="scq" aria-label="Search opponents" placeholder="Search opponents" value="${esc(sco.q)}"></div><div id="scl">${homeCards()}</div>${extra}`;
 }
 function homeCards(){
- const q=norm(sco.q),rows=scShown().filter(t=>(!sco.league||t.league===sco.league)&&(!q||norm(t.name+' '+t.short_name+' '+t.region+' '+t.league).includes(q)));
+ const q=norm(sco.q),ev=sco.event&&(sco.events||[]).find(e=>e.id===sco.event),rows=scShown().filter(t=>(!sco.league||t.league===sco.league)&&(!ev||evHas(ev,t))&&(!q||norm(t.name+' '+t.short_name+' '+t.region+' '+t.league).includes(q)));
  if(!rows.length)return '<div class="cd"><p class="mu">No opponents match.</p></div>';
  const regs=[...REG,OTHER_REGION].filter(r=>rows.some(t=>(t.region||OTHER_REGION)===r));
  rows.forEach(t=>{if(!regs.includes(t.region))regs.includes(t.region||OTHER_REGION)||regs.push(t.region)});
@@ -3590,7 +3659,7 @@ const A={
  scout:()=>{if(an)an.opp=null;openAnalyst('scout')},
  scoutopen:d=>{an.opp=d.k;render()},
  scoutback:()=>{an.opp=null;render()},
- aover:()=>openAnalyst('over'),astats:()=>openAnalyst('stats'),aimport:()=>openAnalyst('import'),aparse:()=>openAnalyst('parse'),
+ aover:()=>openAnalyst('over'),astats:()=>openAnalyst('stats'),aimport:()=>openAnalyst('import'),aparse:()=>openAnalyst('parse'),aevents:async()=>{await openAnalyst('events');evLoad()},evfind:(d,b)=>evFind(b),evsave:(d,b)=>evSave(b),evcancel:()=>{an.ev.found=null;render()},evdel:d=>evDel(d.id),evre:(d,b)=>evRefresh(d.id,b),scevent:d=>{sco.event=d.id||'';render()},
  asopen:async d=>{await A.scrims();await A.sopen(d)},
  amode:d=>{an.mode=d.m;render()},
  aclear:()=>{Object.assign(an,{from:'',to:'',map:''});render()},
