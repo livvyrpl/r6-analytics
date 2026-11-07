@@ -989,7 +989,7 @@ function recCan(a,key){
 }
 function recAutoKey(a,key){if(!recCan(a,key))return;a.saveQ=(a.saveQ||Promise.resolve()).then(()=>recCan(a,key)?recSave(key,{},false,true):null).catch(()=>{})}
 function recAutoAll(){const a=rx;if(!a)return;recGroups().filter(g=>g.files.every(x=>x.res)).forEach(g=>recAutoKey(a,g.key))}
-function recStopRead(){const a=rx,p=a?.rp;if(!p)return;a.rp=null;p.abort?.();p.w?.terminate();const left=a.recs.filter(x=>!x.res).length;a.recs=a.recs.filter(x=>x.res);a.rsum=null;if(left)toast(`Stopped. ${plural(left,'file')} not read ${left===1?'was':'were'} taken off the list.`);recPaint()}
+function recStopRead(){const a=rx,p=a?.rp;if(!p)return;a.rp=null;p.abort?.();const left=a.recs.filter(x=>!x.res).length;a.recs=a.recs.filter(x=>x.res);a.rsum=null;if(left)toast(`Stopped. ${plural(left,'file')} not read ${left===1?'was':'were'} taken off the list.`);recPaint()}
 // Maps the parser does not know yet: ones listed here, ones picked before on this device, or a guess from the folder name
 const MAP_IDS={'409325881472':'Villa'};
 const mapIdsMine=()=>{try{return JSON.parse(localStorage.getItem('liv-mapids')||'{}')}catch{return{}}};
@@ -1119,19 +1119,36 @@ function parseRec(p,file){
   w.postMessage({file});
  });
 }
+// How many matches are read at once: one per spare processor core, up to 3, and 2 on a computer with little memory
+const recLanes=()=>{if(window.recLanesSet)return window.recLanesSet;const c=navigator.hardwareConcurrency||2,m=navigator.deviceMemory||8;return Math.max(1,Math.min(3,c-1,m<8?2:3))};
 async function recRun(){
- const a=rx;if(a.rp)return;const p=a.rp={};let key=null;recPaint();
+ const a=rx;if(a.rp)return;const p=a.rp={lanes:[]};p.abort=()=>p.lanes.forEach(q=>{q.abort?.();q.w?.terminate();q.w=null});recPaint();
  const job=actStart('Reading replays',()=>recStopRead()),tick=()=>{const n=a.recs.length,d=a.recs.filter(y=>y.res).length,c=a.recs.find(y=>!y.res);actSet(job,{detail:d+' of '+n+(c?': '+c.name:''),pct:n?Math.round(d/n*100):0})};tick();
- for(let x;(x=a.recs.find(y=>!y.res))&&a.rp===p;){
-  const k=recKey(x);if(key!==null&&k!==key&&p.w){p.w.terminate();p.w=null}key=k; // memory only comes back with a fresh parser
-  let f=x.file;if(!f){try{f=await x.load()}catch(err){if(a.rp!==p)break;x.res={ok:false,error:err.message||String(err)};tick();if(rx===a)recPaint();continue}if(a.rp!==p)break}
-  const res=await parseRec(p,f);f=null;if(a.rp!==p||!res)break;
-  (res?.players||[]).forEach(p=>['kills','deaths','assists','headshots','score'].forEach(k=>{if(typeof p[k]==='number')p[k]=i32(p[k])}));x.res=res;tick();if(rx===a)recPaint();
-  await recCheck(a,k);
-  if(recAlready(a,k))continue;
-  const gk=recGroups().find(y=>y.key===k);if(gk&&(gk.files.every(y=>y.res)||gk.files.filter(y=>y.res).length%4===0))recAutoKey(a,k);
- }
- p.w?.terminate();const stopped=a.rp!==p;if(key&&rx===a)recAutoKey(a,key);if(!stopped)a.rp=null;actEnd(job,'ok',stopped?'Stopped':plural(a.recs.filter(y=>y.res).length,'file')+' read');if(rx===a)recPaint();
+ const taken=new Set();
+ // each lane reads one match at a time with its own parser, so several matches are read side by side
+ const lane=async()=>{
+  const q={};p.lanes.push(q);let key=null;
+  const let_go=()=>{if(key===null)return;taken.delete(key);q.w?.terminate();q.w=null;if(a.rp===p&&rx===a)recAutoKey(a,key);key=null}; // memory only comes back with a fresh parser
+  while(a.rp===p){
+   let x=key!==null&&a.recs.find(y=>!y.res&&!y.busy&&recKey(y)===key);
+   if(!x){let_go();x=a.recs.find(y=>!y.res&&!y.busy&&!taken.has(recKey(y)));if(!x){if(taken.size||a.zipping>0){await nap(400);continue}break}key=recKey(x);taken.add(key)}
+   const k=key;x.busy=true;
+   try{
+    let f=x.file;if(!f){try{f=await x.load()}catch(err){if(a.rp!==p)break;x.res={ok:false,error:err.message||String(err)};tick();if(rx===a)recPaint();continue}if(a.rp!==p)break}
+    const res=await parseRec(q,f);f=null;if(a.rp!==p||!res)break;
+    (res?.players||[]).forEach(p=>['kills','deaths','assists','headshots','score'].forEach(k=>{if(typeof p[k]==='number')p[k]=i32(p[k])}));x.res=res;
+   }finally{x.busy=false}
+   tick();if(rx===a)recPaint();
+   await recCheck(a,k);
+   if(recAlready(a,k))continue;
+   const gk=recGroups().find(y=>y.key===k);if(gk&&(gk.files.every(y=>y.res)||gk.files.filter(y=>y.res).length%4===0))recAutoKey(a,k);
+  }
+  let_go();
+ };
+ await Promise.all(Array.from({length:recLanes()},lane));
+ const stopped=a.rp!==p;if(!stopped)a.rp=null;actEnd(job,'ok',stopped?'Stopped':plural(a.recs.filter(y=>y.res).length,'file')+' read');if(rx===a)recPaint();
+ // files added while the last lanes were finishing are picked up
+ if(!stopped&&rx===a&&a.recs.some(y=>!y.res))recRun();
 }
 // The round number in a replay's file name, like ...-R07.rec
 const recRoundNo=n=>{const m=/R(\d+)\.rec$/i.exec(n||'');return m?+m[1]:0};
