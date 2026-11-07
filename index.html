@@ -1075,7 +1075,7 @@ function recCard(g){
 }
 function recList(){
  const r=rx.recs,total=r.reduce((a,x)=>a+x.size,0),done=r.filter(x=>x.res).length,pct=r.length?Math.round(done/r.length*100):0,cur=r.find(x=>!x.res),busy=rx.rp&&cur;
- const skip=(rx.skipped?`<p class="mu">Skipped ${plural(rx.skipped,'file')} that ${rx.skipped===1?'is':'are'} not .rec.</p>`:'')+(rx.driveSkip?`<p class="mu">Skipped ${plural(rx.driveSkip,'replay file')} already imported on this computer. <button class="actx" data-a="ddclear">Read them again next time</button></p>`:'')+(rx.preSaved?`<p class="mu">Skipped ${plural(rx.preSaved,'match').replace('matchs','matches')} already saved with every round. Only one round of each was read to check.</p>`:'')+(rx.zipping?`<p class="mu">Opening ${plural(rx.zipping,'zip file')}…</p>`:'')+(rx.zipNested?`<p class="mu">Skipped ${plural(rx.zipNested,'zip file')} buried more than 4 zips deep. Unzip ${rx.zipNested===1?'it':'them'} and add ${rx.zipNested===1?'it':'them'} on ${rx.zipNested===1?'its':'their'} own.</p>`:'')+(gdrv.wait?.ask?'<div class="cd" role="alert" style="border-color:#ff8a8a;gap:6px"><b>Google Drive needs you to sign in again</b><p class="mu" style="font-size:13px">Google sign-ins last about an hour. Reading carries on from where it stopped. To skip this next time, allow pop-ups for this site (the icon at the right of the address bar): the site then renews the sign-in by itself.</p><div><button class="go" data-a="drvauth">Reconnect Google Drive</button></div></div>':'');
+ const skip=(rx.skipped?`<p class="mu">Skipped ${plural(rx.skipped,'file')} that ${rx.skipped===1?'is':'are'} not .rec or .zip${(rx.skipNames||[]).length?': '+esc(rx.skipNames.join(', '))+(rx.skipped>rx.skipNames.length?' and more':''):''}.</p>`:'')+(rx.driveSkip?`<p class="mu">Skipped ${plural(rx.driveSkip,'replay file')} already imported on this computer. <button class="actx" data-a="ddclear">Read them again next time</button></p>`:'')+(rx.preSaved?`<p class="mu">Skipped ${plural(rx.preSaved,'match').replace('matchs','matches')} already saved with every round. Only one round of each was read to check.</p>`:'')+(rx.zipping?`<p class="mu">Opening ${plural(rx.zipping,'zip file')}…</p>`:'')+(rx.zipNested?`<p class="mu">Skipped ${plural(rx.zipNested,'zip file')} buried more than 4 zips deep. Unzip ${rx.zipNested===1?'it':'them'} and add ${rx.zipNested===1?'it':'them'} on ${rx.zipNested===1?'its':'their'} own.</p>`:'')+(gdrv.wait?.ask?'<div class="cd" role="alert" style="border-color:#ff8a8a;gap:6px"><b>Google Drive needs you to sign in again</b><p class="mu" style="font-size:13px">Google sign-ins last about an hour. Reading carries on from where it stopped. To skip this next time, allow pop-ups for this site (the icon at the right of the address bar): the site then renews the sign-in by itself.</p><div><button class="go" data-a="drvauth">Reconnect Google Drive</button></div></div>':'');
  if(!r.length)return skip;
  const gs=recGroups();
  return `<div class="row wrap" style="justify-content:space-between"><b style="font-weight:600">${plural(r.length,'replay file')} · ${fmtSize(total)} · ${gs.length===1?'1 match':gs.length+' matches'}</b><span class="row wrap" style="gap:6px">${recSaveable().length>1?`<button class="go" style="height:32px" data-a="recsaveall">Save all ready (${recSaveable().length})</button>`:''}<button class="no" style="height:32px" data-a="recclear">${busy?'Stop and clear':'Clear list'}</button></span></div>
@@ -1293,7 +1293,7 @@ async function addZips(srcs){
  for(const z of srcs){try{const es=await zipEntries(z);let n=0;for(const e of es){
    // a zip inside this zip is opened too, up to 4 levels deep
    if(/\.zip$/i.test(e.name)){if((z.depth||0)>=4){a.zipNested=(a.zipNested||0)+1;continue}n++;inner.push([z,e]);continue}
-   if(!/\.rec$/i.test(e.name)){a.skipped++;continue}n++;const k=z.key?z.key+'/'+e.name:null;if(k&&dd.has(k)){a.driveSkip=(a.driveSkip||0)+1;continue}
+   if(!/\.rec$/i.test(e.name)){a.skipped++;recSkipName(a,e.name);continue}n++;const k=z.key?z.key+'/'+e.name:null;if(k&&dd.has(k)){a.driveSkip=(a.driveSkip||0)+1;continue}
    out.push({name:e.name.split('/').pop(),path:(z.pre||'')+e.name,size:e.size,driveKey:k,load:()=>zipExtract(z,e)})}
   if(!n)toast(`${z.name} has no .rec replays in it`)}catch(err){toast(z.name+': '+(err.message||err))}finally{a.zipping--}}
  if(rx===a&&out.length)addRecs(out);
@@ -1385,7 +1385,7 @@ async function drivePicked(picked){
    const n=docs.filter(d=>/\.(rec|zip)$/i.test(d.name)).length;actEnd(job,stop.v?'warn':'ok',(stop.v?'Stopped. ':'')+'Looked through '+plural(found.folders,'folder')+': '+recZipCount(docs)+' found'+(stop.v&&n?', and added':''))}
   catch(e){actEnd(job,'warn',e.message);return toast(e.message)}}
  const list=[],dd=ddGet();
- for(const d of docs){let size=+d.sizeBytes||0;if(!/\.(rec|zip)$/i.test(d.name)){rx.skipped++;continue}if(/\.rec$/i.test(d.name)&&dd.has(d.id)){rx.driveSkip=(rx.driveSkip||0)+1;continue}if(!size){try{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(d.id)}?fields=size&supportsAllDrives=true`);size=+(await r.json()).size||0}catch{}}
+ for(const d of docs){let size=+d.sizeBytes||0;if(!/\.(rec|zip)$/i.test(d.name)){rx.skipped++;recSkipName(rx,d.name);continue}if(/\.rec$/i.test(d.name)&&dd.has(d.id)){rx.driveSkip=(rx.driveSkip||0)+1;continue}if(!size){try{const r=await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(d.id)}?fields=size&supportsAllDrives=true`);size=+(await r.json()).size||0}catch{}}
   const src={name:d.name,size,key:d.id,read:(a,b)=>driveRead(d.id,a,b)};
   if(/\.zip$/i.test(d.name))list.push({name:d.name,src});else list.push({name:d.name,path:d.path||d.name,size,driveKey:d.id,load:()=>driveRead(d.id,0,size).then(x=>new Blob([x]))})}
  if(!list.length){recPaint();return toast(rx.driveSkip?'Everything there was already imported from Google Drive on this computer.':folders.length?'No .rec or .zip files were found in that folder.':'Choose folders, .zip or .rec files')}
@@ -1420,9 +1420,11 @@ async function driveRead(id,a,b){
  return r.status===206||buf.byteLength===b-a?buf:buf.slice(a,b);
 }
 const recFkey=(n,s)=>s?'f:'+String(n).split('/').pop().toLowerCase()+'|'+s:null;
+// the first few skipped names are shown, so it is clear what was in the folder
+const recSkipName=(a,n)=>{a.skipNames=a.skipNames||[];if(a.skipNames.length<8)a.skipNames.push(String(n).split('/').slice(-2).join('/'))};
 function addRecs(files){
  const dd=ddGet();
- files.forEach(f=>{if(!/\.rec$/i.test(f.name)){rx.skipped++;return}f.fkey=recFkey(f.name,f.size);if(f.fkey&&dd.has(f.fkey)){rx.driveSkip=(rx.driveSkip||0)+1;return}if(!rx.recs.some(x=>x.path===f.path&&x.size===f.size))rx.recs.push(f)});
+ files.forEach(f=>{if(!/\.rec$/i.test(f.name)){rx.skipped++;recSkipName(rx,f.path||f.name);return}f.fkey=recFkey(f.name,f.size);if(f.fkey&&dd.has(f.fkey)){rx.driveSkip=(rx.driveSkip||0)+1;return}if(!rx.recs.some(x=>x.path===f.path&&x.size===f.size))rx.recs.push(f)});
  recPaint();if(rx.recs.some(x=>!x.res))recRun();
 }
 function walkEntry(en,out){
@@ -3575,7 +3577,7 @@ const A={
  amode:d=>{an.mode=d.m;render()},
  aclear:()=>{Object.assign(an,{from:'',to:'',map:''});render()},
  recpick:d=>$('#'+d.t).click(),
- recclear:()=>{const p=rx.rp;rx.rp=null;p?.abort?.();p?.w?.terminate();Object.assign(rx,{recs:[],skipped:0,zipNested:0,driveSkip:0,preSaved:0,rc:{},rex:{},rpick:{},rerr:'',rlib:null,rsum:null});recPaint()},
+ recclear:()=>{const p=rx.rp;rx.rp=null;p?.abort?.();p?.w?.terminate();Object.assign(rx,{recs:[],skipped:0,skipNames:[],zipNested:0,driveSkip:0,preSaved:0,rc:{},rex:{},rpick:{},rerr:'',rlib:null,rsum:null});recPaint()},
  actclear:()=>{act.items=act.items.filter(x=>x.state==='run');actDraw()},
  acttog:()=>{act.closed=!act.closed;act.pinned=!act.closed;actDraw();actIdle()},
  actstop:d=>{act.items.find(x=>x.id===+d.id)?.stop?.()},
