@@ -3714,6 +3714,8 @@ document.addEventListener('dragleave',e=>{if(view==='analyst'&&!e.relatedTarget)
 document.addEventListener('drop',async e=>{if(view!=='analyst'||!['import','parse'].includes(an?.page))return;e.preventDefault();$('#dz')?.classList.remove('on');if(!e.target.closest?.('#dz'))return;
  const dt=e.dataTransfer,es=[...(dt.items||[])].map(i=>i.webkitGetAsEntry?.()).filter(Boolean),out=[];
  if(es.length)await Promise.all(es.map(x=>walkEntry(x,out)));else [...(dt.files||[])].forEach(f=>out.push({file:f,name:f.name,path:f.name,size:f.size}));
+ // folders the browser cannot look inside (like Google Drive shortcuts on the computer) come back empty, so say so instead of doing nothing
+ if(!out.length)return toast(`Your browser could not see any files inside ${es.length>1?'those folders':'that folder'}. If ${es.length>1?'they are':'it is'} in Google Drive on your computer, use the Google Drive button on this page instead.`);
  addAny(out)});
 document.addEventListener('error',e=>{if(e.target.matches?.('img.ph,img.opi'))e.target.classList.add('gone')},true);
 const pageSig=d=>['#app-css','#app-js'].map(s=>d.querySelector(s)?.textContent).join('\n');
