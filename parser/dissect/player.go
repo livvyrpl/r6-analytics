@@ -62,6 +62,20 @@ func readPlayer(r *Reader) error {
 		log.Warn().Uint64("op", op).Msg("strange invalid player located")
 		return nil
 	}
+	// Y11S2 builds mark the player id with 8C 61 1A 75 23 instead of 33 D8 3D 4F 23.
+	// Whichever comes first, within the next few kilobytes, is used.
+	if r.Header.CodeVersion > Y7S2 {
+		alt := []byte{0x8C, 0x61, 0x1A, 0x75, 0x23}
+		end := r.offset + 4096
+		if end > len(r.b) {
+			end = len(r.b)
+		}
+		window := r.b[r.offset:end]
+		a, b := bytes.Index(window, idIndicator), bytes.Index(window, alt)
+		if b >= 0 && (a < 0 || b < a) {
+			idIndicator = alt
+		}
+	}
 	if err := r.Seek(idIndicator); err != nil {
 		return err
 	}
@@ -96,7 +110,21 @@ func readPlayer(r *Reader) error {
 	// there seems to be more to this, but its a quick fix for atk op swaps for now
 	var uiID uint64
 	if r.Header.CodeVersion >= Y9S3 {
-		if err = r.Seek([]byte{0x38, 0xDF, 0xEE, 0x88}); err != nil {
+		// Y11S2 builds use 70 FA AF 28 here instead of 38 DF EE 88
+		uiIndicator := []byte{0x38, 0xDF, 0xEE, 0x88}
+		{
+			alt := []byte{0x70, 0xFA, 0xAF, 0x28}
+			end := r.offset + 4096
+			if end > len(r.b) {
+				end = len(r.b)
+			}
+			window := r.b[r.offset:end]
+			a, b := bytes.Index(window, uiIndicator), bytes.Index(window, alt)
+			if b >= 0 && (a < 0 || b < a) {
+				uiIndicator = alt
+			}
+		}
+		if err = r.Seek(uiIndicator); err != nil {
 			return err
 		}
 		if err = r.Skip(13); err != nil {
