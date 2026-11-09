@@ -1404,8 +1404,10 @@ function addAny(list){
 }
 // remember which Drive replays were saved, on this computer, so a big folder can be pulled over several sessions
 const DD_KEY='liv-drive-done';
-const ddGet=()=>{try{return new Set(JSON.parse(localStorage.getItem(DD_KEY)||'[]'))}catch{return new Set()}};
-const ddAdd=keys=>{keys=keys.filter(Boolean);if(!keys.length)return;try{const d=ddGet();keys.forEach(k=>d.add(k));localStorage.setItem(DD_KEY,JSON.stringify([...d].slice(-80000)))}catch{}};
+// Files are no longer remembered on the computer: every replay is checked against what is saved (one round per game, then only missing rounds)
+try{localStorage.removeItem(DD_KEY)}catch{}
+const ddGet=()=>new Set();
+const ddAdd=()=>{};
 // Zips are opened four at a time, with progress in Activity. A zip inside a zip joins the same queue.
 // A zip whose replays were all imported before is remembered, so next time it is not even opened (a compressed zip inside a zip
 // has to be downloaded whole to look inside, so this saves the most time).
