@@ -118,6 +118,9 @@ func parse(data []byte, warnings *warningCollector) (Result, error) {
 		warnings.add("The replay ended earlier than expected, so some of this round may be missing.")
 	}
 
+	if r.Truncated {
+		warnings.add("This replay file is cut short or damaged, so only the part before the damage was read.")
+	}
 	h := r.Header
 	res := Result{
 		OK:          true,
@@ -328,6 +331,7 @@ func encode(res Result) string {
 // normal replay. They say nothing about whether the parse went well.
 var routineLogMessages = map[string]bool{
 	"scoreboard_kill": true,
+	"replay cut short": true, // reported below in plain words
 }
 
 // warningCollector receives the fork's log output and keeps a short list of

@@ -55,6 +55,8 @@ type Reader struct {
 	Movements                []EntityPositions   `json:"movements,omitempty"`
 	LocationEvents           []LocationEvent     `json:"locationEvents,omitempty"`
 	Scoreboard               Scoreboard
+	SkippedRecords           int `json:"-"`
+	Truncated                bool `json:"-"`
 }
 
 // NewReader decompresses in using zstd and
@@ -149,6 +151,9 @@ func (r *Reader) readChunkedData(genericReader io.Reader) error {
 			}
 			if b[0] == zstdMagic[patternIndex] {
 				patternIndex++
+			} else if b[0] == zstdMagic[0] {
+				// a magic number right after a stray 0x28 used to be missed
+				patternIndex = 1
 			} else {
 				patternIndex = 0
 			}
@@ -163,13 +168,18 @@ func (r *Reader) readChunkedData(genericReader io.Reader) error {
 		if err = zstdReader.Reset(&tempReader); err != nil {
 			return err
 		}
-		decompressed, err := io.ReadAll(zstdReader)
-		if err != nil && !(len(decompressed) > 0 && errors.Is(err, zstd.ErrMagicMismatch)) {
-			return err
+		decompressed, derr := io.ReadAll(zstdReader)
+		if derr != nil && !(len(decompressed) > 0 && errors.Is(derr, zstd.ErrMagicMismatch)) {
+			// A damaged or cut-short section: keep everything read so far instead of losing the whole replay.
+			data = append(data, decompressed...)
+			if len(data) == 0 {
+				return derr
+			}
+			r.Truncated = true
+			log.Warn().Err(derr).Int("section", sections).Msg("replay cut short")
+			break
 		}
-		for _, b := range decompressed {
-			data = append(data, b)
-		}
+		data = append(data, decompressed...)
 		r.offset += tempReader.n
 	}
 	r.b = data
@@ -203,19 +213,30 @@ type match struct {
 
 func (r *Reader) worker(start int, end int, wg *sync.WaitGroup, matches chan<- match) {
 	defer wg.Done()
-	indexes := make([]int, len(r.queries))
 	log.Debug().Int("start", start).Int("end", end).Msg("worker")
-	for i := start; i <= end; i++ {
-		for j, query := range r.queries {
-			if r.b[i] == query[indexes[j]] {
-				indexes[j]++
-				if indexes[j] == len(query) {
-					indexes[j] = 0
-					matches <- match{i, j}
-				}
-			} else {
-				indexes[j] = 0
+	// Each match is reported at the offset of its last byte, for matches ending in [start, end].
+	// bytes.Index finds every match. The old byte-by-byte matcher missed a pattern whenever the byte
+	// before it equalled the pattern's first byte (for example 22 22 07 94 9B DC), and any pattern
+	// that crossed into this block from the previous one.
+	if end >= len(r.b) {
+		end = len(r.b) - 1
+	}
+	for j, query := range r.queries {
+		from := start - len(query) + 1
+		if from < 0 {
+			from = 0
+		}
+		window := r.b[from : end+1]
+		for pos := 0; ; {
+			k := bytes.Index(window[pos:], query)
+			if k < 0 {
+				break
 			}
+			last := from + pos + k + len(query) - 1
+			if last >= start {
+				matches <- match{last, j}
+			}
+			pos += k + len(query)
 		}
 	}
 }
@@ -262,14 +283,21 @@ func (r *Reader) Read() (err error) {
 		return matches[i].offset < matches[j].offset
 	})
 	log.Debug().Int("matches", len(matches)).Msg("calling listeners")
+	// A record the reader cannot understand is skipped and reading carries on with the next one.
+	// Stopping at the first bad record used to throw away the rest of the round: players, kills and the scoreboard.
+	skipped := 0
 	for _, entry := range matches {
 		for _, listener := range r.listeners[entry.listenerIndex] {
 			r.offset = entry.offset + 1
-			if err = listener(r); err != nil {
-				return
+			if lerr := listener(r); lerr != nil {
+				skipped++
+				if skipped <= 3 {
+					log.Debug().Err(lerr).Int("offset", entry.offset).Msg("skipped a record that could not be read")
+				}
 			}
 		}
 	}
+	r.SkippedRecords = skipped
 	if !r.readPartial {
 		r.roundEnd()
 		r.detectRevivesFromScore()
@@ -308,30 +336,26 @@ func (r *Reader) Listen(pattern []byte, callback func(r *Reader) error) {
 // Seek skips through the replay until the pattern is found.
 func (r *Reader) Seek(pattern []byte) error {
 	start := r.offset
-	i := 0
-	for {
-		b, err := r.Bytes(1)
-		if err != nil {
-			if Ok(err) {
-				pc, _, _, ok := runtime.Caller(1)
-				details := runtime.FuncForPC(pc)
-				if ok && details != nil {
-					log.Warn().Int("bytes", r.offset-start).Interface("func", details.Name()).Msg("large seek")
-				} else {
-					log.Warn().Int("bytes", r.offset-start).Msg("large seek")
-				}
+	// bytes.Index finds the pattern even when the byte before it equals its first byte,
+	// which the old byte-by-byte search skipped over.
+	if start >= 0 && start < len(r.b) {
+		if k := bytes.Index(r.b[start:], pattern); k >= 0 {
+			r.offset = start + k + len(pattern)
+			if r.offset >= len(r.b) {
+				return io.EOF
 			}
-			return err
-		}
-		if b[0] != pattern[i] {
-			i = 0
-			continue
-		}
-		i++
-		if i == len(pattern) {
 			return nil
 		}
 	}
+	r.offset = len(r.b)
+	pc, _, _, ok := runtime.Caller(1)
+	details := runtime.FuncForPC(pc)
+	if ok && details != nil {
+		log.Warn().Int("bytes", r.offset-start).Interface("func", details.Name()).Msg("large seek")
+	} else {
+		log.Warn().Int("bytes", r.offset-start).Msg("large seek")
+	}
+	return io.EOF
 }
 
 // Skip increases the replay offset by n bytes.
