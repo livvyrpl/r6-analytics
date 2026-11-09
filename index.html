@@ -1346,12 +1346,6 @@ async function recSaveAll(){
 }
 // replays store some numbers unsigned, so a negative one (like a -10 score from a team kill) reads as 4294967286. Turn it back into the negative number.
 const i32=v=>{v=Number(v)||0;return v>2147483647?v-4294967296:v};
-// one team's operators in a round: each operator once, a blank for an operator the replay did not name, and N/A for each missing player
-function recTeamOps(l){
- const seen=new Set(),out=[],people=new Set();
- for(const x of l){if(x.who&&people.has(x.who))continue;if(x.who)people.add(x.who);if(!x.op){out.push('');continue}const k=norm(x.op);if(seen.has(k))continue;seen.add(k);out.push(x.op)}
- while(out.length<5)out.push('N/A');return out.slice(0,5);
-}
 async function recSave(key,b,quiet,auto){
  const a=rx,tid=a.tid,g=recGroups().find(x=>x.key===key);if(!g)return;
  const s=recSummary(g),c=recRc(key);if(recDups(s,c,new Set(a.rex[s.id]?.done||[])).length)return toast('Fix the operator listed twice before saving');b.disabled=true;b.textContent='Saving…';
@@ -1359,7 +1353,7 @@ async function recSave(key,b,quiet,auto){
   const note=a.rex[s.id]?'':await recApplyTeams(s,c,a);
   const game=await recGame(s,c,tid),t1=game.replay_t1_index??0,t2=t1^1,our=game.our_team_index,mid=matchId(game),done=new Set(a.rex[s.id]?.done||[]),fresh=s.rounds.filter(r=>!done.has(r.roundNumber));
   const side=v=>v==='Attack'?'attack':v==='Defense'?'defense':'';
-  const rounds=fresh.map(r=>{const ops=i=>recTeamOps(r.players.filter(p=>p.teamIndex===i).map(p=>({who:norm(p.username),op:recOp(c,r,p)}))),mine=ops(t1),row={owner_team_id:tid,match_id:mid,round_date:game.match_date,map:game.map,round_number:r.roundNumber,team:game.team,opponent:game.opponent,side:r.teams[t1]?.role||'',site:r.site||'',result:r.winningTeam===null?'':r.winningTeam===t1?'W':'L',opponent_operators:ops(t2).join(' ')};[0,1,2,3,4].forEach(i=>row['operator_'+(i+1)]=mine[i]||'');return row});
+  const rounds=fresh.map(r=>{const ops=i=>r.players.filter(p=>p.teamIndex===i).map(p=>recOp(c,r,p)),mine=ops(t1),row={owner_team_id:tid,match_id:mid,round_date:game.match_date,map:game.map,round_number:r.roundNumber,team:game.team,opponent:game.opponent,side:r.teams[t1]?.role||'',site:r.site||'',result:r.winningTeam===null?'':r.winningTeam===t1?'W':'L',opponent_operators:ops(t2).join(' ')};[0,1,2,3,4].forEach(i=>row['operator_'+(i+1)]=mine[i]||'');return row});
   const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:recOp(c,r,p),operator_id:recOp(c,r,p)===repOp(p.operator)?p.operatorId||'':'',side:side(p.role),kills:i32(p.kills),deaths:i32(p.deaths),assists:i32(p.assists),headshots:Math.min(i32(p.headshots),i32(p.kills)),match_score:i32(p.score),kost_point:repKost(r,p)})));
   const w1=await sb.from('scout_rounds').upsert(rounds,{onConflict:'owner_team_id,round_number,dedupe_key',ignoreDuplicates:true});if(w1.error)throw w1.error;
   const w2=await sb.from('player_round_stats').upsert(stats,{onConflict:'owner_team_id,match_id,round_number,player_key',ignoreDuplicates:true});if(w2.error)throw w2.error;
