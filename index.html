@@ -1163,7 +1163,7 @@ function recCard(g){
 }
 function recList(){
  const r=rx.recs,total=r.reduce((a,x)=>a+x.size,0),done=r.filter(x=>x.res).length,pct=r.length?Math.round(done/r.length*100):0,cur=r.find(x=>!x.res),busy=rx.rp&&cur;
- const skip=(rx.skipped?`<p class="mu">Skipped ${plural(rx.skipped,'file')} that ${rx.skipped===1?'is':'are'} not .rec or .zip${(rx.skipNames||[]).length?': '+esc(rx.skipNames.join(', '))+(rx.skipped>rx.skipNames.length?' and more':''):''}.</p>`:'')+(rx.driveSkip?`<p class="mu">Skipped ${plural(rx.driveSkip,'replay file')} already imported on this computer. <button class="actx" data-a="ddclear">Check them again next time</button></p>`:'')+(rx.fillN?`<p class="mu">Found missing rounds in ${plural(rx.fillN,'match').replace('matchs','matches')}. Only those rounds are being read.</p>`:'')+(rx.preSaved?`<p class="mu">Skipped ${plural(rx.preSaved,'match').replace('matchs','matches')} already saved with every round. Only one round of each was read to check.</p>`:'')+(rx.zipping?`<p class="mu">Opening zip files: ${rx.zipDone||0} of ${rx.zipTotal||rx.zipping} done…</p>`:'')+(rx.zipSkip?`<p class="mu">Skipped ${plural(rx.zipSkip,'zip file')} whose replays were all imported before.</p>`:'')+(rx.zipNested?`<p class="mu">Skipped ${plural(rx.zipNested,'zip file')} buried more than 4 zips deep. Unzip ${rx.zipNested===1?'it':'them'} and add ${rx.zipNested===1?'it':'them'} on ${rx.zipNested===1?'its':'their'} own.</p>`:'')+(gdrv.wait?.ask?'<div class="cd" role="alert" style="border-color:#ff8a8a;gap:6px"><b>Google Drive needs you to sign in again</b><p class="mu" style="font-size:13px">Google sign-ins last about an hour. Reading carries on from where it stopped. To skip this next time, allow pop-ups for this site (the icon at the right of the address bar): the site then renews the sign-in by itself.</p><div><button class="go" data-a="drvauth">Reconnect Google Drive</button></div></div>':'');
+ const skip=(rx.skipped?`<p class="mu">Skipped ${plural(rx.skipped,'file')} that ${rx.skipped===1?'is':'are'} not .rec or .zip${(rx.skipNames||[]).length?': '+esc(rx.skipNames.join(', '))+(rx.skipped>rx.skipNames.length?' and more':''):''}.</p>`:'')+(rx.driveSkip?`<p class="mu">Skipped ${plural(rx.driveSkip,'replay file')} already imported on this computer. <button class="actx" data-a="ddclear">Check them again next time</button></p>`:'')+(rx.fillN?`<p class="mu">Found missing rounds in ${plural(rx.fillN,'match').replace('matchs','matches')}. Only those rounds are being read.</p>`:'')+(rx.scoreN?`<p class="mu">Fixed the score of ${plural(rx.scoreN,'match').replace('matchs','matches')}.</p>`:'')+(rx.preSaved?`<p class="mu">Skipped ${plural(rx.preSaved,'match').replace('matchs','matches')} already saved with every round. Only one round of each was read to check.</p>`:'')+(rx.zipping?`<p class="mu">Opening zip files: ${rx.zipDone||0} of ${rx.zipTotal||rx.zipping} done…</p>`:'')+(rx.zipSkip?`<p class="mu">Skipped ${plural(rx.zipSkip,'zip file')} whose replays were all imported before.</p>`:'')+(rx.zipNested?`<p class="mu">Skipped ${plural(rx.zipNested,'zip file')} buried more than 4 zips deep. Unzip ${rx.zipNested===1?'it':'them'} and add ${rx.zipNested===1?'it':'them'} on ${rx.zipNested===1?'its':'their'} own.</p>`:'')+(gdrv.wait?.ask?'<div class="cd" role="alert" style="border-color:#ff8a8a;gap:6px"><b>Google Drive needs you to sign in again</b><p class="mu" style="font-size:13px">Google sign-ins last about an hour. Reading carries on from where it stopped. To skip this next time, allow pop-ups for this site (the icon at the right of the address bar): the site then renews the sign-in by itself.</p><div><button class="go" data-a="drvauth">Reconnect Google Drive</button></div></div>':'');
  if(!r.length)return skip;
  const gs=recGroups();
  return `<div class="row wrap" style="justify-content:space-between"><b style="font-weight:600">${plural(r.length,'replay file')} · ${fmtSize(total)} · ${gs.length===1?'1 match':gs.length+' matches'}</b><span class="row wrap" style="gap:6px">${recSaveable().length>1?`<button class="go" style="height:32px" data-a="recsaveall">Save all ready (${recSaveable().length})</button>`:''}<button class="no" style="height:32px" data-a="recclear">${busy?'Stop and clear':'Clear list'}</button></span></div>
@@ -1238,6 +1238,7 @@ async function recRun(){
    tick();if(rx===a)recPaint();
    await recCheck(a,k);
    if(recAlready(a,k))continue;
+   if(a.sfix?.has(k)){const gs=recGroups().find(y=>y.key===k);if(gs&&gs.files.every(y=>y.res)){a.sfix.delete(k);await recScoreFix(a,k)}continue}
    const gk=recGroups().find(y=>y.key===k);if(gk&&(gk.files.every(y=>y.res)||gk.files.filter(y=>y.res).length%4===0))recAutoKey(a,k);
   }
   let_go();
@@ -1251,15 +1252,29 @@ async function recRun(){
 const recRoundNo=n=>{const m=/R(\d+)\.rec$/i.exec(n||'');return m?+m[1]:0};
 // A match already saved, with every round in its folder: drop it from the run without reading the other rounds
 function recAlready(a,k){
- if(rx!==a)return false;const g=recGroups().find(y=>y.key===k);if(!g)return false;
+ if(rx!==a||a.sfix?.has(k))return false;const g=recGroups().find(y=>y.key===k);if(!g)return false;
  const read=g.files.filter(y=>y.res?.ok);if(!read.length||read.some(y=>recRoundNo(y.name)!==y.res.roundNumber))return false;
  const s=recSummary(g),ex=a.rex[s.id];if(!ex||!s.rounds.length)return false;
  const nums=g.files.map(y=>recRoundNo(y.name));if(nums.some(n=>!n))return false;const done=new Set(ex.done);
- if(nums.every(n=>done.has(n))){ddAdd(g.files.flatMap(y=>[y.driveKey,y.fkey]));a.recs=a.recs.filter(y=>recKey(y)!==k);a.preSaved=(a.preSaved||0)+1;recPaint();return true}
+ if(nums.every(n=>done.has(n))){
+  const had=parseScore(ex.row.round_score),top=Math.max(...nums),short=!had||had.a+had.b<top||!ex.row.result;
+  if(!short||a.sfixTried?.has(k)){a.recs=a.recs.filter(y=>recKey(y)!==k);a.preSaved=(a.preSaved||0)+1;recPaint();return true}
+  // keep only the last round to read
+  const keep=g.files.filter(y=>!y.res&&recRoundNo(y.name)===top),skip=g.files.filter(y=>!y.res&&!y.busy&&!keep.includes(y));
+  a.trim=a.trim||new Map();a.trim.set(k,new Set([...(a.trim.get(k)||[]),...skip.map(y=>recRoundNo(y.name))]));a.recs=a.recs.filter(y=>!skip.includes(y));
+  (a.sfix||(a.sfix=new Set())).add(k);(a.sfixTried||(a.sfixTried=new Set())).add(k);recPaint();return false}
  // some rounds are missing: the saved ones are not read again
  const skip=g.files.filter(y=>!y.res&&!y.busy&&done.has(recRoundNo(y.name)));
  if(skip.length){a.trim=a.trim||new Map();a.trim.set(k,new Set([...(a.trim.get(k)||[]),...skip.map(y=>recRoundNo(y.name))]));ddAdd(skip.flatMap(y=>[y.driveKey,y.fkey]));a.recs=a.recs.filter(y=>!skip.includes(y));a.fillN=(a.fillN||0)+1;recPaint()}
  return false;
+}
+// A saved game whose score is blank or short: the last round's score is saved on it
+async function recScoreFix(a,k){
+ const g=recGroups().find(y=>y.key===k);if(!g)return;const s=recSummary(g),ex=a.rex[s.id];if(!ex||!s.rounds.length)return;
+ try{const before=ex.row.round_score,game=await recGame(s,recRc(k),a.tid);if(game&&game.round_score!==before){ex.row=game;a.scoreN=(a.scoreN||0)+1;if(a.rlib){const i=a.rlib.findIndex(x=>x.id===game.id);if(i>=0)a.rlib[i]=game}}}
+ catch(e){toast('Could not fix the score of '+g.label+': '+repErr(e))}
+ // nothing left to do for this game
+ a.recs=a.recs.filter(y=>recKey(y)!==k);a.preSaved=(a.preSaved||0)+1;if(rx===a)recPaint();
 }
 // When a match is fully read, see what is already saved
 async function recCheck(a,onlyKey){
@@ -1300,7 +1315,7 @@ async function recGame(s,c,tid){
  const P=recRows(s,c),base={match_date:s.date,map:s.map,round_score:P.score,total_rounds:s.score[0]+s.score[1],source_name:'Replay',replay_status:'imported',start_side:P.start,ot_start:P.ot,result:P.result,...P.sides};
  if(P.ex){
   // Only a score covering more rounds replaces the one saved, so a partial import can't overwrite a final score
-  const had=parseScore(P.ex.round_score),total=s.score[0]+s.score[1];if(!P.fresh.length||(had&&had.a+had.b>=total))return P.ex;
+  const had=parseScore(P.ex.round_score),total=s.score[0]+s.score[1];if(had&&had.a+had.b>=total&&P.ex.result)return P.ex;if(!P.fresh.length&&!rx?.trim?.has(s.g.key))return P.ex;
   const up={round_score:P.score,total_rounds:total,...(rx?.trim?.has(s.g.key)?{}:s.gaps?{t1_atk:null,t1_def:null,t1_ot_atk:null,t1_ot_def:null,t2_atk:null,t2_def:null,t2_ot_atk:null,t2_ot_def:null}:P.sides)};if(P.result)up.result=P.result;if(P.ot)up.ot_start=P.ot;
   const r=await sb.from('scout_matches').update(up).eq('id',P.ex.id).select().single();if(r.error)throw r.error;return r.data;
  }
@@ -1331,6 +1346,12 @@ async function recSaveAll(){
 }
 // replays store some numbers unsigned, so a negative one (like a -10 score from a team kill) reads as 4294967286. Turn it back into the negative number.
 const i32=v=>{v=Number(v)||0;return v>2147483647?v-4294967296:v};
+// one team's operators in a round: each operator once, a blank for an operator the replay did not name, and N/A for each missing player
+function recTeamOps(l){
+ const seen=new Set(),out=[],people=new Set();
+ for(const x of l){if(x.who&&people.has(x.who))continue;if(x.who)people.add(x.who);if(!x.op){out.push('');continue}const k=norm(x.op);if(seen.has(k))continue;seen.add(k);out.push(x.op)}
+ while(out.length<5)out.push('N/A');return out.slice(0,5);
+}
 async function recSave(key,b,quiet,auto){
  const a=rx,tid=a.tid,g=recGroups().find(x=>x.key===key);if(!g)return;
  const s=recSummary(g),c=recRc(key);if(recDups(s,c,new Set(a.rex[s.id]?.done||[])).length)return toast('Fix the operator listed twice before saving');b.disabled=true;b.textContent='Saving…';
@@ -1338,7 +1359,7 @@ async function recSave(key,b,quiet,auto){
   const note=a.rex[s.id]?'':await recApplyTeams(s,c,a);
   const game=await recGame(s,c,tid),t1=game.replay_t1_index??0,t2=t1^1,our=game.our_team_index,mid=matchId(game),done=new Set(a.rex[s.id]?.done||[]),fresh=s.rounds.filter(r=>!done.has(r.roundNumber));
   const side=v=>v==='Attack'?'attack':v==='Defense'?'defense':'';
-  const rounds=fresh.map(r=>{const ops=i=>r.players.filter(p=>p.teamIndex===i).map(p=>recOp(c,r,p)),mine=ops(t1),row={owner_team_id:tid,match_id:mid,round_date:game.match_date,map:game.map,round_number:r.roundNumber,team:game.team,opponent:game.opponent,side:r.teams[t1]?.role||'',site:r.site||'',result:r.winningTeam===null?'':r.winningTeam===t1?'W':'L',opponent_operators:ops(t2).join(' ')};[0,1,2,3,4].forEach(i=>row['operator_'+(i+1)]=mine[i]||'');return row});
+  const rounds=fresh.map(r=>{const ops=i=>recTeamOps(r.players.filter(p=>p.teamIndex===i).map(p=>({who:norm(p.username),op:recOp(c,r,p)}))),mine=ops(t1),row={owner_team_id:tid,match_id:mid,round_date:game.match_date,map:game.map,round_number:r.roundNumber,team:game.team,opponent:game.opponent,side:r.teams[t1]?.role||'',site:r.site||'',result:r.winningTeam===null?'':r.winningTeam===t1?'W':'L',opponent_operators:ops(t2).join(' ')};[0,1,2,3,4].forEach(i=>row['operator_'+(i+1)]=mine[i]||'');return row});
   const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:recOp(c,r,p),operator_id:recOp(c,r,p)===repOp(p.operator)?p.operatorId||'':'',side:side(p.role),kills:i32(p.kills),deaths:i32(p.deaths),assists:i32(p.assists),headshots:Math.min(i32(p.headshots),i32(p.kills)),match_score:i32(p.score),kost_point:repKost(r,p)})));
   const w1=await sb.from('scout_rounds').upsert(rounds,{onConflict:'owner_team_id,round_number,dedupe_key',ignoreDuplicates:true});if(w1.error)throw w1.error;
   const w2=await sb.from('player_round_stats').upsert(stats,{onConflict:'owner_team_id,match_id,round_number,player_key',ignoreDuplicates:true});if(w2.error)throw w2.error;
@@ -3724,7 +3745,7 @@ const A={
  amode:d=>{an.mode=d.m;render()},
  aclear:()=>{Object.assign(an,{from:'',to:'',map:''});render()},
  recpick:d=>$('#'+d.t).click(),
- recclear:()=>{const p=rx.rp;rx.rp=null;p?.abort?.();p?.w?.terminate();if(rx.zipJob){rx.zipStop=true;actEnd(rx.zipJob,'warn','Stopped');}Object.assign(rx,{trim:null,fillN:0,zipJob:null,zipTotal:0,zipDone:0,zipSkip:0,recs:[],skipped:0,skipNames:[],zipNested:0,driveSkip:0,preSaved:0,rc:{},rex:{},rpick:{},rerr:'',rlib:null,rsum:null});recPaint()},
+ recclear:()=>{const p=rx.rp;rx.rp=null;p?.abort?.();p?.w?.terminate();if(rx.zipJob){rx.zipStop=true;actEnd(rx.zipJob,'warn','Stopped');}Object.assign(rx,{trim:null,fillN:0,sfix:null,sfixTried:null,scoreN:0,zipJob:null,zipTotal:0,zipDone:0,zipSkip:0,recs:[],skipped:0,skipNames:[],zipNested:0,driveSkip:0,preSaved:0,rc:{},rex:{},rpick:{},rerr:'',rlib:null,rsum:null});recPaint()},
  actclear:()=>{act.items=act.items.filter(x=>x.state==='run');actDraw()},
  acttog:()=>{act.closed=!act.closed;act.hid=act.closed;act.pinned=!act.closed;try{localStorage.setItem('liv-act-hidden',act.hid?'1':'0')}catch{}actDraw();actIdle()},
  actstop:d=>{act.items.find(x=>x.id===+d.id)?.stop?.()},
