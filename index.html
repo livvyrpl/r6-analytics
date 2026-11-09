@@ -110,7 +110,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 24px 24px;font-size:11.5px;color
 .vod{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;background:#1a73e8;color:#fff;font-size:12px;font-weight:600;text-decoration:none}.vod:hover{background:#3b8bf0}
 .pbar{height:10px;border-radius:999px;background:var(--bd);overflow:hidden}.pbar i{display:block;height:100%;background:var(--pk);transition:width .2s}
 dialog.dkw{width:min(760px,92vw)}dialog.ccw{width:min(1080px,94vw);padding:16px}
-.autost{margin:0;font-size:12px;color:var(--mu);text-align:right}.autost.bad{color:#ff8a8a}
+.autost{display:none}.autost.bad{display:block;margin:0;font-size:12px;color:#ff8a8a;text-align:right}[data-auto] .svb,.svb{display:none!important}#savest{position:fixed;left:12px;bottom:12px;z-index:60;display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12px;background:var(--cd);border:1px solid var(--bd);color:var(--mu);opacity:0;transition:opacity .3s;pointer-events:none}#savest.on{opacity:1}#savest.bad{color:#ff8a8a;border-color:#ff8a8a;pointer-events:auto}#savest i{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}#savest.busy i{animation:svp 1s ease-in-out infinite}@keyframes svp{50%{opacity:.25}}
 .vbt .tbl th,.vbt .tbl td{padding:3px 8px;font-size:12.5px}.vbt tbody th{text-align:left;font-weight:600}.vbs{border:0;background:none;color:var(--mu);font:inherit;font-size:12px;font-weight:600;padding:0;cursor:pointer;white-space:nowrap}.vbs.on{color:var(--tx)}.vbs:hover{color:var(--pk)}.vbk{background:rgba(var(--pk-rgb),.07)}
 #vodp{position:fixed;top:10px;right:12px;width:var(--vodw,min(44vw,760px));max-height:calc(100vh - 20px);overflow-y:auto;z-index:9;background:var(--cd);border:1px solid var(--bd2);border-radius:12px;padding:8px;box-shadow:0 10px 32px rgba(0,0,0,.55)}.vodf{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:8px;background:#000}.vodsz [aria-pressed=true]{border-color:var(--pk);color:var(--pk)}
 body.vodon{padding-right:calc(var(--vodw,min(44vw,760px)) + 24px)}body.vodon #toast,body.vodon #upd{right:calc(var(--vodw,min(44vw,760px)) + 36px)}
@@ -129,6 +129,13 @@ body.vodon{padding-right:calc(var(--vodw,min(44vw,760px)) + 24px)}body.vodon #to
 const SUPABASE_URL='https://hyfycayfadqjhxucpfnm.supabase.co',SUPABASE_KEY='sb_publishable_91fUHDwka-sQOMN5A8J8CQ_KyfQVsc7';
 // Anything saved shows an update, even when the action has no message of its own
 const WRITE_WORDS={invites:'Invite saved',journal_goals:'Goal saved',journal_notes:'Note saved',player_round_stats:'Player stats saved',schedule_entries:'Schedule saved',scout_matches:'Match saved',scout_rounds:'Rounds saved',scout_settings:'Settings saved',scout_teams:'Team saved',scout_vetoes:'Vetoes saved',scrim_map_results:'Scrim saved',scrim_player_notes:'Notes saved',scrims:'Scrim saved',strats:'Strat saved',team_members:'Team access saved',team_roster:'Roster saved',teams:'Team saved',profiles:'Profile saved'};
+// SAVE STATUS, bottom left: "Saving…" while anything is being saved, then "Saved"
+const sv={n:0,bad:'',t:0};
+function svPaint(){let e=document.getElementById('savest');if(!e){e=document.createElement('div');e.id='savest';e.setAttribute('role','status');e.setAttribute('aria-live','polite');document.body.append(e)}
+ const busy=sv.n>0||(typeof autoPending==='function'&&autoPending())||asBusy();clearTimeout(sv.t);
+ e.className=busy?'on busy':sv.bad?'on bad':'on';e.innerHTML=busy?'<i></i>Saving…':sv.bad?'<i></i>Not saved: '+esc(sv.bad):'<i></i>Saved';
+ if(!busy&&!sv.bad)sv.t=setTimeout(()=>e.classList.remove('on'),2500)}
+const svWrite=(u,o)=>{const m=/\/rest\/v1\/(?!rpc\/(?:scout_fill|map_key|logo_shows|site_team_usage))/.exec(String(u)),how=String(o?.method||'GET').toUpperCase();return !!m&&!['GET','HEAD'].includes(how)&&!/[?&]select=[^&]*&.*limit=0/.test(String(u))};
 function noteWrite(u,o,r){
  const m=/\/rest\/v1\/([a-z_]+)/.exec(String(u)),how=String(o?.method||'GET').toUpperCase();
  if(!m||!r.ok||how==='GET'||how==='HEAD'||!WRITE_WORDS[m[1]])return;
@@ -136,7 +143,7 @@ function noteWrite(u,o,r){
  const word=how==='DELETE'?WRITE_WORDS[m[1]].replace('saved','removed'):WRITE_WORDS[m[1]];
  clearTimeout(noteWrite.t);noteWrite.t=setTimeout(()=>{if(Date.now()-(toast.last||0)>900)toast(word)},700);
 }
-const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{global:{fetch:(u,o)=>fetch(u,o).then(r=>{noteWrite(u,o,r);return r})}});
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{global:{fetch:(u,o)=>{const w=svWrite(u,o);if(w){sv.n++;svPaint()}return fetch(u,o).then(r=>{noteWrite(u,o,r);if(w){sv.n--;if(!r.ok)sv.bad='the database refused it';else if(sv.bad==='the database refused it')sv.bad='';svPaint()}return r},e=>{if(w){sv.n--;sv.bad='no connection';svPaint()}throw e})}}});
 const R={coach:'Coach',assistant_coach:'Assistant Coach',analyst:'Analyst',player:'Player'},ALL=Object.keys(R);
 const REG=['North America','South America','Europe','Asia Pacific','China'],COL=['#e07cc0','#7cc0e0','#e0c07c','#9ae07c','#c07ce0','#e07c7c','#7ce0c0','#ece8f0'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -161,7 +168,7 @@ const actStart=(title,stop)=>actAdd({title,stop,state:'run',detail:'',pct:null})
 const actSet=(x,o)=>{Object.assign(x,o);actDraw()};
 const actEnd=(x,state,detail)=>{toast.last=Date.now();Object.assign(x,{state,detail:detail??x.detail,end:Date.now(),pct:null,stop:null});actDraw();actIdle()};
 const ACT_WARN=/could not|cannot|can't|permission|^enter |^choose |^paste |error|failed|not set up|too many|must be|already|should |needs? |unexpected|does not|not found|no longer| twice|^fix /i;
-function toast(m){toast.last=Date.now();const n=Date.now();actAdd({title:m,state:ACT_WARN.test(m)?'warn':'ok',start:n,end:n})}
+function toast(m){toast.last=Date.now();const n=Date.now();if(Date.now()<(toast.quiet||0)&&!ACT_WARN.test(m))return;actAdd({title:m,state:ACT_WARN.test(m)?'warn':'ok',start:n,end:n})}
 setInterval(()=>{document.querySelectorAll('[data-at]').forEach(e=>{const x=act.items.find(y=>y.id===+e.dataset.at);if(x&&e.firstChild)e.firstChild.nodeValue=actAge(x)+(x.state==='run'&&x.stop?' ':'')})},1000);
 const logoOk=u=>!!u&&!/liquipedia\.net/i.test(u);
 const tile=(t,s=36)=>{const c=esc(t?.color||'#e07cc0');return `<span class="lt" style="--s:${s}px;color:${c};border-color:${c};background:${c}22">${logoOk(t?.logo_url)?`<img src="${esc(t.logo_url)}" alt="">`:esc((t?.name||'?').slice(0,2).toUpperCase())}</span>`};
@@ -376,7 +383,7 @@ function scrimForm(embed=false){
  <div><span class="lb" style="font-size:15px;font-weight:600;color:var(--tx)">Maps</span><p class="mu">Bans are 3 per side for each team. Used for Stats and Scouting.</p>${opsLists()}<div id="fmaps">${maps.map(m=>mapBlock(m,(scr.mr||[]).find(x=>x.map===m),true)).join('')}</div><button type="button" class="no" data-a="fmapadd">Add map</button></div>
  <div><label for="sfn">General notes</label><textarea id="sfn" class="fi ta">${esc(s?.notes||'')}</textarea></div>
  ${s&&scr.people?`<div><span class="lb" style="font-size:15px;font-weight:600;color:var(--tx)">Player notes</span>${scr.people.length?scr.people.map(p=>`<div style="margin-top:8px"><label for="spn-${p.id}" class="row" style="gap:10px;color:var(--tx)"><span class="av">${esc(p.name[0].toUpperCase())}</span><span style="overflow-wrap:anywhere">${esc(p.name)}${p.former?' <span class="mu">(no longer a player on this team)</span>':''}</span></label><textarea id="spn-${p.id}" class="fi ta" data-p="${p.id}" aria-label="Notes for ${esc(p.name)}">${esc(scr.notes[p.id]||'')}</textarea></div>`).join(''):'<p class="mu">This team has no one with the Player role yet. Add players in Manage Users.</p>'}</div>`:''}
- <div class="row" style="justify-content:flex-end">${embed||s?'':'<button type="button" class="no" data-a="scancel">Cancel</button>'}<button class="go">${s?'Done':'Add scrim'}</button></div></form>`;
+ <div class="row" style="justify-content:flex-end">${embed||s?'':'<button type="button" class="no" data-a="scancel">Cancel</button>'}<button class="go${s?' svb':''}">${s?'Done':'Add scrim'}</button></div></form>`;
 }
 async function fetchScrims(){
  const tid=scr.tid,r=await sb.from('scrims').select('*').eq('team_id',tid).order('scrim_date',{ascending:false}).order('created_at',{ascending:false});
@@ -429,24 +436,38 @@ const AUTO={smatch:f=>saveMatch(f,1),scrim:f=>saveScrim(f,1),snotes:()=>scrimNot
 // actions that change a form without typing in it
 const AUTO_AFTER=new Set(['pladd','plrm','plmerge','fmaprm','tsw']);
 function autoSt(f,t,bad){let s=f.querySelector('.autost');if(!s){s=document.createElement('p');s.className='autost';s.setAttribute('aria-live','polite');f.append(s)}s.textContent=t;s.classList.toggle('bad',!!bad)}
-function autoQueue(f,ms){clearTimeout(f._t);autoSt(f,'Saving soon…');f._t=setTimeout(()=>{f._t=null;autoRun(f)},ms)}
+function autoQueue(f,ms){clearTimeout(f._t);autoSt(f,'Saving soon…');f._t=setTimeout(()=>{f._t=null;autoRun(f)},ms);svPaint()}
 function autoKick(e){const f=e.target.closest?.('[data-auto]');if(!f||(e.type==='input'&&e.target.type==='file'))return;autoQueue(f,e.type==='change'?300:1200)}
 function autoRun(f){
  if(f._p){f._again=1;return f._p}
  clearTimeout(f._t);f._t=null;const fn=AUTO[f.dataset.auto];if(!fn||!f.isConnected)return Promise.resolve();
- autoSt(f,'Saving…');
+ autoSt(f,'Saving…');toast.quiet=Date.now()+4000;svPaint();
  f._p=(async()=>{let r;try{r=await fn(f)}catch(e){r={err:e.message||String(e)}}f._p=null;f._bad=!!r?.err;
   autoSt(f,r?.err?'Not saved yet: '+r.err:'All changes saved',r?.err);toast.last=Date.now();
   if(f._again){f._again=0;return autoRun(f)}
+  if(r?.err)sv.bad=r.err;else if(sv.bad===f._lastErr)sv.bad='';f._lastErr=r?.err||'';toast.quiet=Date.now()+1500;svPaint();
   if(![...document.querySelectorAll('[data-auto]')].some(x=>x._t||x._p||x._bad))sdirty=false})();
  return f._p;
 }
-async function autoFlush(){for(const f of document.querySelectorAll('[data-auto]'))if(f._t||f._p)await autoRun(f)}
-const autoPending=()=>[...document.querySelectorAll('[data-auto]')].some(x=>x._t||x._p);
+const AS=new Map();const asBusy=()=>[...AS.values()].some(x=>x.t||x.p);
+function asSoon(k,fn,ms=1000){const x=AS.get(k)||{};clearTimeout(x.t);x.fn=fn;x.t=setTimeout(()=>asRun(k),ms);AS.set(k,x);svPaint()}
+async function asRun(k){const x=AS.get(k);if(!x)return;clearTimeout(x.t);x.t=0;if(x.p){x.again=1;return x.p}
+ toast.quiet=Date.now()+4000;x.p=(async()=>{try{await x.fn()}catch(e){sv.bad=e.message||String(e)}x.p=null;toast.quiet=Date.now()+1500;if(x.again){x.again=0;await asRun(k)}svPaint()})();svPaint();return x.p}
+async function asFlush(){for(const k of [...AS.keys()]){const x=AS.get(k);if(x.t||x.p)await asRun(k)}}
+const NOB={disabled:false,textContent:''};
+async function autoFlush(){await asFlush();for(const f of document.querySelectorAll('[data-auto]'))if(f._t||f._p)await autoRun(f)}
+const autoPending=()=>[...document.querySelectorAll('[data-auto]')].some(x=>x._t||x._p)||asBusy();
 document.addEventListener('paste',e=>{if(e.target.id!=='simpx')return;const html=e.clipboardData?.getData('text/html')||'',text=e.clipboardData?.getData('text/plain')||'';e.preventDefault();simpRead(html,text)});
 document.addEventListener('focusin',e=>{if(e.target.id==='vnb'){const t=$('#vnt');if(t&&!t.value&&vodState.yt&&vodState.t!=null)t.value=vodT(vodState.t)}});
 document.addEventListener('keydown',e=>{if(e.target.id==='vnb'&&e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();$('#vodp [data-a=vnadd]')?.click()}});
 document.addEventListener('input',autoKick);document.addEventListener('change',autoKick);
+document.addEventListener('change',e=>{const id=e.target.id||'';
+ if(/^pb[tf][ad]$/.test(id))return asSoon('prepbans',()=>prepBanSave(NOB,1),300);
+ if(id==='prepvu')return asSoon('prepvod',()=>prepVodSave(NOB),200);
+ if(id==='vodu'){const b=document.querySelector('[data-a=scvodsave]');if(b)return asSoon('scvod',()=>A.scvodsave({id:b.dataset.id},NOB),200)}});
+document.addEventListener('input',e=>{if(e.target.matches?.('[data-pdr]')&&prep?.dlg&&canEditS())asSoon('prepdrone',()=>prepSave(NOB,1),1000)});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&['prepvu','vodu'].includes(e.target.id)){e.preventDefault();e.target.blur()}});
+window.addEventListener('beforeunload',e=>{if(asBusy()){asFlush();e.preventDefault();e.returnValue=''}});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autoFlush()});
 async function plSave(b,qt){plSync();const rows=sco.plr.rows.filter(x=>x.name.trim()).map(x=>({...x,name:x.name.trim()}));b.disabled=true;const r=await sb.from('scout_teams').update({roster:rows,players:rows.map(x=>x.name)}).eq('id',sco.oppId).select().single();b.disabled=false;if(r.error)return say(qt,scErr(r.error));Object.assign(sco.teams.find(t=>t.id===sco.oppId),r.data);if(qt)return{};sdirty=false;sco.plr=null;render();toast('Roster saved')}
 async function scnSave(b,qt){b.disabled=true;const v=$('#scn').value,r=await sb.from('scout_teams').update({coach_notes:v}).eq('id',sco.oppId).select().single();b.disabled=false;if(r.error)return say(qt,scErr(r.error));sco.teams.find(t=>t.id===sco.oppId).coach_notes=v;if(qt)return{};sdirty=false;toast('Notes saved')}
@@ -622,7 +643,7 @@ function schForm(){
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="shd">Date</label><input id="shd" class="fi" type="date" required value="${esc(loc.d)}"></div><div style="${half}"><label for="shi">Time in ${esc(myTz())} (optional)</label><input id="shi" class="fi" type="time" value="${esc(loc.t)}"></div></div>
  ${ed?`<div id="shgame" class="row wrap" style="gap:12px;align-items:flex-start"${game?'':' hidden'}><div style="${half}"><label for="sho">Opponent</label><input id="sho" class="fi" maxlength="120" value="${esc(e?.opponent||'')}"></div><div style="${half}"><span class="lb">Maps</span>${mapPick(e?.maps||[])}</div></div>`:''}
  <div><label for="shn">Notes</label><textarea id="shn" class="fi ta">${esc(e?.notes||'')}</textarea></div>
- <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="schcancel">Cancel</button><button class="go">${e?'Save changes':'Add'}</button></div></form>`;
+ <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="schcancel">Cancel</button><button class="go${e?' svb':''}">${e?'Save changes':'Add'}</button></div></form>`;
 }
 async function fetchSch(){
  const tid=sch.tid,r=await sb.from('schedule_entries').select('*').eq('team_id',tid);
@@ -720,7 +741,7 @@ function goalForm(){
  <div><label for="gd">Description</label><textarea id="gd" class="fi ta">${esc(g?.description||'')}</textarea></div>
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:1;min-width:180px"><label for="gl">Deadline (optional)</label><input id="gl" class="fi" type="date" value="${esc(g?.deadline||'')}"></div>
  <div style="flex:1;min-width:180px"><label for="gs">Status</label><select id="gs" class="fi">${Object.keys(STAT).map(k=>`<option value="${k}"${k===(g?.status||'not_started')?' selected':''}>${STAT[k]}</option>`).join('')}</select></div></div>
- <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="gcancel">Cancel</button><button class="go">${g?'Save changes':'Add goal'}</button></div></form>`;
+ <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="gcancel">Cancel</button><button class="go${g?' svb':''}">${g?'Save changes':'Add goal'}</button></div></form>`;
 }
 function goalCard(g,own){
  const ns=pl.notes.filter(n=>n.goal_id===g.id).sort((a,b)=>b.note_date.localeCompare(a.note_date)||b.created_at.localeCompare(a.created_at));
@@ -1829,12 +1850,12 @@ function prepRoundV(){
  const head=`<div class="row wrap" style="justify-content:space-between;gap:10px;margin-bottom:12px"><div style="min-width:0;flex:1 1 320px"><p class="lb" style="margin-bottom:2px">Anti-Strat · ${esc(x.who)} · ${esc(x.map)} · ${SIDE[x.side]||''}${x.site?' · '+esc(x.site):''}</p><h1 class="serif" style="font-size:24px;overflow-wrap:anywhere">${esc(d.title||`Round ${x.r.round_number} vs ${x.foe||'—'}`)}</h1></div><div class="row wrap" style="gap:8px">${back}${backDash}</div></div>`;
  const info=`<section class="cd" style="gap:10px;margin-bottom:12px"><div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">Against</th><th scope="col" class="num">Round</th><th scope="col">Side</th><th scope="col">Site</th><th scope="col">Result</th><th scope="col">Operators</th></tr></thead><tbody><tr><td>${prepWhen(x)}</td><td style="overflow-wrap:anywhere">${esc(x.foe||'—')}</td><td class="num">${x.r.round_number}</td><td>${SIDE[x.side]||'—'}</td><td style="overflow-wrap:anywhere">${esc(x.site||'—')}</td><td>${resTag(x.res)}</td><td><div id="prepops" class="row wrap" style="gap:6px 12px">${prepOpsH(x)}</div></td></tr></tbody></table></div><div id="prepbans">${prepBansH()}</div></section>`;
  const tn=`<section class="cd" style="gap:10px;margin-bottom:12px"><div><label for="prepti">Strat title</label><input id="prepti" class="fi" maxlength="120" value="${esc(d.title)}" placeholder="For example: Double hatch, Thermite on Games Room wall"${can?'':' readonly'}></div><div><label for="prepno">Notes</label><textarea id="prepno" class="fi" rows="4" maxlength="2000" placeholder="What they did this round"${can?'':' readonly'}>${esc(d.notes)}</textarea></div></section>`;
- const save=can?`<div class="row prsv" style="justify-content:flex-end;gap:10px"><span id="prepst" class="mu" style="font-size:12.5px" aria-live="polite">${d.dirty?'Unsaved changes':''}</span><button class="go" data-a="prepsaveround">Save round</button></div>`:'';
+ const save='';
  return head+info+`<div class="prg"><section class="cd" style="gap:10px;min-width:0" id="prepvodbox">${prepVodH()}</section>${tn.replace('margin-bottom:12px','')}</div><section class="cd" style="gap:10px;margin:12px 0" id="prepboard">${prepBoardH()}</section>`+save;
 }
 const prepRoundX=()=>prepRounds(true).find(o=>o.r.id===prep?.round);
 const prepPaint=(id,h)=>{const e=document.getElementById(id);if(e)e.innerHTML=h};
-function prepDirty(){const d=prep.rd;if(!d)return;d.dirty=true;const s=$('#prepst');if(s)s.textContent='Unsaved changes'}
+function prepDirty(){const d=prep.rd;if(!d)return;d.dirty=true;if(canEditS())asSoon('prepround',()=>prepRoundSave(NOB,1),1000)}
 // BANS are kept on the game, one attacker and one defender for each team
 function prepBanCols(x,m){const ours=scKeys(prepTeam()).has(norm(m.team))||sameName(m.team,x.who);return ours?{t:['our_atk_ban','our_def_ban'],f:['opp_atk_ban','opp_def_ban']}:{t:['opp_atk_ban','opp_def_ban'],f:['our_atk_ban','our_def_ban']}}
 function prepBansH(){
@@ -1843,17 +1864,17 @@ function prepBansH(){
  const c=prepBanCols(x,m),op=v=>v?`<span class="opr" style="font-size:12.5px">${opIcon(v)}${esc(v)}</span>`:'<span class="mu">—</span>';
  if(d?.banEdit){
   const sel=(id,v,side,lbl)=>`<div style="flex:1 1 150px;min-width:0"><label for="${id}">${lbl}</label><select id="${id}" class="fi" style="height:36px">${opOptions(v||'',side)}</select></div>`;
-  return `<div style="display:flex;flex-direction:column;gap:8px"><b style="font-size:13px">Banned operators in this game</b><div class="row wrap" style="gap:8px">${sel('pbta',m[c.t[0]],'attack',esc(x.who)+' banned (attacker)')}${sel('pbtd',m[c.t[1]],'defense',esc(x.who)+' banned (defender)')}${sel('pbfa',m[c.f[0]],'attack',esc(x.foe||'Opponent')+' banned (attacker)')}${sel('pbfd',m[c.f[1]],'defense',esc(x.foe||'Opponent')+' banned (defender)')}</div><div class="row" style="justify-content:flex-end;gap:8px"><button class="no" style="height:32px" data-a="prepbanedit">Cancel</button><button class="go" style="height:32px" data-a="prepbansave">Save bans</button></div></div>`;
+  return `<div style="display:flex;flex-direction:column;gap:8px"><b style="font-size:13px">Banned operators in this game</b><div class="row wrap" style="gap:8px">${sel('pbta',m[c.t[0]],'attack',esc(x.who)+' banned (attacker)')}${sel('pbtd',m[c.t[1]],'defense',esc(x.who)+' banned (defender)')}${sel('pbfa',m[c.f[0]],'attack',esc(x.foe||'Opponent')+' banned (attacker)')}${sel('pbfd',m[c.f[1]],'defense',esc(x.foe||'Opponent')+' banned (defender)')}</div><div class="row" style="justify-content:flex-end;gap:8px"><button class="no" style="height:32px" data-a="prepbanedit">Cancel</button><button class="go" style="height:32px" data-a="prepbansave">Done</button></div></div>`;
  }
  const any=[...c.t,...c.f].some(k=>m[k]);
  return `<div class="row wrap" style="gap:8px 18px;align-items:center"><b style="font-size:13px">Bans</b>${any?`<span class="row wrap" style="gap:6px 10px"><span class="mu" style="font-size:12.5px">${esc(x.who)}:</span>${op(m[c.t[0]])}${op(m[c.t[1]])}</span><span class="row wrap" style="gap:6px 10px"><span class="mu" style="font-size:12.5px">${esc(x.foe||'Opponent')}:</span>${op(m[c.f[0]])}${op(m[c.f[1]])}</span>`:'<span class="mu" style="font-size:12.5px">Not known for this game.</span>'}${can?`<button class="actx" data-a="prepbanedit">${any?'Edit bans':'Add bans'}</button>`:''}</div>`;
 }
-async function prepBanSave(b){
+async function prepBanSave(b,auto){
  const x=prepRoundX(),m=x&&prepMatch(x);if(!m)return;const c=prepBanCols(x,m),v=id=>$('#'+id)?.value||null;
  const row={[c.t[0]]:v('pbta'),[c.t[1]]:v('pbtd'),[c.f[0]]:v('pbfa'),[c.f[1]]:v('pbfd')};
  b.disabled=true;const r=await sb.from('scout_matches').update(row).eq('id',m.id).select().single();b.disabled=false;
  if(r.error)return toast('Could not save the bans: '+scErr(r.error));
- Object.assign(m,r.data);prep.rd.banEdit=false;prepPaint('prepbans',prepBansH());toast('Bans saved');
+ Object.assign(m,r.data);if(auto)return;prep.rd.banEdit=false;prepPaint('prepbans',prepBansH());toast('Bans saved');
 }
 // THE VOD plays right on the page, from where the round starts
 function prepVodH(){
@@ -1864,7 +1885,7 @@ function prepVodH(){
   :url?`<p style="font-size:13px">This VOD can't play inside the site (only YouTube and Twitch can). <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open the VOD</a></p>`
   :`<p class="mu" style="font-size:13px">${m?'No VOD is linked to this game yet.':'This round has no game in the Round Library, so a VOD can’t be linked to it.'}</p>`;
  const at=v?`<div class="row wrap" style="gap:8px;align-items:flex-end"><div><label for="prepat">Round starts at</label><input id="prepat" class="fi" style="width:120px;height:36px" placeholder="1:02:30" value="${esc(prepTf(d.vod_at))}"></div><button class="no" style="height:36px" data-a="prepjump">Go there</button></div>`:'';
- const link=can?`<details${url?'':' open'}><summary style="cursor:pointer;font-size:13px">${url?'Change the VOD link':'Add a VOD link'}</summary><div class="row wrap" style="gap:8px;margin-top:6px;align-items:center"><input id="prepvu" class="fi" type="url" maxlength="1000" style="flex:1 1 220px;height:36px" placeholder="https://www.youtube.com/watch?v=…" value="${esc(url)}" aria-label="VOD link"><button class="no" style="height:36px" data-a="prepvodsave">Save link</button></div><p class="mu" style="font-size:12px;margin-top:4px">The link is saved on the game, so every round of it uses the same VOD.</p></details>`:'';
+ const link=can?`<details${url?'':' open'}><summary style="cursor:pointer;font-size:13px">${url?'Change the VOD link':'Add a VOD link'}</summary><div class="row wrap" style="gap:8px;margin-top:6px;align-items:center"><input id="prepvu" class="fi" type="url" maxlength="1000" style="flex:1 1 220px;height:36px" placeholder="https://www.youtube.com/watch?v=…" value="${esc(url)}" aria-label="VOD link"><button class="no svb" style="height:36px" data-a="prepvodsave">Save link</button></div><p class="mu" style="font-size:12px;margin-top:4px">The link is saved on the game, so every round of it uses the same VOD.</p></details>`:'';
  return `<h3 class="oph">VOD</h3>${player}${at}${link}`;
 }
 async function prepVodSave(b){
@@ -1909,7 +1930,7 @@ document.addEventListener('pointerup',e=>{
 });
 document.addEventListener('pointercancel',pdEnd);
 document.addEventListener('input',e=>{const d=prep?.rd;if(!d)return;if(e.target.id==='prepti'){d.title=e.target.value;prepDirty()}else if(e.target.id==='prepno'){d.notes=e.target.value;prepDirty()}else if(e.target.id==='prepat')prepDirty()});
-async function prepRoundSave(b){
+async function prepRoundSave(b,auto){
  const x=prepRoundX(),d=prep.rd;if(!x||!d)return;
  const at=$('#prepat')?prepT($('#prepat').value):d.vod_at;if(Number.isNaN(at))return toast('Write the round start like 12:34 or 1:02:30');d.vod_at=at;
  const l=prepLog(x),row={owner_team_id:prep.tid,scout_round_id:x.r.id,team_name:l?.team_name||x.who,map:x.map,title:d.title.trim().slice(0,120),notes:d.notes.trim().slice(0,2000),pins:d.pins.slice(0,15),vod_at:at};
@@ -1918,8 +1939,8 @@ async function prepRoundSave(b){
  b.disabled=false;b.textContent='Save round';
  if(r.error)return toast('Could not save: '+prepErr(r.error));
  const i=prep.logs.findIndex(g=>g.id===r.data.id);if(i<0)prep.logs.push(r.data);else prep.logs[i]=r.data;
- d.dirty=false;const s=$('#prepst');if(s)s.textContent='Saved';const h=document.querySelector('main h1');if(h)h.textContent=d.title.trim()||`Round ${x.r.round_number} vs ${x.foe||'—'}`;
- toast(`Saved round ${x.r.round_number} on ${x.map}.`);
+ d.dirty=false;const h=document.querySelector('main h1');if(h)h.textContent=d.title.trim()||`Round ${x.r.round_number} vs ${x.foe||'—'}`;
+ if(!auto)toast(`Saved round ${x.r.round_number} on ${x.map}.`);
 }
 // DRONE PREP: typing in the drone rooms for one attack round
 function prepOpen(id){
@@ -1930,11 +1951,11 @@ function prepOpen(id){
  const inp=(id,v,lbl,extra='')=>`<input id="${id}" class="fi" list="preprooms" maxlength="80" value="${esc(v)}" aria-label="${esc(lbl)}" placeholder="Room"${extra}>`;
  const drones=l?.drones||[],dn=Math.max(6,drones.length+2);
  const main=`<p class="mu" style="font-size:12.5px">Type the room each drone is in at 2:40. Rooms used before on ${esc(x.map)} are suggested as you type.</p><div id="prepdl" class="ov" style="gap:6px;grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr))">${Array.from({length:dn},(_,j)=>inp('pdr'+j,drones[j]||'','Drone '+(j+1),' data-pdr="1"')).join('')}</div><div><button class="no" style="height:30px" data-a="prepadd">Add another drone</button></div>`;
- const d=$('#dlg');d.className='dkw';d.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px"><div class="row" style="justify-content:space-between;gap:8px"><div style="min-width:0"><h2 class="serif" style="font-size:20px;overflow-wrap:anywhere">Round ${x.r.round_number} · ${esc(x.who)} vs ${esc(x.foe||'—')}</h2><p class="mu" style="font-size:12.5px">${prepWhen(x)} · ${esc(x.map)} · ${SIDE[x.side]||''}${x.site?' · '+esc(x.site):''} · ${x.res==='W'?'Won':x.res==='L'?'Lost':'Result not known'}</p></div><button class="no" style="height:28px" data-a="prepclose">Close</button></div>${rooms}${main}<div class="row" style="justify-content:flex-end;gap:8px"><button class="no" data-a="prepclose">Cancel</button><button class="go" data-a="prepsave">Save</button></div></div>`;
+ const d=$('#dlg');d.className='dkw';d.innerHTML=`<div style="display:flex;flex-direction:column;gap:10px"><div class="row" style="justify-content:space-between;gap:8px"><div style="min-width:0"><h2 class="serif" style="font-size:20px;overflow-wrap:anywhere">Round ${x.r.round_number} · ${esc(x.who)} vs ${esc(x.foe||'—')}</h2><p class="mu" style="font-size:12.5px">${prepWhen(x)} · ${esc(x.map)} · ${SIDE[x.side]||''}${x.site?' · '+esc(x.site):''} · ${x.res==='W'?'Won':x.res==='L'?'Lost':'Result not known'}</p></div><button class="no" style="height:28px" data-a="prepclose">Close</button></div>${rooms}${main}<div class="row" style="justify-content:flex-end;gap:8px"><button class="no" data-a="prepclose">Cancel</button><button class="go" data-a="prepsave">Done</button></div></div>`;
  if(!d.open)d.showModal();
  d.querySelector('input.fi')?.focus();
 }
-async function prepSave(b){
+async function prepSave(b,auto){
  const f=prep.dlg;if(!f)return;const x=prepRounds(true).find(o=>o.r.id===f.id);if(!x)return;
  const row={owner_team_id:prep.tid,scout_round_id:f.id,team_name:f.team,map:x.map,drones:[...document.querySelectorAll('[data-pdr]')].map(i=>i.value.trim().slice(0,80)).filter(Boolean).slice(0,20)};
  b.disabled=true;b.textContent='Saving…';
@@ -1942,7 +1963,7 @@ async function prepSave(b){
  b.disabled=false;b.textContent='Save';
  if(r.error)return toast('Could not save: '+prepErr(r.error));
  const i=prep.logs.findIndex(l=>l.id===r.data.id);if(i<0)prep.logs.push(r.data);else prep.logs[i]=r.data;
- prep.dlg=null;$('#dlg').close();toast(`Saved round ${x.r.round_number} on ${x.map}.`);render();
+ if(auto)return;prep.dlg=null;$('#dlg').close();render();
 }
 // ---------- ADMIN: MAP BLUEPRINTS ----------
 // Pictures of each floor, or a PDF where each page is a floor. Shared by every team's Anti-Strat pages.
@@ -2044,7 +2065,7 @@ function stratForm(){
  <div style="${half}"><label for="sts">Side</label><select id="sts" class="fi" required><option value="">Choose a side</option>${Object.keys(SIDE).map(k=>`<option value="${k}"${k===(x?.side||(!x&&stra.pre?.side))?' selected':''}>${SIDE[k]}</option>`).join('')}</select></div></div>
  <div><label for="stu">Google Slides link</label><input id="stu" class="fi" required inputmode="url" value="${esc(x?.slides_url||'')}" placeholder="https://docs.google.com/presentation/d/…"></div>
  <div><label for="stn">Notes</label><textarea id="stn" class="fi ta">${esc(x?.notes||'')}</textarea></div>
- <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="stcancel">Cancel</button><button class="go">${x?'Save changes':'Add strat'}</button></div></form>`;
+ <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="stcancel">Cancel</button><button class="go${x?' svb':''}">${x?'Save changes':'Add strat'}</button></div></form>`;
 }
 function stratView(x){
  const i=slidesInfo(x.slides_url),can=canEditSch();
@@ -2259,7 +2280,7 @@ function soForm(){
  <div><label for="solp">Liquipedia link</label><input id="solp" class="fi" inputmode="url" value="${esc(lpLinkOf(t?.source_ids?.liquipedia||''))}" placeholder="https://liquipedia.net/rainbowsix/Cloud9"><p class="mu" style="font-size:12.5px;margin-top:4px">Used by Pull everything, so this team's name here doesn't have to match Liquipedia.</p></div>
  ${aliasField('soa',t?.aliases)}
  ${t?`<div><label for="sop">Players, one per line</label><textarea id="sop" class="fi ta">${esc((t.players||[]).join('\n'))}</textarea></div>`:''}
- <div class="row wrap" style="justify-content:space-between"><span>${t?'<button type="button" class="no" data-a="sodel">Stop tracking</button>':''}</span><span class="row"><button type="button" class="no" data-a="socancel">Cancel</button><button class="go">${t?'Save changes':'Add opponent'}</button></span></div></form>`;
+ <div class="row wrap" style="justify-content:space-between"><span>${t?'<button type="button" class="no" data-a="sodel">Stop tracking</button>':''}</span><span class="row"><button type="button" class="no" data-a="socancel">Cancel</button><button class="go${t?' svb':''}">${t?'Save changes':'Add opponent'}</button></span></div></form>`;
 }
 async function saveSo(form,qt){
  const btn=form.querySelector('.go'),id=sco.form.id,color=normHex($('#soc').value),f=$('#sou').files[0],row={region:$('#sor').value,league:$('#sol').value.trim()};
@@ -2529,7 +2550,7 @@ function oTabPl(t){
  <div class="row wrap" style="gap:6px"><input id="pladdn" class="fi" style="flex:2 1 160px;min-width:0;height:32px" maxlength="60" placeholder="Player IGN" aria-label="New player name"><select id="pladdr" class="fi" style="flex:0 1 110px;height:32px" aria-label="New player role">${PL_ROLES.map(r=>`<option>${r}</option>`).join('')}</select><button class="go" style="height:32px" data-a="pladd">+ Add</button></div>
  <div class="row wrap" style="justify-content:space-between;gap:6px;padding-top:6px;border-top:1px solid var(--bd)"><span class="row wrap" style="gap:6px">${others.length?`<select id="plinto" class="fi" style="width:auto;max-width:200px;height:32px" aria-label="Team to merge into"><option value="">Merge into…</option>${others.map(o=>`<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select><button class="no" style="height:32px" data-a="plinto">Merge</button>`:''}<button class="no" style="height:32px;color:#ff8a8a" data-a="sodelp" data-id="${t.id}">Delete team</button></span><button class="go" style="height:32px" data-a="plsave">Done</button></div></section>`;
 }
-function oTabNotes(t){return `<section class="cd" data-dirty data-auto="scn" style="gap:10px"><label for="scn" style="font-size:15px;font-weight:600;color:var(--tx);margin:0">Coach notes</label><p class="mu">Only your team's staff can see these.</p><textarea id="scn" class="fi ta" style="min-height:200px">${esc(t.coach_notes||'')}</textarea><div class="row" style="justify-content:flex-end"><button class="go" data-a="scnote">Save notes</button></div></section>`}
+function oTabNotes(t){return `<section class="cd" data-dirty data-auto="scn" style="gap:10px"><label for="scn" style="font-size:15px;font-weight:600;color:var(--tx);margin:0">Coach notes</label><p class="mu">Only your team's staff can see these.</p><textarea id="scn" class="fi ta" style="min-height:200px">${esc(t.coach_notes||'')}</textarea><div class="row" style="justify-content:flex-end"><button class="go svb" data-a="scnote">Save notes</button></div></section>`}
 function scDraw(){
  if(sco?.page!=='opp'||!['over','ops'].includes(sco.tab)||sco.form||sco.chartFail||!$('main canvas'))return;
  if(!window.Chart){
@@ -2804,7 +2825,7 @@ function teamSetV(){
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="tsr">Region</label><select id="tsr" class="fi">${[...new Set([...REG,...(cur.region?[cur.region]:[])])].map(r=>`<option${cur.region===r?' selected':''}>${esc(r)}</option>`).join('')}</select></div><div style="${half}"><label for="tsl">League</label><input id="tsl" class="fi" maxlength="80" value="${esc(cur.league||'')}"></div></div>
  <div><span class="lb">Team color</span><div class="row wrap" style="gap:10px">${COL.map(x=>`<button type="button" class="sw" data-a="tsw" data-c="${x}" style="background:${x}" aria-label="Color ${x}" aria-pressed="${x===c}"></button>`).join('')}</div><div style="margin-top:12px;max-width:220px"><label for="tsx">Or enter a hex code</label><input id="tsx" class="fi" data-c="tsx" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c)}"></div></div>
  <div><label for="tsf">Logo (PNG or SVG, up to 2 MB)</label><div class="row wrap"><span id="tsp">${tile(cur,56)}</span><input id="tsf" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" data-c="tsf" style="min-width:0;max-width:100%"></div>${cur.logo_url?'<label class="row" style="gap:8px;margin-top:8px;color:var(--tx)"><input id="tsd" type="checkbox">Remove the current logo</label>':''}</div>
- <div class="row wrap" style="justify-content:space-between"><span>${staff()?`<button type="button" class="no" style="color:#ff8a8a" data-a="tdel" data-id="${cur.id}">Delete team</button>`:''}</span><span class="row"><button type="button" class="no" data-a="sdash">Cancel</button><button class="go">Save changes</button></span></div></form>
+ <div class="row wrap" style="justify-content:space-between"><span>${staff()?`<button type="button" class="no" style="color:#ff8a8a" data-a="tdel" data-id="${cur.id}">Delete team</button>`:''}</span><span class="row"><button type="button" class="no" data-a="sdash">Cancel</button><button class="go svb">Save changes</button></span></div></form>
  <section class="cd" id="rosc" style="max-width:720px;margin-top:16px">${rostInner()}</section>`;
 }
 function rostInner(){
@@ -2939,7 +2960,7 @@ function oTabRanks(t,rows){
  ${vetoBanB(scKeys(t),sco.v.filter(r=>inDR(r.veto_date)),t.name)}<details class="cd"><summary style="cursor:pointer;font-weight:600">Rating settings</summary><form data-s="srate" data-dirty data-auto="srate" style="display:flex;flex-direction:column;gap:14px;margin-top:12px"><p class="mu">These apply to every opponent on ${esc(cur.name)}.</p>
  <div class="ov" style="gap:16px"><div><span class="lb">Map weight</span>${list.map(e=>e.name).map(m=>`<div class="row" style="justify-content:space-between;padding:3px 0"><label for="rw-${esc(m)}" style="margin:0;color:var(--tx);font-size:14px">${esc(m)}</label><input id="rw-${esc(m)}" class="fi" style="width:90px;height:34px;padding:0 8px" inputmode="decimal" data-w="${esc(m)}" value="${esc(sco.st?.map_weights?.[m]??'1')}"></div>`).join('')}</div>
  <div><span class="lb">Rating factor points</span>${RATE_LABEL.map(x=>`<div class="row" style="justify-content:space-between;padding:3px 0"><label for="rf-${x[0]}" style="margin:0;color:var(--tx);font-size:14px">${x[1]}</label><input id="rf-${x[0]}" class="fi" style="width:90px;height:34px;padding:0 8px" inputmode="decimal" data-f="${x[0]}" value="${esc(f[x[0]])}"></div>`).join('')}</div></div>
- <div class="row" style="justify-content:flex-end"><button class="go">Save settings</button></div></form></details></div>`;
+ <div class="row" style="justify-content:flex-end"><button class="go svb">Save settings</button></div></form></details></div>`;
 }
 async function saveRate(form,qt){
  const num=v=>{const n=parseFloat(v);return Number.isFinite(n)?n:null},w={},f={};let bad=false;
@@ -3025,7 +3046,7 @@ function rdHtml(){
  <p class="mu" style="margin-bottom:10px;overflow-wrap:anywhere">${esc(g.team)} vs ${esc(g.opponent)}, ${esc(g.map)}, ${esc(fmtD(g.match_date))}</p>
  <div class="row wrap" style="gap:10px;margin-bottom:10px;align-items:flex-end">${fx('rdn','Round #',`<input id="rdn" class="fi" inputmode="numeric" value="${o.round_number}"${f.stats.length?' disabled title="This comes from the replay"':''}>`)}${fx('rds',`${esc(o.team)} side`,`<select id="rds" class="fi">${[['','Not set'],['Attack','Attack'],['Defense','Defense']].map(x=>`<option value="${x[0]}"${startNorm(o.side)===norm(x[0])?' selected':''}>${x[1]}</option>`).join('')}</select>`)}${fx('rdw','Won by',`<select id="rdw" class="fi"><option value="">Not set</option><option value="W"${res==='W'?' selected':''}>${esc(o.team)}</option><option value="L"${res==='L'?' selected':''}>${esc(o.opponent)}</option></select>`)}${fx('rdsite','Site',`<input id="rdsite" class="fi" maxlength="120" list="rdsites" value="${esc(o.site||'')}"><datalist id="rdsites">${sites.map(s=>`<option value="${esc(s)}">`).join('')}</datalist>`)}</div>
  <div class="ops2" style="margin-bottom:12px">${tm.map(team).join('')}</div>
- <div class="row wrap" style="justify-content:space-between;gap:8px">${r?'<button class="no" data-a="rddel">Delete round</button>':'<span></span>'}<span class="row" style="gap:8px"><button class="no" data-a="rdclose">Cancel</button><button class="go" data-a="rdsave">Save round</button></span></div>`;
+ <div class="row wrap" style="justify-content:space-between;gap:8px">${r?'<button class="no" data-a="rddel">Delete round</button>':'<span></span>'}<span class="row" style="gap:8px"><button class="no" data-a="rdclose">Cancel</button><button class="go${sco.rd?.id?' svb':''}" data-a="rdsave">${sco.rd?.id?'Save round':'Add round'}</button></span></div>`;
 }
 async function rdSave(b,qt){
  const f=sco.rd,g=sco.m.find(x=>x.id===f.gid),r=f.id?sco.r.find(x=>x.id===f.id):null,d=$('#dlg'),v=s=>d.querySelector(s).value.trim();
@@ -3173,7 +3194,7 @@ function matchB(r){
  ${box(f('ot_start','OT Side')+f('vod_link','VOD link'))}
  ${box(f('r6esports_id','Official match ID')+f('siegegg_id','siege.gg match ID'))}
  <div><span class="lb">Rounds won on each side (optional)</span>${box(n('t1_atk','T1 ATK')+n('t1_def','T1 DEF')+n('t1_ot_atk','T1 OT ATK')+n('t1_ot_def','T1 OT DEF'))}<div style="height:8px"></div>${box(n('t2_atk','T2 ATK')+n('t2_def','T2 DEF')+n('t2_ot_atk','T2 OT ATK')+n('t2_ot_def','T2 OT DEF'))}</div>
- <div class="row wrap" style="justify-content:space-between"><button type="button" class="no" data-a="smdel">Delete game</button><span class="row"><button type="button" class="no" data-a="smback">Cancel</button><button class="go">Save changes</button></span></div></form>${rdB(r)}`;
+ <div class="row wrap" style="justify-content:space-between"><button type="button" class="no" data-a="smdel">Delete game</button><span class="row"><button type="button" class="no" data-a="smback">Cancel</button><button class="go svb">Save changes</button></span></div></form>${rdB(r)}`;
 }
 async function saveMatch(form,qt){
  const row={},btn=form.querySelector('.go'),id=sco.matchId;
@@ -3665,7 +3686,7 @@ const A={
  scimpgo:async(d,b)=>{const p=sco.imp,L=LIB[p.kind],rows=p.rows.filter(x=>x.status==='new').map(x=>({...x.r,owner_team_id:sco.tid}));b.disabled=true;
   for(let i=0;i<rows.length;i+=500){const r=await sb.from(L.table).upsert(rows.slice(i,i+500),{onConflict:L.conflict,ignoreDuplicates:true});if(r.error){b.disabled=false;return toast(scErr(r.error))}}
   const f=await allRows(()=>sb.from(L.table).select('*').eq('owner_team_id',sco.tid).order('id'));if(!f.error)sco[p.kind]=f.data;const msg='Added '+plural(rows.length,'row')+', skipped '+plural(p.dups,'duplicate')+(p.bad?' and '+plural(p.bad,'row')+' with errors':'');sco.imp=null;render();toast(msg)},
- scvod:d=>{const r=sco.m.find(x=>x.id===d.id),g=$('#dlg');g.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:6px">VOD link</h2><p class="mu" style="margin-bottom:12px;overflow-wrap:anywhere">${esc(fmtD(r.match_date))}: ${esc(r.team)} vs ${esc(r.opponent)}, ${esc(r.map)}</p><label for="vodu">VOD link</label><input id="vodu" class="fi" inputmode="url" value="${esc(r.vod_link||'')}" placeholder="https://…"><div class="row" style="margin-top:16px;justify-content:flex-end"><button class="no" data-a="close">Cancel</button><button class="go" data-a="scvodsave" data-id="${r.id}">Save</button></div>`;g.showModal()},
+ scvod:d=>{const r=sco.m.find(x=>x.id===d.id),g=$('#dlg');g.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:6px">VOD link</h2><p class="mu" style="margin-bottom:12px;overflow-wrap:anywhere">${esc(fmtD(r.match_date))}: ${esc(r.team)} vs ${esc(r.opponent)}, ${esc(r.map)}</p><label for="vodu">VOD link</label><input id="vodu" class="fi" inputmode="url" value="${esc(r.vod_link||'')}" placeholder="https://…"><div class="row" style="margin-top:16px;justify-content:flex-end"><button class="no" data-a="close">Cancel</button><button class="go svb" data-a="scvodsave" data-id="${r.id}">Save</button></div>`;g.showModal()},
  scvodsave:async(d,b)=>{const v=$('#vodu').value.trim();if(v&&!/^https?:\/\/\S+$/i.test(v))return toast('Paste a full link starting with https://, or leave it empty to remove the VOD');b.disabled=true;const r=await sb.from('scout_matches').update({vod_link:v}).eq('id',d.id).select().single();b.disabled=false;if(r.error)return toast(scErr(r.error));Object.assign(sco.m.find(x=>x.id===d.id),r.data);$('#dlg').close();render();toast('VOD saved')},
  scrow:d=>askDel('Delete this row?','This permanently removes it from your '+LIB[sco.kind].title+'.','scrowyes',d.id),
  scrowyes:async(d,b)=>{b.disabled=true;const r=await sb.from(LIB[sco.kind].table).delete().eq('id',d.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast(r.error?scErr(r.error):'You do not have permission to make that change.');sco[sco.kind]=sco[sco.kind].filter(x=>x.id!==d.id);render();toast('Row deleted')},
@@ -3741,7 +3762,7 @@ const A={
  mode:()=>{mode=mode==='in'?'up':'in';render()},
  open:d=>{cur=teams.find(t=>t.id===d.id);viewing=true;view='dash';render()},
  pick:d=>{sel=d.id;render()},
- settings:()=>{const d=$('#dlg');d.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:14px">Settings</h2><label for="dn">Display name</label><input id="dn" class="fi" value="${esc(me.display_name||'')}"><div class="row" style="margin-top:16px"><button class="go" data-a="savename">Save</button><button class="no" data-a="out">Sign out</button><button class="no" data-a="close">Close</button></div>`;d.showModal()},
+ settings:()=>{const d=$('#dlg');d.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:14px">Settings</h2><label for="dn">Display name</label><input id="dn" class="fi" value="${esc(me.display_name||'')}"><div class="row" style="margin-top:16px"><button class="go" data-a="savename">Done</button><button class="no" data-a="out">Sign out</button><button class="no" data-a="close">Close</button></div>`;d.showModal()},
  profile:()=>{const d=$('#dlg');d.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:10px">${esc(me.display_name||me.email)}</h2><p class="mu">${esc(me.email)}</p><p style="margin:12px 0">Site role: ${me.site_role}</p>${teams.filter(t=>mem[t.id]).map(t=>`<p>${esc(t.name)}: ${mem[t.id].map(r=>R[r]).join(', ')||'no role'}</p>`).join('')}<button class="no" style="margin-top:16px" data-a="close">Close</button>`;d.showModal()},
  close:()=>$('#dlg').close(),
  savename:async()=>{const r=await sb.rpc('update_my_name',{n:$('#dn').value});r.error?toast(r.error.message):(toast('Saved'),$('#dlg').close(),load())},
