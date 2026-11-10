@@ -1034,6 +1034,7 @@ function rxOpen(){
  if(!rx||(rx.tid!==cur.id&&!rxBusy()))rx={tid:cur.id,recs:[],skipped:0,rc:{},rex:{},rpick:{},rp:null,rerr:'',rteams:null,rroster:[]};
  return rx.tid===cur.id?rx:null;
 }
+const recUp=k=>String(k).split('|')[0].split('/').slice(0,-1).join('/');
 function recKey(x){const p=x.path.split('/'),dir=p.slice(0,-1).join('/'),m=/^(.*?)[-_ ]?R\d+\.rec$/i.exec(x.name),pre=m?m[1]:'';return dir||pre?dir+'|'+pre:'|'+x.name}
 // A match restarted part-way (a technical pause or a server problem) carries on in a new Match- folder, with a new match id,
 // starting from the round it stopped at. A folder whose first round is not round 1 joins the folder before it that has the
@@ -1041,7 +1042,7 @@ function recKey(x){const p=x.path.split('/'),dir=p.slice(0,-1).join('/'),m=/^(.*
 function recJoin(list){
  list.forEach(x=>x.keys=[x.key]);
  const info=x=>{const r=x.files.filter(y=>y.res?.ok&&y.res.teams?.length===2).sort((a,b)=>a.res.roundNumber-b.res.roundNumber)[0]?.res;if(!r)return null;return{r,dir:x.key.split('|')[0].split('/').slice(0,-1).join('/'),map:mapCanon(r.map||'')||norm(r.map||''),names:r.teams.map(t=>recCanon(t.name||''))}};
- const last=new Map(),gone=new Set();
+ const last=new Map(),gone=new Set(),endOf=g=>{const r=g.files.filter(y=>y.res?.ok&&y.res.teams?.length===2).sort((a,b)=>b.res.roundNumber-a.res.roundNumber)[0]?.res;return r?r.teams.map(t=>t.score||0):[0,0]};
  [...list].sort((a,b)=>a.key.localeCompare(b.key)).forEach(x=>{
   const i=info(x);if(!i||!i.dir)return;
   const sig=i.dir+'|'+i.map+'|'+[...i.names].sort().join('|'),to=last.get(sig);
@@ -1049,6 +1050,8 @@ function recJoin(list){
    // the teams can come out the other way round after a restart
    if(i.names[0]!==i.names[1]&&i.names[0]===to.names[1]&&i.names[1]===to.names[0])x.files.forEach(y=>{if(y.res?.ok&&!y.res._sw){y.res._sw=1;y.res.teams.reverse();(y.res.players||[]).forEach(p=>{p.teamIndex^=1});if(y.res.winningTeam===0||y.res.winningTeam===1)y.res.winningTeam^=1}});
    to.g.files.push(...x.files);to.g.keys.push(x.key);to.g.merged=true;gone.add(x);return}
+  // the map was started again from round 1: the unfinished try before it is not a game
+  if(to&&i.r.roundNumber===1&&!to.g.files.some(y=>!y.res)){const e=endOf(to.g);if(!gameDone(e[0],e[1])){x.drop=[...new Set([...(to.g.drop||[]),...to.g.files.map(y=>y.res?.matchId).filter(Boolean)])];gone.add(to.g)}}
   last.set(sig,{g:x,names:i.names});
  });
  return list.filter(x=>!gone.has(x));
@@ -1058,16 +1061,24 @@ function recGroups(){
  rx.recs.forEach(x=>{const k=recKey(x);if(!g.has(k)){const p=x.path.split('/');g.set(k,{key:k,label:p.length>1?p[p.length-2]:k.split('|')[1]||x.name,files:[]})}g.get(k).files.push(x)});
  return recJoin([...g.values()]);
 }
-const recSummary=g=>{const refs=g.files.map(x=>x.res),m=rx.rsum||(rx.rsum=new Map()),c=m.get(g.key),dn=id=>(rx.rex?.[id]?.done||[]).length;if(c&&c.dn===dn(c.s.id)&&c.refs.length===refs.length&&c.refs.every((x,i)=>x===refs[i]))return c.s;const v=recSummarize(g);m.set(g.key,{refs,s:v,dn:dn(v.id)});return v};
+const recSummary=g=>{const refs=g.files.map(x=>x.res),m=rx.rsum||(rx.rsum=new Map()),c=m.get(g.key),dn=s=>(s.cands||[s.id]).map(id=>{const e=rx.rex?.[id];return e?(e.row?.source_name||'')+':'+(e.done||[]).length:'-'}).join(',')+'|'+(g.drop||[]).join(',');if(c&&c.dn===dn(c.s)&&c.refs.length===refs.length&&c.refs.every((x,i)=>x===refs[i]))return c.s;const v=recSummarize(g);m.set(g.key,{refs,s:v,dn:dn(v)});return v};
 function recSummarize(g){
  const fails=g.files.filter(x=>x.res&&!x.res.ok),warn=fails.map(x=>`${x.name}: ${x.res.error}`),by=new Map();
  const src=new Map(),repl=new Set();
  g.files.filter(x=>x.res?.ok).forEach(x=>{const n=x.res.roundNumber;if(by.has(n)){if(g.merged&&src.get(n)!==recKey(x)){by.set(n,x.res);src.set(n,recKey(x));repl.add(n)}else warn.push(`Round ${n} appears twice, so ${x.name} was ignored.`)}else{by.set(n,x.res);src.set(n,recKey(x))}});
- const rounds=[...by.values()].sort((a,b)=>a.roundNumber-b.roundNumber),s={g,rounds,warn,fails,pending:g.files.some(x=>!x.res),replayed:repl};
+ const pending=g.files.some(x=>!x.res),inf=[];
+ if(!pending&&!fails.length&&by.size){const top=Math.max(...by.keys());for(let n=1;n<top;n++){if(by.has(n))continue;let h=n;while(!by.has(h+1))h++;
+  const nx=by.get(h+1),pv=by.get(n-1),end=pv?[0,1].map(i=>pv.teams[i]?.score||0):[0,0],st=[0,1].map(i=>nx.teams[i]?.startingScore||0),d=[st[0]-end[0],st[1]-end[1]],len=h-n+1;
+  if(nx.teams?.length===2&&(!pv||pv.teams?.length===2)&&d[0]>=0&&d[1]>=0&&d[0]+d[1]===len&&(!d[0]||!d[1])){const w=d[0]?0:1;
+   for(let k=n;k<=h;k++){const o=k-n;by.set(k,{ok:true,inferred:true,roundNumber:k,matchId:nx.matchId,map:nx.map,timestamp:(pv||nx).timestamp,site:'',warnings:[],players:[],winningTeam:w,teams:[0,1].map(i=>({name:nx.teams[i].name,startingScore:end[i]+(i===w?o:0),score:end[i]+(i===w?o+1:0),role:pv&&pv.teams[i]?.role===nx.teams[i].role?nx.teams[i].role:''}))});inf.push(k)}}
+  n=h}}
+ if(inf.length)warn.push(`${inf.length===1?'Round '+inf[0]+' has':'Rounds '+rangeList(inf)+' have'} no replay file (the match was restarted). Who won ${inf.length===1?'it':'them'} comes from the score, so ${inf.length===1?'it is':'they are'} saved with the winner but no operators or player stats.`);
+ const rounds=[...by.values()].sort((a,b)=>a.roundNumber-b.roundNumber),s={g,rounds,warn,fails,pending,replayed:repl};
  if(!rounds.length)return s;
  const ids=[...new Set(rounds.map(r=>r.matchId).filter(Boolean))],mf=mapFix(rounds[0].map,g.files.map(x=>x.path));
  s.mixed=ids.length>1&&!g.merged;if(s.mixed)warn.push('These files come from more than one match. Put each match in its own folder, then try again.');
- s.ids=ids;s.id=(g.merged?g.files.find(x=>x.res?.ok&&x.res.matchId)?.res.matchId:ids[0])||g.label;s.map=mf.map;s.mapInfo=mf;s.names=[0,1].map(i=>rounds[0].teams[i]?.name||'Team '+(i+1));
+ s.ids=ids;const first=(g.merged?g.files.find(x=>x.res?.ok&&x.res.matchId)?.res.matchId:ids[0])||g.label;s.drop=(g.drop||[]).filter(x=>!ids.includes(x));s.cands=[first,...ids.filter(x=>x!==first),...s.drop];
+ {const rex=rx?.rex||{},lib=s.cands.find(x=>rex[x]&&rex[x].row&&rex[x].row.source_name!=='Replay');s.id=lib||(rex[first]?first:s.cands.find(x=>rex[x]))||first;s.reuse=s.drop.includes(s.id)}s.map=mf.map;s.mapInfo=mf;s.names=[0,1].map(i=>rounds[0].teams[i]?.name||'Team '+(i+1));
  const last=rounds[rounds.length-1];s.score=[0,1].map(i=>last.teams[i]?.score||0);s.max=last.roundNumber;
  s.date=(rounds[0].timestamp||'').slice(0,10)||(/(\d{4}-\d{2}-\d{2})/.exec(g.files[0].name)||[])[1]||today();
  const tr=rx?.trim?.get(g.key),dn=new Set(rx?.rex?.[s.id]?.done||[]),miss=[];for(let i=1;i<s.max;i++)if(!by.has(i)&&!tr?.has(i)&&!dn.has(i))miss.push(i);s.gaps=miss.length>0;s.part=Array.from({length:s.max},(_,i)=>i+1).some(i=>!by.has(i));
@@ -1089,10 +1100,10 @@ function recDupH(g,s,c,dups){
  return `<div class="cd" role="alert" style="gap:10px;padding:10px 12px;border-color:#ff8a8a"><b style="font-weight:600"><span aria-hidden="true">⚠</span> The same operator is listed twice in a round. Pick the right operator for each player to save.</b>${dups.map(x=>{const bad=new Set(x.d.map(o=>norm(opCanon(o))));return `<div style="display:flex;flex-direction:column;gap:4px"><span>Round ${x.r.roundNumber}, ${esc(s.names[x.i])}: ${esc(x.d.join(' and '))} twice</span>${x.ps.filter(p=>bad.has(norm(opCanon(recOp(c,x.r,p))))).map(p=>sel(x.r,p)).join('')}</div>`}).join('')}</div>`;
 }
 // Replays save themselves: each match once its teams are known, every few files while it is being read, and whatever was read if reading stops
-const recDone=(a,s)=>{const d=new Set(a.rex?.[s.id]?.done||[]),ok=a.replOk?.[s.id];(s.replayed||[]).forEach(n=>{if(!ok?.has(n))d.delete(n)});return d};
+const recDone=(a,s)=>{if(s.reuse)return new Set();const d=new Set(a.rex?.[s.id]?.done||[]),ok=a.replOk?.[s.id];(s.replayed||[]).forEach(n=>{if(!ok?.has(n))d.delete(n)});return d};
 function recCan(a,key){
  if(rx!==a)return false;const gs=recGroups(),g=gs.find(x=>x.keys.includes(key));if(!g)return false;const s=recSummary(g);if(!s.rounds.length||s.mixed)return false;
- if(!g.merged&&s.rounds[0].roundNumber>1){const up=x=>x.key.split('|')[0].split('/').slice(0,-1).join('/'),d=up(g);if(d&&gs.some(o=>o!==g&&up(o)===d&&!o.files.some(y=>y.res)))return false}
+ {const d=recUp(g.key);if(d&&a.recs.some(y=>!y.res&&!g.files.includes(y)&&recUp(recKey(y))===d))return false}
  const c=recRc(key),ex=a.rex?.[s.id],done=recDone(a,s);if(!s.rounds.some(r=>!done.has(r.roundNumber))||recDups(s,c,done).length||s.mapInfo?.unknown)return false;
  return !!ex||recReady(recSides(s,c));
 }
@@ -1245,7 +1256,7 @@ async function recRun(){
  // each lane reads one match at a time with its own parser, so several matches are read side by side
  const lane=async()=>{
   const q={};p.lanes.push(q);let key=null;
-  const let_go=()=>{if(key===null)return;taken.delete(key);q.w?.terminate();q.w=null;if(a.rp===p&&rx===a)recAutoKey(a,key);key=null}; // memory only comes back with a fresh parser
+  const let_go=()=>{if(key===null)return;taken.delete(key);q.w?.terminate();q.w=null;if(a.rp===p&&rx===a){recAutoKey(a,key);const d=recUp(key);if(d)recGroups().filter(o=>!o.keys.includes(key)&&recUp(o.key)===d).forEach(o=>recAutoKey(a,o.key))}key=null}; // memory only comes back with a fresh parser
   while(a.rp===p){
    let x=key!==null&&a.recs.find(y=>!y.res&&!y.busy&&recKey(y)===key);
    if(!x){let_go();x=a.recs.find(y=>!y.res&&!y.busy&&!taken.has(recKey(y)));if(!x){if(taken.size||a.zipping>0){tick();await nap(400);continue}break}key=recKey(x);taken.add(key)}
@@ -1279,6 +1290,7 @@ const recGoodAdd=(id,l)=>{if(!l.length)return;const m=recGoodAll();m[id]=[...new
 // A match already saved, with every round in its folder: drop it from the run without reading the other rounds
 function recAlready(a,k){
  if(rx!==a||a.sfix?.has(k))return false;const g=recGroups().find(y=>y.keys.includes(k));if(!g)return false;
+ {const d=recUp(g.key);if(d&&a.recs.some(y=>!g.files.includes(y)&&recUp(recKey(y))===d))return false}
  const read=g.files.filter(y=>y.res?.ok);if(!read.length||read.some(y=>recRoundNo(y.name)!==y.res.roundNumber))return false;
  const s=recSummary(g),ex=a.rex[s.id];if(!ex||!s.rounds.length)return false;
  const nums=g.files.map(y=>recRoundNo(y.name));if(nums.some(n=>!n))return false;const done=new Set(ex.done);
@@ -1307,14 +1319,17 @@ async function recCheck(a,onlyKey){
  if(rx!==a)return;
  const gs=recGroups().filter(g=>(!onlyKey||g.keys.includes(onlyKey))&&g.files.some(x=>x.res)),ss=gs.map(recSummary).filter(s=>s.rounds.length);
  if(!ss.length)return;
- const tid=a.tid,ids=[...new Set(ss.map(s=>s.id))],[t,m,d,ro]=await Promise.all([sb.from('scout_teams').select('*').eq('owner_team_id',tid),sb.from('scout_matches').select('*').eq('owner_team_id',tid).in('replay_match_id',ids),sb.from('player_round_stats').select('match_id,round_number').eq('owner_team_id',tid).in('match_id',ids).limit(5000),sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid)]);
+ const tid=a.tid,ids=[...new Set(ss.flatMap(s=>s.cands||[s.id]))],[t,m,d,ro]=await Promise.all([sb.from('scout_teams').select('*').eq('owner_team_id',tid),sb.from('scout_matches').select('*').eq('owner_team_id',tid).in('replay_match_id',ids),sb.from('player_round_stats').select('match_id,round_number').eq('owner_team_id',tid).in('match_id',ids).limit(5000),sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid)]);
  if(!a.rlib){const lib=await allRows(()=>sb.from('scout_matches').select('id,team,opponent,map,match_date,round_score,phase,replay_match_id').eq('owner_team_id',tid).order('id'));if(!lib.error)a.rlib=lib.data}
  const bad=t.error||m.error||d.error;a.rerr=bad?repErr(bad):'';if(bad){if(rx===a)recPaint();return}
  a.rteams=(t.data||[]).sort((x,y)=>x.name.localeCompare(y.name));a.rroster=(ro.data||[]).map(x=>x.name);a.rlinks=(ro.data||[]).filter(x=>x.linked_user_id);
  const mids=[...new Set(m.data.map(x=>matchId(x)))],sr=mids.length?await sb.from('scout_rounds').select('match_id,round_number,operator_1,operator_2,operator_3,operator_4,operator_5,opponent_operators').eq('owner_team_id',tid).in('match_id',mids).limit(5000):{data:[]};
  if(sr.error){a.rerr=repErr(sr.error);if(rx===a)recPaint();return}
  const broken=x=>[x.operator_1,x.operator_2,x.operator_3,x.operator_4,x.operator_5,x.opponent_operators].some(v=>/unknown/i.test(v||''));
- ids.forEach(i=>{const row=m.data.find(x=>x.replay_match_id===i);if(!row){delete a.rex[i];return}const mid=matchId(row),mine=sr.data.filter(x=>x.match_id===mid),bad=new Set(mine.filter(broken).map(x=>x.round_number).filter(n=>!a.asGood?.[i]?.has(n)&&!recGoodGet(i).has(n))),have=new Set(mine.filter(x=>!bad.has(x.round_number)).map(x=>x.round_number));(a.bad||(a.bad={}))[i]=bad;const done=[...new Set(d.data.filter(x=>x.match_id===i).map(x=>x.round_number))].filter(n=>have.has(n));a.rex[i]={row,done}});
+ const empty=x=>![x.operator_1,x.operator_2,x.operator_3,x.operator_4,x.operator_5,x.opponent_operators].some(v=>String(v||'').trim());
+ ids.forEach(i=>{const row=m.data.find(x=>x.replay_match_id===i);if(!row){delete a.rex[i];return}const mid=matchId(row),mine=sr.data.filter(x=>x.match_id===mid),st=new Set(d.data.filter(x=>x.match_id===i).map(x=>x.round_number)),inf=new Set(ss.filter(s=>(s.cands||[s.id]).includes(i)).flatMap(s=>s.rounds.filter(r=>r.inferred).map(r=>r.roundNumber)));
+  const bad=new Set(mine.filter(x=>!inf.has(x.round_number)&&(broken(x)||empty(x)&&!st.has(x.round_number))).map(x=>x.round_number).filter(n=>!a.asGood?.[i]?.has(n)&&!recGoodGet(i).has(n))),have=new Set(mine.filter(x=>!bad.has(x.round_number)).map(x=>x.round_number));(a.bad||(a.bad={}))[i]=bad;
+  const done=[...st].filter(n=>have.has(n));inf.forEach(n=>{if(have.has(n)&&!done.includes(n))done.push(n)});a.rex[i]={row,done}});
  gs.forEach(g=>{const s=recSummary(g),ex=a.rex[s.id];if(ex&&!g.files.some(x=>!x.res)&&s.rounds.every(r=>ex.done.includes(r.roundNumber)))ddAdd(g.files.filter(x=>x.res?.ok).flatMap(x=>[x.driveKey,x.fkey]))});
  if(rx===a)recPaint();
 }
@@ -1378,15 +1393,16 @@ async function recSave(key,b,quiet,auto){
  const s=recSummary(g),c=recRc(key);if(recDups(s,c,new Set(a.rex[s.id]?.done||[])).length)return toast('Fix the operator listed twice before saving');b.disabled=true;b.textContent='Saving…';
  try{
   const note=a.rex[s.id]?'':await recApplyTeams(s,c,a);
-  const game=await recGame(s,c,tid),t1=game.replay_t1_index??0,t2=t1^1,our=game.our_team_index,mid=matchId(game),done=recDone(a,s),fresh=s.rounds.filter(r=>!done.has(r.roundNumber));
+  const game=await recGame(s,c,tid),rid=s.reuse?s.cands[0]:s.id;if(s.reuse)await recReuse(a,s,game);
+  const t1=game.replay_t1_index??0,t2=t1^1,our=game.our_team_index,mid=matchId(game),done=recDone(a,s),fresh=s.rounds.filter(r=>!done.has(r.roundNumber));
   const side=v=>v==='Attack'?'attack':v==='Defense'?'defense':'';
   const rounds=fresh.map(r=>{const ops=i=>r.players.filter(p=>p.teamIndex===i).map(p=>recOp(c,r,p)),mine=ops(t1),row={owner_team_id:tid,match_id:mid,round_date:game.match_date,map:game.map,round_number:r.roundNumber,team:game.team,opponent:game.opponent,side:r.teams[t1]?.role||'',site:r.site||'',result:r.winningTeam===null?'':r.winningTeam===t1?'W':'L',opponent_operators:ops(t2).join(' ')};[0,1,2,3,4].forEach(i=>row['operator_'+(i+1)]=mine[i]||'');return row});
-  const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:s.id,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:recOp(c,r,p),operator_id:recOp(c,r,p)===repOp(p.operator)?p.operatorId||'':'',side:side(p.role),kills:i32(p.kills),deaths:i32(p.deaths),assists:i32(p.assists),headshots:Math.min(i32(p.headshots),i32(p.kills)),match_score:i32(p.score),kost_point:repKost(r,p)})));
+  const stats=fresh.flatMap(r=>r.players.filter(p=>p.username).map(p=>({owner_team_id:tid,scout_match_id:game.id,match_id:rid,round_number:r.roundNumber,match_date:game.match_date,map:game.map,player_username:p.username,team_name:p.teamIndex===t1?game.team:game.opponent,is_our_team:our!==null&&our!==undefined&&p.teamIndex===our,user_id:our!==null&&our!==undefined&&p.teamIndex===our?(a.rlinks||[]).find(l=>plKeys(l.name).some(k=>plKeys(p.username).includes(k)))?.linked_user_id||null:null,operator:recOp(c,r,p),operator_id:recOp(c,r,p)===repOp(p.operator)?p.operatorId||'':'',side:side(p.role),kills:i32(p.kills),deaths:i32(p.deaths),assists:i32(p.assists),headshots:Math.min(i32(p.headshots),i32(p.kills)),match_score:i32(p.score),kost_point:repKost(r,p)})));
   const bad0=a.bad?.[s.id]||new Set(),bad=new Set([...bad0,...[...(s.replayed||[])].filter(n=>!a.replOk?.[s.id]?.has(n))]),isBad=x=>bad.has(x.round_number);
   for(const [rows,over] of [[rounds.filter(x=>!isBad(x)),false],[rounds.filter(isBad),true]])if(rows.length){const w1=await sb.from('scout_rounds').upsert(rows,{onConflict:'owner_team_id,round_number,dedupe_key',ignoreDuplicates:!over});if(w1.error)throw w1.error}
   for(const [rows,over] of [[stats.filter(x=>!isBad(x)),false],[stats.filter(isBad),true]])if(rows.length){const w2=await sb.from('player_round_stats').upsert(rows,{onConflict:'owner_team_id,match_id,round_number,player_key',ignoreDuplicates:!over});if(w2.error)throw w2.error}
-  if(s.replayed?.size)(a.replOk||(a.replOk={}))[s.id]=new Set([...(a.replOk[s.id]||[]),...s.replayed]);
-  if((s.ids||[]).length>1)await recJoinClean(a,s,game);
+  if(s.replayed?.size)(a.replOk||(a.replOk={}))[rid]=new Set([...(a.replOk[rid]||[]),...s.replayed]);
+  if((s.cands||[]).length>1)await recJoinClean(a,s,game);
   if(bad0.size){const unk=r=>r.players.some(p=>/unknown/i.test(recOp(c,r,p)||''));const again=fresh.filter(r=>bad0.has(r.roundNumber));a.asGood=a.asGood||{};a.asGood[s.id]=new Set([...(a.asGood[s.id]||[]),...again.filter(unk).map(r=>r.roundNumber)]);recGoodAdd(s.id,again.filter(unk).map(r=>r.roundNumber));a.fixedN=(a.fixedN||0)+again.filter(r=>!unk(r)).length}
   if(a.rlib){const i=a.rlib.findIndex(x=>x.id===game.id);if(i<0)a.rlib.push(game);else a.rlib[i]=game}await recCheck(a,key);ddAdd(g.files.filter(x=>x.res?.ok).flatMap(x=>[x.driveKey,x.fkey]));
   if(sco&&sco.tid===tid)scoSoon(tid);
@@ -1396,7 +1412,7 @@ async function recSave(key,b,quiet,auto){
 // Pieces of a restarted match that were saved before as games of their own (with a "Game 2" name, no result or a short score)
 // are taken off once their rounds are in the joined game. Only games made from replays are taken off, never one from Liquipedia.
 async function recJoinClean(a,s,game){
- const other=s.ids.filter(i=>i!==s.id);if(!other.length)return;
+ const other=(s.cands||s.ids).filter(i=>i!==s.id&&i!==game.replay_match_id);if(!other.length)return;
  const q=await sb.from('scout_matches').select('*').eq('owner_team_id',a.tid).in('replay_match_id',other);if(q.error||!q.data.length)return;
  let n=0;
  for(const row of q.data){
@@ -1416,6 +1432,15 @@ async function recJoinClean(a,s,game){
   const u2=await sb.from('scout_matches').update({phase:''}).eq('id',game.id);if(u2.error){await sb.from('scout_rounds').update({match_id:old}).eq('owner_team_id',a.tid).eq('match_id',nu);return}
   game.phase='';
  }
+}
+// The game saved from a false start (a map started again from round 1) keeps its place in the library but gets the real
+// recording: its rounds and stats are emptied, other pieces are taken off, and it is pointed at the real recording's match id.
+async function recReuse(a,s,game){
+ const d1=await sb.from('player_round_stats').delete().eq('owner_team_id',a.tid).eq('scout_match_id',game.id);if(d1.error)throw d1.error;
+ const d2=await sb.from('scout_rounds').delete().eq('owner_team_id',a.tid).eq('match_id',matchId(game));if(d2.error)throw d2.error;
+ await recJoinClean(a,s,game);
+ const u=await sb.from('scout_matches').update({replay_match_id:s.cands[0]}).eq('id',game.id);if(u.error)throw u.error;
+ game.replay_match_id=s.cands[0];a.joinN=(a.joinN||0)+1;
 }
 // Adds new teams, saves answers as aliases, and fills in a roster that's empty. Safe to repeat.
 async function recApplyTeams(s,c,a){
