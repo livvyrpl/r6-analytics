@@ -7,7 +7,7 @@ let ready;
 try {
   importScripts('wasm_exec.js');
   const go = new Go();
-  ready = fetch('parser.wasm')
+  ready = fetch('parser.wasm' + self.location.search)
     .then(r => {
       if (!r.ok) throw new Error('The parser files are missing from the site.');
       return r.arrayBuffer();

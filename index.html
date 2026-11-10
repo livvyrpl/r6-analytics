@@ -1012,7 +1012,7 @@ function drawCharts(){
 }
 const fmtSize=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?(n/1048576).toFixed(1)+' MB':(n/1073741824).toFixed(2)+' GB';
 // REPLAYS: read in a worker on this device, previewed, then saved. The files themselves never leave the browser.
-const REC_TIMEOUT=12e4,TRADE_SECS=5,squash=s=>norm(s).replace(/[^a-z0-9]/g,'');
+const REC_VER='2026-11-09',REC_TIMEOUT=12e4,TRADE_SECS=5,squash=s=>norm(s).replace(/[^a-z0-9]/g,'');
 const repMap=n=>{const s=squash(n),p=MAP_POOL.find(m=>squash(m[0])===s);return p?p[0]:String(n||'').replace(/([a-z])([A-Z0-9])/g,'$1 $2')};
 const repOp=n=>{const s=squash(opKey(n)),o=OPS.find(x=>squash(opKey(x[0]))===s);return o?o[0]:String(n||'')};
 const repErr=e=>/schema cache|does not exist|column/i.test(e.message)?'The replay database tables are not set up yet. Paste stage12.sql and stage13.sql into the Supabase SQL Editor and run them.':scErr(e);
@@ -1040,7 +1040,7 @@ function recGroups(){
  rx.recs.forEach(x=>{const k=recKey(x);if(!g.has(k)){const p=x.path.split('/');g.set(k,{key:k,label:p.length>1?p[p.length-2]:k.split('|')[1]||x.name,files:[]})}g.get(k).files.push(x)});
  return[...g.values()];
 }
-const recSummary=g=>{const refs=g.files.map(x=>x.res),m=rx.rsum||(rx.rsum=new Map()),c=m.get(g.key);if(c&&c.refs.length===refs.length&&c.refs.every((x,i)=>x===refs[i]))return c.s;const v=recSummarize(g);m.set(g.key,{refs,s:v});return v};
+const recSummary=g=>{const refs=g.files.map(x=>x.res),m=rx.rsum||(rx.rsum=new Map()),c=m.get(g.key),dn=id=>(rx.rex?.[id]?.done||[]).length;if(c&&c.dn===dn(c.s.id)&&c.refs.length===refs.length&&c.refs.every((x,i)=>x===refs[i]))return c.s;const v=recSummarize(g);m.set(g.key,{refs,s:v,dn:dn(v.id)});return v};
 function recSummarize(g){
  const fails=g.files.filter(x=>x.res&&!x.res.ok),warn=fails.map(x=>`${x.name}: ${x.res.error}`),by=new Map();
  g.files.filter(x=>x.res?.ok).forEach(x=>{if(by.has(x.res.roundNumber))warn.push(`Round ${x.res.roundNumber} appears twice, so ${x.name} was ignored.`);else by.set(x.res.roundNumber,x.res)});
@@ -1051,7 +1051,7 @@ function recSummarize(g){
  s.id=ids[0]||g.label;s.map=mf.map;s.mapInfo=mf;s.names=[0,1].map(i=>rounds[0].teams[i]?.name||'Team '+(i+1));
  const last=rounds[rounds.length-1];s.score=[0,1].map(i=>last.teams[i]?.score||0);s.max=last.roundNumber;
  s.date=(rounds[0].timestamp||'').slice(0,10)||(/(\d{4}-\d{2}-\d{2})/.exec(g.files[0].name)||[])[1]||today();
- const tr=rx?.trim?.get(g.key),miss=[];for(let i=1;i<s.max;i++)if(!by.has(i)&&!tr?.has(i))miss.push(i);s.gaps=miss.length>0;
+ const tr=rx?.trim?.get(g.key),dn=new Set(rx?.rex?.[s.id]?.done||[]),miss=[];for(let i=1;i<s.max;i++)if(!by.has(i)&&!tr?.has(i)&&!dn.has(i))miss.push(i);s.gaps=miss.length>0;s.part=Array.from({length:s.max},(_,i)=>i+1).some(i=>!by.has(i));
  if(miss.length)warn.push(`${plural(miss.length,'round')} missing: ${miss.join(', ')}. The saved game will not include ${miss.length===1?'it':'them'}.`);
  rounds.forEach(r=>{if(r.winningTeam===null)warn.push(`Round ${r.roundNumber}: no winner found. It will be saved with no result.`);(r.warnings||[]).forEach(w=>{if(!(mf.id&&!mf.unknown&&/map is not in the parser/.test(w)))warn.push(`Round ${r.roundNumber}: ${w}`)})});
  const pl=new Map();
@@ -1207,7 +1207,7 @@ function scoSoon(tid){
 }
 function parseRec(p,file){
  return new Promise(ok=>{
-  if(!p.w)p.w=new Worker('parser-build/parser-worker.js');
+  if(!p.w)p.w=new Worker('parser-build/parser-worker.js?v='+REC_VER);
   const w=p.w,bad=m=>({ok:false,error:m}),done=(r,kill)=>{clearTimeout(t);w.onmessage=w.onerror=null;p.abort=null;if(kill){w.terminate();if(p.w===w)p.w=null}ok(r)},t=setTimeout(()=>done(bad('This file took too long to read.'),1),REC_TIMEOUT);
   p.abort=()=>done(null,1);
   w.onerror=e=>{e.preventDefault?.();done(bad('The parser stopped unexpectedly while reading this file. Try it again on its own.'),1)};
@@ -1250,6 +1250,10 @@ async function recRun(){
 }
 // The round number in a replay's file name, like ...-R07.rec
 const recRoundNo=n=>{const m=/R(\d+)\.rec$/i.exec(n||'');return m?+m[1]:0};
+const RG_KEY='liv-rec-good-'+REC_VER;
+const recGoodAll=()=>{if(recGoodAll.c)return recGoodAll.c;try{recGoodAll.c=JSON.parse(localStorage.getItem(RG_KEY)||'{}')||{}}catch{recGoodAll.c={}}return recGoodAll.c};
+const recGoodGet=id=>new Set(recGoodAll()[id]||[]);
+const recGoodAdd=(id,l)=>{if(!l.length)return;const m=recGoodAll();m[id]=[...new Set([...(m[id]||[]),...l])];try{localStorage.setItem(RG_KEY,JSON.stringify(m))}catch{}};
 // A match already saved, with every round in its folder: drop it from the run without reading the other rounds
 function recAlready(a,k){
  if(rx!==a||a.sfix?.has(k))return false;const g=recGroups().find(y=>y.key===k);if(!g)return false;
@@ -1288,7 +1292,7 @@ async function recCheck(a,onlyKey){
  const mids=[...new Set(m.data.map(x=>matchId(x)))],sr=mids.length?await sb.from('scout_rounds').select('match_id,round_number,operator_1,operator_2,operator_3,operator_4,operator_5,opponent_operators').eq('owner_team_id',tid).in('match_id',mids).limit(5000):{data:[]};
  if(sr.error){a.rerr=repErr(sr.error);if(rx===a)recPaint();return}
  const broken=x=>[x.operator_1,x.operator_2,x.operator_3,x.operator_4,x.operator_5,x.opponent_operators].some(v=>/unknown/i.test(v||''));
- ids.forEach(i=>{const row=m.data.find(x=>x.replay_match_id===i);if(!row){delete a.rex[i];return}const mid=matchId(row),mine=sr.data.filter(x=>x.match_id===mid),bad=new Set(mine.filter(broken).map(x=>x.round_number).filter(n=>!a.asGood?.[i]?.has(n))),have=new Set(mine.filter(x=>!bad.has(x.round_number)).map(x=>x.round_number));(a.bad||(a.bad={}))[i]=bad;const done=[...new Set(d.data.filter(x=>x.match_id===i).map(x=>x.round_number))].filter(n=>have.has(n));a.rex[i]={row,done}});
+ ids.forEach(i=>{const row=m.data.find(x=>x.replay_match_id===i);if(!row){delete a.rex[i];return}const mid=matchId(row),mine=sr.data.filter(x=>x.match_id===mid),bad=new Set(mine.filter(broken).map(x=>x.round_number).filter(n=>!a.asGood?.[i]?.has(n)&&!recGoodGet(i).has(n))),have=new Set(mine.filter(x=>!bad.has(x.round_number)).map(x=>x.round_number));(a.bad||(a.bad={}))[i]=bad;const done=[...new Set(d.data.filter(x=>x.match_id===i).map(x=>x.round_number))].filter(n=>have.has(n));a.rex[i]={row,done}});
  gs.forEach(g=>{const s=recSummary(g),ex=a.rex[s.id];if(ex&&!g.files.some(x=>!x.res)&&s.rounds.every(r=>ex.done.includes(r.roundNumber)))ddAdd(g.files.filter(x=>x.res?.ok).flatMap(x=>[x.driveKey,x.fkey]))});
  if(rx===a)recPaint();
 }
@@ -1309,14 +1313,14 @@ function recLibLine(s,sides){
 function recRows(s,c){
  const ex=rx.rex[s.id]?.row||null,plan=recPlan(s,c,ex),t1=plan.t1,t2=t1^1,done=new Set(rx.rex[s.id]?.done||[]);
  const rs=s.rounds,a=s.score[t1],b=s.score[t2],sideOf=(r,i)=>r.teams[i]?.role||'',wins=(i,side,ot)=>rs.filter(r=>(r.roundNumber>12)===ot&&r.winningTeam===i&&sideOf(r,i)===side).length,r1=rs.find(r=>r.roundNumber===1),r13=rs.find(r=>r.roundNumber===13);
- return{ex,plan,t1,t2,fresh:rs.filter(r=>!done.has(r.roundNumber)),score:`${a}-${b}`,sides:s.gaps?{}:{t1_atk:wins(t1,'Attack',false),t1_def:wins(t1,'Defense',false),t1_ot_atk:wins(t1,'Attack',true),t1_ot_def:wins(t1,'Defense',true),t2_atk:wins(t2,'Attack',false),t2_def:wins(t2,'Defense',false),t2_ot_atk:wins(t2,'Attack',true),t2_ot_def:wins(t2,'Defense',true)},start:r1?sideOf(r1,t1):'',ot:r13?sideOf(r13,t1):'',result:s.gaps?'':a>b?'W':a<b?'L':'D'};
+ return{ex,plan,t1,t2,fresh:rs.filter(r=>!done.has(r.roundNumber)),score:`${a}-${b}`,sides:s.part?{}:{t1_atk:wins(t1,'Attack',false),t1_def:wins(t1,'Defense',false),t1_ot_atk:wins(t1,'Attack',true),t1_ot_def:wins(t1,'Defense',true),t2_atk:wins(t2,'Attack',false),t2_def:wins(t2,'Defense',false),t2_ot_atk:wins(t2,'Attack',true),t2_ot_def:wins(t2,'Defense',true)},start:r1?sideOf(r1,t1):'',ot:r13?sideOf(r13,t1):'',result:s.gaps&&!gameDone(a,b)?'':a>b?'W':a<b?'L':'D'};
 }
 // Finds or creates the one library game for this replay. Safe to repeat if a save is interrupted.
 async function recGame(s,c,tid){
  const P=recRows(s,c),base={match_date:s.date,map:s.map,round_score:P.score,total_rounds:s.score[0]+s.score[1],source_name:'Replay',replay_status:'imported',start_side:P.start,ot_start:P.ot,result:P.result,...P.sides};
  if(P.ex){
   // Only a score covering more rounds replaces the one saved, so a partial import can't overwrite a final score
-  const had=parseScore(P.ex.round_score),total=s.score[0]+s.score[1],full=!rx?.trim?.has(s.g.key)&&!s.gaps,noSides=full&&!P.ex.start_side&&!!P.start;if(had&&had.a+had.b>=total&&P.ex.result&&!noSides)return P.ex;if(!P.fresh.length&&!rx?.trim?.has(s.g.key))return P.ex;
+  const had=parseScore(P.ex.round_score),total=s.score[0]+s.score[1],full=!s.part,noSides=full&&!P.ex.start_side&&!!P.start;if(had&&had.a+had.b>=total&&P.ex.result&&!noSides)return P.ex;if(had&&had.a+had.b>total)return P.ex;if(!P.fresh.length&&!rx?.trim?.has(s.g.key)&&(P.ex.result||!P.result))return P.ex;
   const up={round_score:P.score,total_rounds:total,...(rx?.trim?.has(s.g.key)?{}:s.gaps?{t1_atk:null,t1_def:null,t1_ot_atk:null,t1_ot_def:null,t2_atk:null,t2_def:null,t2_ot_atk:null,t2_ot_def:null}:P.sides)};if(P.result)up.result=P.result;if(P.ot)up.ot_start=P.ot;if(full&&P.start&&!P.ex.start_side)up.start_side=P.start;
   const r=await sb.from('scout_matches').update(up).eq('id',P.ex.id).select().single();if(r.error)throw r.error;return r.data;
  }
@@ -1359,7 +1363,7 @@ async function recSave(key,b,quiet,auto){
   const bad=a.bad?.[s.id]||new Set(),isBad=x=>bad.has(x.round_number);
   for(const [rows,over] of [[rounds.filter(x=>!isBad(x)),false],[rounds.filter(isBad),true]])if(rows.length){const w1=await sb.from('scout_rounds').upsert(rows,{onConflict:'owner_team_id,round_number,dedupe_key',ignoreDuplicates:!over});if(w1.error)throw w1.error}
   for(const [rows,over] of [[stats.filter(x=>!isBad(x)),false],[stats.filter(isBad),true]])if(rows.length){const w2=await sb.from('player_round_stats').upsert(rows,{onConflict:'owner_team_id,match_id,round_number,player_key',ignoreDuplicates:!over});if(w2.error)throw w2.error}
-  if(bad.size){const unk=r=>r.players.some(p=>/unknown/i.test(recOp(c,r,p)||''));const again=fresh.filter(r=>bad.has(r.roundNumber));a.asGood=a.asGood||{};a.asGood[s.id]=new Set([...(a.asGood[s.id]||[]),...again.filter(unk).map(r=>r.roundNumber)]);a.fixedN=(a.fixedN||0)+again.filter(r=>!unk(r)).length}
+  if(bad.size){const unk=r=>r.players.some(p=>/unknown/i.test(recOp(c,r,p)||''));const again=fresh.filter(r=>bad.has(r.roundNumber));a.asGood=a.asGood||{};a.asGood[s.id]=new Set([...(a.asGood[s.id]||[]),...again.filter(unk).map(r=>r.roundNumber)]);recGoodAdd(s.id,again.filter(unk).map(r=>r.roundNumber));a.fixedN=(a.fixedN||0)+again.filter(r=>!unk(r)).length}
   if(a.rlib){const i=a.rlib.findIndex(x=>x.id===game.id);if(i<0)a.rlib.push(game);else a.rlib[i]=game}await recCheck(a,key);ddAdd(g.files.filter(x=>x.res?.ok).flatMap(x=>[x.driveKey,x.fkey]));
   if(sco&&sco.tid===tid)scoSoon(tid);
   if(rx===a)recPaint();if(!quiet||note)toast((auto?`Saved ${s.names.join(' vs ')}, ${s.map}: ${plural(fresh.length,'round')}.`:'Saved '+plural(fresh.length,'round')+'.')+note);
@@ -2250,7 +2254,7 @@ async function openSc(page,kind,oppId){
  const s=sco,tid=s.tid,q=t=>sb.from(t).select('*').eq('owner_team_id',tid),[t,m,v,r,c,x,st]=await Promise.all([q('scout_teams'),allRows(()=>q('scout_matches').order('id')),allRows(()=>q('scout_vetoes').order('id')),allRows(()=>q('scout_rounds').order('id')),sb.from('scrims').select('*').eq('team_id',tid),sb.from('scrim_map_results').select('*').eq('team_id',tid),q('scout_settings')]);
  if(sco!==s)return;
  const bad=t.error||m.error||v.error||r.error;
- Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
+ if(!bad&&canEditS())setTimeout(()=>{if(sco===s)scoreRepair(s)},0);Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
  if(!an||an.tid!==tid)an={tid,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,rc:{},rex:{},rpick:{},rp:null,rerr:'',rteams:null,rroster:[],page:'over'};
  an.list=c.data||[];an.res=x.data||[];s.st=(st.data||[])[0]||null;
  sb.from('scout_events').select('*').eq('owner_team_id',tid).then(r=>{if(sco!==s)return;s.events=r.error?[]:r.data||[];if(view==='sc'&&s.events.length)render()});
@@ -2997,12 +3001,38 @@ async function saveRate(form,qt){
  if(r.error)return say(qt,scErr(r.error));
  sco.st=row;if(qt)return{};sdirty=false;render();toast('Settings saved');
 }
+// a finished game: first to 7 by two, or overtime won at 8
+const gameDone=(a,b)=>(a>=7||b>=7)&&(Math.abs(a-b)>=2||a>=8||b>=8);
+const rangeList=l=>{const out=[];l.forEach(n=>{const z=out[out.length-1];if(z&&z[1]===n-1)z[1]=n;else out.push([n,n])});return out.map(([a,b])=>a===b?a:a+'–'+b).join(', ')};
+// the saved rounds of a game: which round numbers, which are missing, and the score they add up to (from the game's Team 1 side)
+function savedTally(r,s=sco){
+ if(s._rb!==s.r){const m=new Map();(s.r||[]).forEach(x=>{const k=x.match_id;if(!m.has(k))m.set(k,[]);m.get(k).push(x)});s._rb=s.r;s._rm=m}
+ const l=s._rm.get(matchId(r))||[];if(!l.length)return null;
+ const by=new Map(),t1=norm(r.team),t2=norm(r.opponent);
+ l.forEach(x=>{if(!x.round_number||by.has(x.round_number))return;let v=normRes(x.result);if(norm(x.team)===t2&&t1!==t2)v=v==='W'?'L':v==='L'?'W':v;by.set(x.round_number,v)});
+ if(!by.size)return null;
+ const nums=[...by.keys()].sort((a,b)=>a-b),top=nums[nums.length-1],miss=[];for(let i=1;i<top;i++)if(!by.has(i))miss.push(i);
+ let w=0,lo=0,blank=0;by.forEach(v=>{if(v==='W')w++;else if(v==='L')lo++;else blank++});
+ return{n:by.size,top,miss,w,l:lo,blank};
+}
+// A game whose saved rounds are all there (round 1 to the last, each with a winner) and add up to a finished game gets that score and result.
+// This puts right a score saved part-way through an import. It runs once per visit.
+async function scoreRepair(s){
+ if(scoreRepair.done?.has(s.tid))return;(scoreRepair.done||(scoreRepair.done=new Set())).add(s.tid);
+ const fix=[];
+ s.m.forEach(r=>{const t=savedTally(r,s);if(!t||t.miss.length||t.blank||!gameDone(t.w,t.l))return;const sc=t.w+'-'+t.l,res=t.w>t.l?'W':'L';if(r.round_score!==sc||normRes(r.result)!==res)fix.push({r,up:{round_score:sc,result:res,total_rounds:t.w+t.l}})});
+ if(!fix.length)return;let n=0;
+ const go=async()=>{while(fix.length){const x=fix.shift(),q=await sb.from('scout_matches').update(x.up).eq('id',x.r.id);if(!q.error){Object.assign(x.r,x.up);n++}}};
+ await Promise.all([0,1,2,3,4,5].map(go));
+ if(n){toast('Fixed the score and result of '+plural(n,'game')+' from their saved rounds.');if(sco===s&&view==='sc'&&!s.form&&!sdirty)render()}
+}
 function oppIssues(rows){
  const out=[];
  rows.forEach(x=>{const st=x.r.check_status;if(st==='reviewed')return;const p=parseScore(x.score),why=[];
   if(x.res==='D')why.push('Draw');
   if(!x.res)why.push('No result');
   if(!p)why.push('No score');else if(x.res!=='D'&&p.a<7&&p.b<7)why.push(`Looks unfinished at ${x.score}`);
+  if(why.length){const t=savedTally(x.r);if(t){if(t.miss.length)why.push(`Round${t.miss.length>1?'s':''} ${rangeList(t.miss)} not saved`);else if(!gameDone(t.w,t.l))why.push(`Saved rounds stop at round ${t.top}`)}else if(x.r.replay_match_id)why.push('No rounds saved')}
   if(st==='mismatch')why.push(x.r.check_notes||'Does not match another source');
   if(why.length)out.push({x,why})});
  return out;
