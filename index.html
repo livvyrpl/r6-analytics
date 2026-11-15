@@ -1109,7 +1109,7 @@ function recCan(a,key){
 }
 function recAutoKey(a,key){const g0=recGroups().find(x=>x.keys.includes(key));if(g0)key=g0.key;if(!recCan(a,key))return;a.saveQ=(a.saveQ||Promise.resolve()).then(()=>recCan(a,key)?recSave(key,{},false,true):null).catch(()=>{})}
 function recAutoAll(){const a=rx;if(!a)return;recGroups().filter(g=>g.files.every(x=>x.res)).forEach(g=>recAutoKey(a,g.key))}
-function recStopRead(){const a=rx,p=a?.rp;if(!p)return;a.rp=null;p.abort?.();const left=a.recs.filter(x=>!x.res).length;a.recs=a.recs.filter(x=>x.res);a.rsum=null;if(left)toast(`Stopped. ${plural(left,'file')} not read ${left===1?'was':'were'} taken off the list.`);recPaint()}
+function recStopRead(){const a=rx;if(!a)return;if(a.zipJob){a.zipStop=true;actEnd(a.zipJob,'warn','Stopped');a.zipJob=null}const p=a.rp;if(!p){a.recs=a.recs.filter(x=>x.res);a.rsum=null;recPaint();return}a.rp=null;p.abort?.();if(p.job){actEnd(p.job,'warn','Stopped');p.job=null}const left=a.recs.filter(x=>!x.res).length;a.recs=a.recs.filter(x=>x.res);a.rsum=null;if(left)toast(`Stopped. ${plural(left,'file')} not read ${left===1?'was':'were'} taken off the list.`);recPaint()}
 // Maps the parser does not know yet: ones listed here, ones picked before on this device, or a guess from the folder name
 const MAP_IDS={'409325881472':'Villa'};
 const mapIdsMine=()=>{try{return JSON.parse(localStorage.getItem('liv-mapids')||'{}')}catch{return{}}};
@@ -1251,7 +1251,7 @@ function parseRec(p,file){
 const recLanes=()=>{if(window.recLanesSet)return window.recLanesSet;const c=navigator.hardwareConcurrency||2,m=navigator.deviceMemory||8;return Math.max(1,Math.min(3,c-1,m<8?2:3))};
 async function recRun(){
  const a=rx;if(a.rp)return;const p=a.rp={lanes:[]};p.abort=()=>p.lanes.forEach(q=>{q.abort?.();q.w?.terminate();q.w=null});recPaint();
- const job=actStart('Reading replays',()=>recStopRead()),tick=()=>{const n=a.recs.length,d=a.recs.filter(y=>y.res).length,c=a.recs.find(y=>!y.res);actSet(job,{detail:d+' of '+n+(c?': '+c.name:a.zipping>0?' · waiting for zips to open':''),pct:n?Math.round(d/n*100):0})};tick();
+ const job=p.job=actStart('Reading replays',()=>recStopRead()),tick=()=>{const n=a.recs.length,d=a.recs.filter(y=>y.res).length,c=a.recs.find(y=>!y.res);actSet(job,{detail:d+' of '+n+(c?': '+c.name:a.zipping>0?' · waiting for zips to open':''),pct:n?Math.round(d/n*100):0})};tick();
  const taken=new Set();
  // each lane reads one match at a time with its own parser, so several matches are read side by side
  const lane=async()=>{
@@ -1277,7 +1277,7 @@ async function recRun(){
   let_go();
  };
  await Promise.all(Array.from({length:recLanes()},lane));
- const stopped=a.rp!==p;if(!stopped)a.rp=null;if(!stopped&&rx===a)recAutoAll();actEnd(job,'ok',stopped?'Stopped':plural(a.recs.filter(y=>y.res).length,'file')+' read');if(rx===a)recPaint();
+ const stopped=a.rp!==p;if(!stopped)a.rp=null;if(!stopped&&rx===a)recAutoAll();if(!stopped)actEnd(job,'ok',plural(a.recs.filter(y=>y.res).length,'file')+' read');if(rx===a)recPaint();
  // files added while the last lanes were finishing are picked up
  if(!stopped&&rx===a&&a.recs.some(y=>!y.res))recRun();
 }
@@ -1528,7 +1528,7 @@ async function addZips(srcs){
    if(!n)toast(`${z.name} has no .rec replays in it`);
    // nothing new in it: remember the whole zip
    else if(!fresh&&z.key)ddAdd([z.key+'#all']);
-   if(rx===a&&out.length){added+=out.length;addRecs(out)}
+   if(rx===a&&out.length&&!a.zipStop){added+=out.length;addRecs(out)}
   }catch(err){toast(z.name+': '+(err.message||err))}
   finally{a.zipping--;a.zipDone++;say()}
  };
