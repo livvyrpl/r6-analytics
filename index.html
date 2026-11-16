@@ -109,7 +109,7 @@ footer{max-width:1180px;margin:0 auto;padding:0 24px 24px;font-size:11.5px;color
 .fm{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;font-size:12px;font-weight:700;color:#0b0a0e}.fW{background:#34c46a}.fL{background:#e5484d;color:#fff}.fD{background:#a59dad}
 .vod{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;background:#1a73e8;color:#fff;font-size:12px;font-weight:600;text-decoration:none}.vod:hover{background:#3b8bf0}
 .pbar{height:10px;border-radius:999px;background:var(--bd);overflow:hidden}.pbar i{display:block;height:100%;background:var(--pk);transition:width .2s}
-dialog.dkw{width:min(760px,92vw)}dialog.ccw{width:min(1080px,94vw);padding:16px}
+dialog.dkw{width:min(760px,92vw)}dialog.ccw{width:min(1080px,94vw);padding:16px}.cct thead th{position:sticky;top:0;z-index:1;background:var(--cd)}
 .autost{display:none}.autost.bad{display:block;margin:0;font-size:12px;color:#ff8a8a;text-align:right}[data-auto] .svb,.svb{display:none!important}#savest{position:fixed;left:12px;bottom:12px;z-index:60;display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12px;background:var(--cd);border:1px solid var(--bd);color:var(--mu);opacity:0;transition:opacity .3s;pointer-events:none}#savest.on{opacity:1}#savest.bad{color:#ff8a8a;border-color:#ff8a8a;pointer-events:auto}#savest i{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}#savest.busy i{animation:svp 1s ease-in-out infinite}@keyframes svp{50%{opacity:.25}}
 .vbt .tbl th,.vbt .tbl td{padding:3px 8px;font-size:12.5px}.vbt tbody th{text-align:left;font-weight:600}.vbs{border:0;background:none;color:var(--mu);font:inherit;font-size:12px;font-weight:600;padding:0;cursor:pointer;white-space:nowrap}.vbs.on{color:var(--tx)}.vbs:hover{color:var(--pk)}.vbk{background:rgba(var(--pk-rgb),.07)}
 #vodp{position:fixed;top:10px;right:12px;width:var(--vodw,min(44vw,760px));max-height:calc(100vh - 20px);overflow-y:auto;z-index:9;background:var(--cd);border:1px solid var(--bd2);border-radius:12px;padding:8px;box-shadow:0 10px 32px rgba(0,0,0,.55)}.vodf{display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:8px;background:#000}.vodsz [aria-pressed=true]{border-color:var(--pk);color:var(--pk)}
@@ -3042,7 +3042,7 @@ const RATE_DEF={win:3,loss:-2,by:-1,against:2,picked:0};
 const RATE_LABEL=[['win','Win'],['loss','Loss'],['by','Banned by this team'],['against','Banned against this team'],['picked','Picked by this team']];
 // the order maps appear in the sheet, used when two maps tie
 const MAP_ORDER=['Bank','Border','Chalet','Clubhouse','Villa','Fortress','Kafe Dostoyevsky','Lair','Nighthaven Labs'];
-const mapCanon=n=>{const k=norm(n).replace(/ dostoyevsky| labs/g,''),p=MAP_POOL.find(m=>norm(m[0]).replace(/ dostoyevsky| labs/g,'')===k);return p?p[0]:String(n||'').trim()};
+const mapCanon=n=>{const k=norm(n).replace(/ dostoyevsky| labs/g,'').replace(/ /g,''),p=MAP_POOL.find(m=>norm(m[0]).replace(/ dostoyevsky| labs/g,'').replace(/ /g,'')===k);return p?p[0]:String(n||'').trim()};
 const rateCfg=()=>({f:{...RATE_DEF,...(sco.st?.factors||{})},w:sco.st?.map_weights||{}});
 function mapPower(t,rows,vetoes=sco.v){
  const k=scKeys(t),{f,w}=rateCfg(),by=new Map(),get=m=>{const n=mapCanon(m);if(!by.has(n))by.set(n,{name:n,W:0,L:0,D:0,by:0,against:0,picked:0});return by.get(n)};
@@ -3306,11 +3306,11 @@ function fixFacts(r){
  found.forEach(x=>x.maps.forEach(m=>{if(!has.has(fixKey(m.map))&&!extra.has(fixKey(m.map)))extra.set(fixKey(m.map),{m,who:x.source})}));
  return{srcs,found,opts,extra,missing:found.filter(x=>!x.g).map(x=>x.source)};
 }
-function fixButtons(r,f){
+function fixButtons(r,f,noAdd){
  const btn=(a,attrs,label,cls='no')=>`<button class="${cls}" style="height:28px;font-size:12.5px" data-a="${a}" data-id="${r.id}" ${attrs}>${esc(label)}</button>`,b=[];
  f.opts.forEach(o=>b.push(btn('fixuse',`data-s="${esc(o.score)}" data-r="${esc(o.result)}" data-n="${o.total}" data-w="${esc(o.who.join(' and '))}"`,`Use ${o.score} (${o.who.join(' and ')})`,'go')));
  if(f.missing.length)f.extra.forEach(({m,who})=>b.push(btn('fixmap',`data-m="${esc(m.map)}" data-x="${m.a}" data-y="${m.b}" data-v="${esc(m.winner||'')}"`,`Change this game to ${mapCanon(m.map)} ${m.a}-${m.b} (${who})`,'go')));
- f.extra.forEach(({m,who})=>b.push(btn('fixadd',`data-m="${esc(m.map)}" data-x="${m.a}" data-y="${m.b}" data-v="${esc(m.winner||'')}"`,`Add ${mapCanon(m.map)} ${m.a}-${m.b} as another game (${who})`)));
+ if(!noAdd)f.extra.forEach(({m,who})=>b.push(btn('fixadd',`data-m="${esc(m.map)}" data-x="${m.a}" data-y="${m.b}" data-v="${esc(m.winner||'')}"`,`Add ${mapCanon(m.map)} ${m.a}-${m.b} as another game (${who})`)));
  b.push(btn('smok','',`Keep ${r.round_score||'what we have'}`));
  return b.join('');
 }
@@ -3329,8 +3329,8 @@ function ccRows(team){
   const r0=rows[0],flip=!!k&&!k.has(norm(r0.team)),orient=s=>flip?flipPair(s)||s:s,facts=rows.map(r=>({r,f:fixFacts(r)})),srcNames=['Official page','siege.gg'];
   const series=l=>{let a=0,b=0;l.forEach(x=>{const p=parseScore(x.score);if(p){if(p.a>p.b)a++;else if(p.b>p.a)b++}});return l.length?a+'–'+b:''};
   const lib=rows.map(r=>({map:mapCanon(r.map),score:orient(r.round_score||'')})),col=n=>{const out=[];facts.forEach(({r,f})=>{const g=f.found.find(x=>x.source===n)?.g;if(g)out.push({map:mapCanon(g.map),score:orient(fixScore(r,g).score)})});const src=(r0.check_sources||[]).find?.(x=>x.source===n);if(src)(src.maps||[]).forEach(m=>{if(facts[0].f.extra.has(fixKey(m.map)))out.push({map:mapCanon(m.map),score:orient(fixScore(r0,m).score),extra:true})});return out};
-  const differs=facts.filter(({f})=>f.opts.size||f.missing.length||f.extra.size),reviewed=rows.every(r=>r.check_status==='reviewed'),seen=facts.some(({f})=>f.srcs.length),status=reviewed?'Reviewed':!seen?(rows.some(r=>r.gg_missing)?'No source':'Not checked'):differs.length?'Differs':'Agrees';
-  return{r0,rows,facts,lib,off:col(srcNames[0]),gg:col(srcNames[1]),series,status,differs,date:r0.match_date,who:k?(flip?r0.team:r0.opponent):r0.team+' vs '+r0.opponent,event:[r0.league,r0.phase].filter(Boolean).join(' · ')};
+  const extra=facts[0].f.extra,differs=facts.filter(({f})=>f.opts.size||f.missing.length),reviewed=rows.every(r=>r.check_status==='reviewed'),seen=facts.some(({f})=>f.srcs.length),status=reviewed?'Reviewed':!seen?(rows.some(r=>r.gg_missing)?'No source':'Not checked'):differs.length||extra.size?'Differs':'Agrees';
+  return{r0,rows,facts,extra,lib,off:col(srcNames[0]),gg:col(srcNames[1]),series,status,differs,date:r0.match_date,who:k?(flip?r0.team:r0.opponent):r0.team+' vs '+r0.opponent,event:[r0.league,r0.phase].filter(Boolean).join(' · ')};
  }).sort((a,b)=>({Differs:0}[a.status]??1)-({Differs:0}[b.status]??1)||b.date.localeCompare(a.date));
 }
 function ccHtml(){
@@ -3339,12 +3339,31 @@ function ccHtml(){
  const tag={Agrees:'<span style="color:#34c46a;font-weight:600">✓ Agrees</span>',Differs:'<span class="over">⚠ Differs</span>',Reviewed:'<span class="mu">Reviewed</span>','Not checked':'<span class="mu">Not checked</span>','No source':'<span class="mu">No source</span>'};
  return `<div class="row" style="justify-content:space-between;margin-bottom:6px"><h2 class="serif" style="font-size:22px;overflow-wrap:anywhere">Cross-check · ${team?esc(team.name):'All teams'}</h2><button class="no" style="height:28px" data-a="ccclose">Close</button></div>
  <p class="mu" style="margin-bottom:8px">Official R6 esports and siege.gg compared with your Match Library. <span style="color:#34c46a;font-weight:600">${n('Agrees')} agree</span> · <span class="${n('Differs')?'over':''}">${n('Differs')} differ</span> · ${n('Reviewed')} reviewed · ${n('Not checked')+n('No source')} not checked</p>
- ${all.length?`<div style="overflow:auto;max-height:64vh"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">${team?'Opponent':'Match'}</th><th scope="col">Event</th><th scope="col">Library</th><th scope="col">Official</th><th scope="col">Siege.gg</th><th scope="col">Status</th></tr></thead><tbody>${all.slice(0,300).map(x=>`<tr style="vertical-align:top"><td>${esc(x.date)}</td><td style="white-space:normal;font-weight:600;min-width:110px">${esc(x.who)}</td><td class="mu" style="white-space:normal;min-width:90px">${esc(x.event)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.lib)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.off)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.gg)}</td><td>${tag[x.status]}</td></tr>${x.status==='Differs'?x.differs.map(({r,f})=>`<tr><td colspan="7" style="white-space:normal;background:rgba(255,138,138,.06)"><div class="row wrap" style="gap:6px"><span style="font-weight:600;font-size:12.5px">${esc(mapCanon(r.map))}: which is right?</span>${fixButtons(r,f)}</div></td></tr>`).join(''):''}`).join('')}</tbody></table></div>`:'<p>No games with a match link yet.</p>'}
+ ${all.length?`<div style="overflow:auto;max-height:64vh"><table class="tbl cct"><thead><tr><th scope="col">Date</th><th scope="col">${team?'Opponent':'Match'}</th><th scope="col">Event</th><th scope="col">Library</th><th scope="col">Official</th><th scope="col">Siege.gg</th><th scope="col">Status</th></tr></thead><tbody>${all.slice(0,300).map(x=>`<tr style="vertical-align:top"><td>${esc(x.date)}</td><td style="white-space:normal;font-weight:600;min-width:110px">${esc(x.who)}</td><td class="mu" style="white-space:normal;min-width:90px">${esc(x.event)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.lib)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.off)}</td><td style="white-space:normal;min-width:130px">${cell(x,x.gg)}</td><td>${tag[x.status]}</td></tr>${x.status==='Differs'?x.differs.map(({r,f})=>`<tr><td colspan="7" style="white-space:normal;background:rgba(255,138,138,.06)"><div class="row wrap" style="gap:6px"><span style="font-weight:600;font-size:12.5px">${esc(mapCanon(r.map))}: which is right?</span>${fixButtons(r,f,true)}</div></td></tr>`).join('')+(x.extra.size?`<tr><td colspan="7" style="white-space:normal;background:rgba(255,138,138,.06)"><div class="row wrap" style="gap:6px"><span style="font-weight:600;font-size:12.5px">Missing from your library:</span>${[...x.extra.values()].map(({m,who})=>`<button class="go" style="height:28px;font-size:12.5px" data-a="fixadd" data-id="${x.r0.id}" data-m="${esc(m.map)}" data-x="${m.a}" data-y="${m.b}" data-v="${esc(m.winner||'')}">Add ${esc(mapCanon(m.map))} ${m.a}-${m.b} (${esc(who)})</button>`).join('')}<button class="no" style="height:28px;font-size:12.5px" data-a="ccok" data-ids="${esc(x.rows.map(r=>r.id).join(','))}">Leave it out</button></div></td></tr>`:''):''}`).join('')}</tbody></table></div>`:'<p>No games with a match link yet.</p>'}
  <p class="mu" style="margin-top:8px;font-size:12px">${all.length>300?'Showing the first 300, with disagreements at the top. ':''}Only games with an official or siege.gg link are listed. Games with nothing to compare are under Missing data.</p>`;
 }
 function ccDraw(){const d=$('#dlg'),top=d.querySelector('[style*="max-height:64vh"]')?.scrollTop||0;d.innerHTML=ccHtml();const w=d.querySelector('[style*="max-height:64vh"]');if(w)w.scrollTop=top}
 function ccOpen(teamId){const d=$('#dlg');sco.cc={team:teamId};d.className='ccw';ccDraw();if(d.open)return;d.showModal();d.addEventListener('close',()=>{d.className='';if(sco)sco.cc=null;if(view==='sc'&&!sdirty)render()},{once:true})}
 const fixRedraw=()=>{if(sco.cc&&$('#dlg').open)ccDraw();else render()};
+async function fixAdd(d,b){
+ const r=sco.m.find(x=>x.id===(d.id||sco.matchId));if(!r||sco.fixBusy)return;sco.fixBusy=true;if(b)b.disabled=true;
+ try{
+  const map=mapCanon(d.m),c=fixScore(r,{a:+d.x,b:+d.y,winner:d.v}),pair=x=>sameName(x.team,r.team)&&sameName(x.opponent,r.opponent)||sameName(x.team,r.opponent)&&sameName(x.opponent,r.team);
+  let g=sco.m.find(x=>x.id!==r.id&&x.match_date===r.match_date&&mapCanon(x.map)===map&&pair(x)),word;
+  if(g){
+   if(g.r6esports_id&&r.r6esports_id&&g.r6esports_id!==r.r6esports_id)return toast(map+' between these teams on that day is already saved, as part of another match.');
+   const u=await sb.from('scout_matches').update({r6esports_id:g.r6esports_id||r.r6esports_id||'',siegegg_id:g.siegegg_id||r.siegegg_id||''}).eq('id',g.id).select().single();if(u.error)return toast(scErr(u.error));Object.assign(g,u.data);word=map+' was already saved, now linked to this match';
+  }else{
+   const n=await sb.from('scout_matches').insert({owner_team_id:sco.tid,match_date:r.match_date,team:r.team,opponent:r.opponent,league:r.league,phase:r.phase,source_name:r.source_name,source_link:r.source_link,r6esports_id:r.r6esports_id,siegegg_id:r.siegegg_id,map,round_score:c.score,result:c.result,total_rounds:c.total}).select().single();
+   if(n.error)return toast(n.error.code==='23505'||/duplicate key/i.test(n.error.message)?map+' between these teams on that day is already saved. Refresh the page to see it.':scErr(n.error));
+   sco.m.push(n.data);word='Added '+map+' '+c.score;
+  }
+  // maps of this match that now agree with every source stop being flagged
+  const sib=sco.m.filter(x=>x.check_status==='mismatch'&&((r.r6esports_id&&x.r6esports_id===r.r6esports_id)||(r.siegegg_id&&x.siegegg_id===r.siegegg_id))).filter(x=>{const f=fixFacts(x);return !f.opts.size&&!f.missing.length&&!f.extra.size});
+  if(sib.length){const u=await sb.from('scout_matches').update({check_status:'ok'}).in('id',sib.map(x=>x.id)).select();if(!u.error)u.data.forEach(x=>{const o=sco.m.find(y=>y.id===x.id);if(o)Object.assign(o,x)})}
+  toast(word);
+ }finally{sco.fixBusy=false;if(b)b.disabled=false;fixRedraw()}
+}
 async function fixSave(id,row,word){const r=await sb.from('scout_matches').update({...row,check_status:'reviewed',check_notes:word}).eq('id',id).select().single();if(r.error)return toast(scErr(r.error));Object.assign(sco.m.find(x=>x.id===id),r.data);fixRedraw();toast(word)}
 const NO_SIDES={t1_atk:null,t1_def:null,t1_ot_atk:null,t1_ot_def:null,t2_atk:null,t2_def:null,t2_ot_atk:null,t2_ot_def:null};
 function matchB(r){
@@ -3815,7 +3834,7 @@ const A={
  smback:()=>{if(sco.fromPrep&&prep){const r=sco.fromPrep;sco.fromPrep=null;view='prep';prep.round=r;render();window.scrollTo?.(0,0);return}Object.assign(sco,sco.mBack||{page:'home'});render();if(sco.deckBack&&sco.page==='opp')dkOpen();sco.deckBack=false},
  fixuse:d=>fixSave(d.id||sco.matchId,{round_score:d.s,result:d.r,total_rounds:+d.n,...NO_SIDES},'Used '+d.s+' from '+d.w),
  fixmap:d=>{const id=d.id||sco.matchId,r=sco.m.find(x=>x.id===id),c=fixScore(r,{a:+d.x,b:+d.y,winner:d.v});return fixSave(id,{map:mapCanon(d.m),round_score:c.score,result:c.result,total_rounds:c.total,...NO_SIDES},'Changed to '+mapCanon(d.m)+' '+c.score)},
- fixadd:async d=>{const r=sco.m.find(x=>x.id===(d.id||sco.matchId)),c=fixScore(r,{a:+d.x,b:+d.y,winner:d.v}),n=await sb.from('scout_matches').insert({owner_team_id:sco.tid,match_date:r.match_date,team:r.team,opponent:r.opponent,league:r.league,phase:r.phase,source_name:r.source_name,source_link:r.source_link,r6esports_id:r.r6esports_id,siegegg_id:r.siegegg_id,map:mapCanon(d.m),round_score:c.score,result:c.result,total_rounds:c.total}).select().single();if(n.error)return toast(scErr(n.error));sco.m.push(n.data);fixRedraw();toast('Added '+mapCanon(d.m)+' '+c.score)},
+ fixadd:(d,b)=>fixAdd(d,b),ccok:async(d,b)=>{const ids=String(d.ids||'').split(',').filter(Boolean);b.disabled=true;const r=await sb.from('scout_matches').update({check_status:'reviewed'}).in('id',ids).select();b.disabled=false;if(r.error)return toast(scErr(r.error));r.data.forEach(x=>{const o=sco.m.find(y=>y.id===x.id);if(o)Object.assign(o,x)});fixRedraw();toast('Marked as reviewed')},
  fixrecheck:async(d,b)=>{const r=sco.m.find(x=>x.id===sco.matchId);b.disabled=true;try{await lpCall({action:'check',items:[{r6:r.r6esports_id,gg:r.siegegg_id}]});const q=await sb.from('scout_matches').select('*').eq('id',r.id).single();if(q.data)Object.assign(r,q.data);render();toast('Checked again')}catch(e){b.disabled=false;toast(e.message)}},
  lpggclear:async d=>{const r=await sb.from('scout_matches').update({siegegg_id:'',gg_missing:false}).eq('owner_team_id',sco.tid).eq('siegegg_id',d.g).select();if(r.error)return toast(scErr(r.error));r.data.forEach(n=>Object.assign(sco.m.find(x=>x.id===n.id)||{},n));if(sco.lp)sco.lp.fails=sco.lp.fails.filter(f=>!f.startsWith('siege.gg '+d.g+':'));render();toast('siege.gg link removed')},
  ccclose:()=>$('#dlg').close(),
