@@ -1336,9 +1336,11 @@ async function recCheck(a,onlyKey){
 const dayShift=(d,n)=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
 const scoreKey=v=>{const p=parseScore(v);return p?[p.a,p.b].sort((x,y)=>x-y).join('-'):''};
 // The library game a replay belongs to: same two teams and map, within a day either way, as the replay's clock and the league's can differ.
+// the same two teams, also when one side writes a name a little differently (Falcons and Team Falcons, Cloud 9 and Cloud9)
+const recPairIs=(x,pair)=>{const p=pair.split('|'),a=recCanon(x.team),b=recCanon(x.opponent);return [a,b].sort().join('|')===pair||sameName(a,p[0])&&sameName(b,p[1])||sameName(a,p[1])&&sameName(b,p[0])};
 function recBest(list,s,pair){
  const want=scoreKey(s.score.join('-')),lo=dayShift(s.date,-1),hi=dayShift(s.date,1);
- return list.filter(x=>!x.replay_match_id&&x.match_date>=lo&&x.match_date<=hi&&mapCanon(x.map)===mapCanon(s.map)&&[recCanon(x.team),recCanon(x.opponent)].sort().join('|')===pair).sort((a,b)=>(+(b.match_date===s.date)-+(a.match_date===s.date))||(+(scoreKey(b.round_score)===want)-+(scoreKey(a.round_score)===want)))[0]||null;
+ return list.filter(x=>!x.replay_match_id&&x.match_date>=lo&&x.match_date<=hi&&mapCanon(x.map)===mapCanon(s.map)&&recPairIs(x,pair)).sort((a,b)=>(+(b.match_date===s.date)-+(a.match_date===s.date))||(+(scoreKey(b.round_score)===want)-+(scoreKey(a.round_score)===want)))[0]||null;
 }
 function recLibLine(s,sides){
  if(!rx.rlib||!recReady(sides))return '';
@@ -1367,7 +1369,7 @@ async function recGame(s,c,tid){
  // A game already in the library, from Liquipedia or a spreadsheet, gets linked. Its own values are kept and only its blanks are filled.
  const lib=recBest(q.data,s,pair);
  if(lib){
-  const swap=recCanon(lib.team)!==recCanon(team),t1=swap?P.t2:P.t1,fill={...meta,replay_t1_index:t1,replay_status:'imported'};
+  const swap=!(recCanon(lib.team)===recCanon(team)||sameName(recCanon(lib.team),recCanon(team))),t1=swap?P.t2:P.t1,fill={...meta,replay_t1_index:t1,replay_status:'imported'};
   if(!lib.round_score)fill.round_score=swap?`${s.score[P.t2]}-${s.score[P.t1]}`:P.score;
   if(lib.total_rounds==null)fill.total_rounds=s.score[0]+s.score[1];
   if(!swap){if(!lib.start_side)fill.start_side=P.start;if(!lib.result)fill.result=P.result}
