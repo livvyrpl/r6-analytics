@@ -2372,6 +2372,7 @@ function homeCards(){
  return regs.map(r=>{const l=rows.filter(t=>(t.region||OTHER_REGION)===r);return `<h2 class="hh" style="margin-top:16px">${esc(r)} (${l.length})</h2><div class="g" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr))">${l.map(t=>`<button class="c" data-a="sopp" data-id="${t.id}"${teamGlow(t)}>${tile(t,44)}<span style="min-width:0"><b style="overflow-wrap:anywhere">${esc(t.name)}</b><small style="overflow-wrap:anywhere">${esc(t.league||'No league')} · ${plural(scCount(t),'game')}</small></span></button>`).join('')}</div>`}).join('');
 }
 // the page title inside a team's Liquipedia link; '' when it is not one
+const lpKeepOld=(aliases,oldLp,newLp,name,taken)=>{const o=String(oldLp||'').replace(/_/g,' ').trim();if(!o||norm(o)===norm(String(newLp||'').replace(/_/g,' '))||norm(o)===norm(name||'')||aliases.some(a=>norm(a)===norm(o))||taken?.(o))return aliases;return[...aliases,o]};
 const lpTeamOf=u=>{const m=/^https?:\/\/(?:www\.)?liquipedia\.net\/rainbowsix\/([^?#]+)/i.exec(String(u).trim());if(!m)return '';try{return decodeURIComponent(m[1]).split('/')[0].replace(/_/g,' ').trim()}catch{return ''}};
 const lpLinkOf=n=>n?'https://liquipedia.net/rainbowsix/'+encodeURI(n.replace(/ /g,'_')):'';
 function soForm(){
@@ -2380,7 +2381,7 @@ function soForm(){
  ${t?'':`<div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:2;min-width:200px"><label for="son">Name</label><input id="son" class="fi" required maxlength="120" value="${esc(sco.form.name||'')}"></div><div style="${half}"><label for="sos">Short name</label><input id="sos" class="fi" maxlength="20"></div></div>`}
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="sor">Region</label><select id="sor" class="fi">${regs.map(r=>`<option${(t?.region||REG[0])===r?' selected':''}>${esc(r)}</option>`).join('')}</select></div><div style="${half}"><label for="sol">League</label><input id="sol" class="fi" maxlength="80" value="${esc(t?.league||'')}"></div></div>
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="flex:2;min-width:200px"><label for="sou">Logo (PNG or SVG, up to 2 MB)</label><div class="row wrap"><span id="sop2">${tile(t||{color:'#e07cc0',name:sco.form.name||'?'},56)}</span><input id="sou" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" data-c="sou" style="min-width:0;max-width:100%"></div>${logoOk(t?.logo_url)?'<label class="row" style="gap:8px;margin-top:8px;color:var(--tx)"><input id="sod" type="checkbox">Remove the current logo</label>':''}</div><div style="${half}"><label for="soc">Color (hex code)</label><input id="soc" class="fi" maxlength="7" value="${esc(t?.color||'#e07cc0')}"></div></div>
- <div><label for="solp">Liquipedia link</label><input id="solp" class="fi" inputmode="url" value="${esc(lpLinkOf(t?.source_ids?.liquipedia||''))}" placeholder="https://liquipedia.net/rainbowsix/Cloud9"><p class="mu" style="font-size:12.5px;margin-top:4px">Used by Pull everything, so this team's name here doesn't have to match Liquipedia.</p></div>
+ <div><label for="solp">Liquipedia link</label><input id="solp" class="fi" inputmode="url" value="${esc(lpLinkOf(t?.source_ids?.liquipedia||''))}" placeholder="https://liquipedia.net/rainbowsix/Cloud9"><p class="mu" style="font-size:12.5px;margin-top:4px">Used by Pull everything, so this team's name here doesn't have to match Liquipedia. If the team moved to a new org, paste the new link: the old name is kept as an alias and its games stay with this team.</p></div>
  ${aliasField('soa',t?.aliases)}
  ${t?`<div><label for="sop">Players, one per line</label><textarea id="sop" class="fi ta">${esc((t.players||[]).join('\n'))}</textarea></div>`:''}
  <div class="row wrap" style="justify-content:space-between"><span>${t?'<button type="button" class="no" data-a="sodel">Stop tracking</button>':''}</span><span class="row"><button type="button" class="no" data-a="socancel">Cancel</button><button class="go${t?' svb':''}">${t?'Save changes':'Add opponent'}</button></span></div></form>`;
@@ -2396,6 +2397,7 @@ async function saveSo(form,qt){
  if(id||lpName){const{liquipedia:_,...keep}=oldIds;row.source_ids=lpName?{...keep,liquipedia:lpName}:keep}
  if(!id){const nm=$('#son').value.trim();if(isOwnName(nm))return say(qt,'That is your own team, so it does not need adding as an opponent');const st=teams.find(x=>[x.name,...(x.aliases||[])].some(y=>sameName(y,nm)));if(st)row.site_team_id=st.id;const dupT=sco.teams.find(t=>scSame(t,nm));if(dupT)return say(qt,'This is already tracked as '+dupT.name)}
  row.aliases=aliasList($('#soa').value);const clash=row.aliases.find(x=>sco.teams.some(o=>o.id!==id&&scKeys(o).has(norm(x))));if(clash)return say(qt,`"${clash}" is already used by another team`);
+ if(id)row.aliases=lpKeepOld(row.aliases,oldIds.liquipedia,lpName,sco.teams.find(x=>x.id===id)?.name,a=>sco.teams.some(o=>o.id!==id&&scKeys(o).has(norm(a))));
  if(id)row.players=$('#sop').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
  else{row.name=$('#son').value.trim();row.short_name=$('#sos').value.trim();if(!row.name)return say(qt,'Enter a name');if(sco.teams.some(t=>norm(t.name)===norm(row.name)))return say(qt,'This opponent is already tracked');row.owner_team_id=sco.tid}
  btn.disabled=true;
@@ -2968,7 +2970,7 @@ async function saveTeamSet(form,qt){
  row.aliases=aliasList($('#tsa').value);
  const lpRaw=$('#tslp').value.trim(),lpName=lpTeamOf(lpRaw);
  if(lpRaw&&!lpName){btn.disabled=false;return say(qt,'Paste a Liquipedia Rainbow Six team link, like https://liquipedia.net/rainbowsix/Cloud9')}
- row.liquipedia=lpName||'';
+ row.liquipedia=lpName||'';row.aliases=lpKeepOld(row.aliases,cur.liquipedia,lpName,row.name,a=>teams.some(o=>o.id!==cur.id&&[o.name,...(o.aliases||[])].some(y=>norm(y)===norm(a))));
  const r=await sb.from('teams').update(row).eq('id',cur.id).select().single();
  btn.disabled=false;
  if(r.error)return say(qt,/liquipedia/i.test(r.error.message)?'The Liquipedia link needs a database update. Paste stage26.sql into the Supabase SQL Editor and run it.':r.error.code==='PGRST116'||/row-level security/i.test(r.error.message)?'You do not have permission to make that change. If you are a coach, paste stage8.sql into the Supabase SQL Editor and run it.':r.error.message);
@@ -3562,7 +3564,7 @@ async function mtSave(form){
  const t=teams.find(x=>x.id===adm.mtEd?.id);if(!t)return;const say=m=>{$('#mtq').textContent=m},btn=form.querySelector('.go');
  const row={name:$('#mtn').value.trim(),aliases:aliasList($('#mta').value),region:$('#mtr').value||null,league:$('#mtl').value.trim()||null,color:normHex($('#mtx').value)},f=$('#mtf').files[0],lpRaw=$('#mtlp').value.trim(),lpName=lpTeamOf(lpRaw);
  if(!row.name)return say('Enter a team name');if(!row.color)return say('Enter a colour like #e07cc0');if(f&&f.size>2097152)return say('The logo must be 2 MB or smaller');
- if(lpRaw&&!lpName)return say('Paste a Liquipedia Rainbow Six team link, like https://liquipedia.net/rainbowsix/Cloud9');row.liquipedia=lpName||'';
+ if(lpRaw&&!lpName)return say('Paste a Liquipedia Rainbow Six team link, like https://liquipedia.net/rainbowsix/Cloud9');row.liquipedia=lpName||'';row.aliases=lpKeepOld(row.aliases,t.liquipedia,lpName,row.name,a=>teams.some(o=>o.id!==t.id&&[o.name,...(o.aliases||[])].some(y=>norm(y)===norm(a))));
  btn.disabled=true;
  if(f){const path=crypto.randomUUID()+'.'+(f.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,''),up=await sb.storage.from('logos').upload(path,f,{contentType:f.type});if(up.error){btn.disabled=false;return say(up.error.message)}row.logo_url=sb.storage.from('logos').getPublicUrl(path).data.publicUrl}
  else if($('#mtd')?.checked)row.logo_url=null;
