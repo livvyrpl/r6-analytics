@@ -2979,8 +2979,9 @@ async function saveTeamSet(form,qt){
  sdirty=false;render();toast('Team saved');
 }
 const lpCall=async b=>{
- let r;try{r=await sb.functions.invoke('liquipedia-pull',{body:{team_id:sco.tid,...b}})}catch(e){throw new Error('The pull service could not be reached.')}
- if(r.error){let m='';try{m=(await r.error.context?.json?.())?.error||''}catch{}throw new Error(m||(/fetch|send/i.test(r.error.message||'')?'The pull service is not deployed yet. Follow the steps to create the liquipedia-pull Edge Function in Supabase.':r.error.message))}
+ const lost=()=>Object.assign(new Error('No answer from the pull service (Liquipedia was slow or the connection dropped). Pull again later to get this one; anything already saved stays.'),{retry:true});
+ let r;try{r=await sb.functions.invoke('liquipedia-pull',{body:{team_id:sco.tid,...b}})}catch(e){throw lost()}
+ if(r.error){const st=r.error.context?.status;let m='';try{m=(await r.error.context?.json?.())?.error||''}catch{}if(m)throw new Error(m);if(st===404)throw new Error('The pull service is not deployed yet. Follow the steps to create the liquipedia-pull Edge Function in Supabase.');if(!st||[500,502,503,504,546].includes(st)||/fetch|send/i.test(r.error.message||''))throw lost();throw new Error(r.error.message)}
  if(r.data?.error)throw new Error(r.data.error);
  return r.data;
 };
@@ -3396,7 +3397,9 @@ async function recheck(r){
  if(!r.r6esports_id&&!r.siegegg_id)return;
  try{await lpCall({action:'check',items:[{r6:r.r6esports_id,gg:r.siegegg_id}]});const q=await sb.from('scout_matches').select('*').eq('id',r.id).single(),o=sco?.m?.find(x=>x.id===r.id);if(q.data&&o){Object.assign(o,q.data);if(view==='sc'&&!sdirty&&!autoPending()&&!document.activeElement?.closest?.('form,[data-auto]')&&['match','opp'].includes(sco.page))render()}}catch{}
 }
-const lpStep=async(l,label,fn,what)=>{if(l.stop)return;l.prog.label=label;lpDraw();try{await fn()}catch(e){l.fails.push(what+': '+e.message)}l.prog.i++;lpDraw()};
+// a step that got no answer tries again twice, after a pause, before it is listed as failed
+const lpWait=(l,ms)=>new Promise(res=>{const e=Date.now()+ms,k=setInterval(()=>{if(l.stop||Date.now()>=e){clearInterval(k);res()}},250)});
+const lpStep=async(l,label,fn,what)=>{if(l.stop)return;l.prog.label=label;lpDraw();for(let a=0;;a++){try{await fn();break}catch(e){if(e.retry&&a<2&&!l.stop){l.prog.label=label+' (no answer, trying again)';lpDraw();await lpWait(l,a?45000:15000);if(!l.stop)continue}l.fails.push(what+': '+e.message);break}}l.prog.i++;lpDraw()};
 // After a pull only unresolved games are checked. The Check matches button checks every game that has a link.
 async function lpChecks(l,every){
  const q=await allRows(()=>{const b=sb.from('scout_matches').select('r6esports_id,siegegg_id').eq('owner_team_id',sco.tid);return(every?b:b.in('check_status',['','unavailable','mismatch'])).order('id')});
