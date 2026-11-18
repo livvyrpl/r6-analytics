@@ -119,6 +119,25 @@ body.vodon{padding-right:calc(var(--vodw,min(44vw,760px)) + 24px)}body.vodon #to
 @media(max-width:900px){body.vodon{padding-bottom:calc(56.25vw + 52px)}#vodp{max-height:70vh}}
 .pmx th,.pmx td{padding:5px 8px;font-size:12.5px}.pmx tbody th{text-align:left;font-weight:500}.lgr{display:flex;gap:10px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--bd);font-size:13px}.lgr:last-child{border-bottom:0}.lgt{flex:none;width:78px;font-size:12px}
 [hidden]{display:none!important}
+.mvh{position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--bd);background:var(--cd);margin-bottom:16px}
+.mvh>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.4}
+.mvh::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,8,14,.25),rgba(8,8,14,.8))}
+.mvi{position:relative;z-index:1;padding:22px 18px;display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center;color:#fff}
+.mvm{font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;opacity:.8}
+.mvs{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;width:100%;max-width:640px}
+.mvt{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0}.mvt b{font-size:18px;font-weight:600;overflow-wrap:anywhere}
+.mvn{font-size:46px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;line-height:1}.mvn .lo{opacity:.45}.mvn i{font-style:normal;opacity:.4;padding:0 6px}
+.mvmap{font-size:20px;font-weight:600}
+.mvl{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}.mvl .vod{height:32px;padding:0 16px;font-size:13px}
+.mvk{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px}
+.mvk>div{background:var(--cd);border:1px solid var(--bd);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.mvk span{font-size:12px;color:var(--mu)}.mvk b{font-size:16px;font-weight:600;overflow-wrap:anywhere}
+.mvb{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.mvb>div{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:1px solid var(--bd);border-radius:12px;min-width:0}
+.mvb p{display:flex;align-items:center;gap:8px;margin:0}.mvb p span{font-size:12px;color:var(--mu);width:62px;flex:none}
+.mvr{display:flex;flex-wrap:wrap;gap:6px}.mvr>span{width:38px;height:44px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;font-weight:600;color:#0b0a0e}.mvr small{font-size:10px;opacity:.75}
+.mvo{display:inline-flex;flex-wrap:nowrap;gap:3px;white-space:nowrap}.mvo .opi{width:28px!important;height:28px!important}
+@media (max-width:520px){.mvn{font-size:34px}.mvt b{font-size:15px}.mvs{gap:8px}}
 </style>
 </head>
 <body>
@@ -3252,7 +3271,7 @@ function rdB(g){
  const off=tallyOff(t,p),fix=off&&t.n>=p.a+p.b;
  return `<section id="rdsec" class="cd" style="gap:8px;margin-top:16px"><div class="row wrap" style="justify-content:space-between"><h2 style="font-size:15px;font-weight:600">Rounds (${rs.length})</h2><button class="go" style="height:32px" data-a="rdadd">Add a round</button></div>${off?`<div class="row wrap" style="gap:8px"><span class="over">The rounds add up to ${t.w}-${t.l} but the score says ${esc(g.round_score)}.</span>${fix?`<button class="no" style="height:28px;font-size:12.5px" data-a="rdscore">Use ${t.w}-${t.l}</button>`:''}</div>`:''}${rs.length?`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col" class="num">Rd</th><th scope="col">${esc(g.team)} side</th><th scope="col">Won by</th><th scope="col">Site</th><th scope="col">${esc(g.team)} operators</th><th scope="col">${esc(g.opponent)} operators</th><th scope="col"><span style="position:absolute;left:-9999px">Edit</span></th></tr></thead><tbody>${body}</tbody></table></div>`:'<p class="mu">No rounds saved for this game. Import its replay on the Parse page, or add rounds here.</p>'}</section>`;
 }
-function rdPaint(g){const s=$('#rdsec');if(s)s.outerHTML=rdB(g);const w=$('#wrtop');if(w)w.innerHTML=wrongTop(g)}
+function rdPaint(g){const s=$('#rdsec');if(s)s.outerHTML=sco.meditId===g.id?rdB(g):(()=>{const a=normHex(twinOf(g.team)?.color)||'#e07cc0',b=normHex(twinOf(g.opponent)?.color)||'#9aa3b5';return rdView(g,a,b.toLowerCase()===a.toLowerCase()?'#9aa3b5':b)})();const w=$('#wrtop');if(w)w.innerHTML=wrongTop(g)}
 async function rdOpen(id){
  const g=sco.m.find(x=>x.id===sco.matchId);if(!g)return;const r=id?sco.r.find(x=>x.id===id):null;
  let stats=[];if(r&&g.replay_match_id){const q=await sb.from('player_round_stats').select('id,player_username,team_name,operator,side').eq('owner_team_id',sco.tid).eq('scout_match_id',g.id).eq('round_number',r.round_number);if(q.error)return toast(scErr(q.error));stats=q.data||[]}
@@ -3557,12 +3576,13 @@ async function fixAdd(d,b){
 async function fixSave(id,row,word){const r=await sb.from('scout_matches').update({...row,check_status:'reviewed',check_notes:word}).eq('id',id).select().single();if(r.error)return toast(scErr(r.error));Object.assign(sco.m.find(x=>x.id===id),r.data);fixRedraw();toast(word)}
 const NO_SIDES={t1_atk:null,t1_def:null,t1_ot_atk:null,t1_ot_def:null,t2_atk:null,t2_def:null,t2_ot_atk:null,t2_ot_def:null};
 function matchB(r){
+ if(sco.meditId!==r.id)return matchView(r);
  const f=(k,l,ty='text',att='')=>`<div style="flex:1 1 150px;min-width:0"><label for="mf-${k}">${l}</label><input id="mf-${k}" class="fi" type="${ty}" data-mf="${k}" value="${esc(r[k]??'')}" ${att}></div>`;
  const n=(k,l)=>`<div style="flex:1 1 58px;min-width:0"><label for="mf-${k}">${l}</label><input id="mf-${k}" class="fi" inputmode="numeric" data-mn="${k}" value="${esc(r[k]??'')}"></div>`;
  const box=c=>`<div class="row wrap" style="gap:12px;align-items:flex-start">${c}</div>`;
  const lk=[/^\d+$/.test(r.r6esports_id||'')?safeLink('https://www.ubisoft.com/en-us/esports/rainbow-six/siege/match/'+r.r6esports_id,'Official match page'):'',/^\d+$/.test(r.siegegg_id||'')?safeLink('https://siege.gg/matches/'+r.siegegg_id,'siege.gg'):'',r.source_link?safeLink(r.source_link,r.source_name||'Source'):''].filter(Boolean).join(' · ');
  const res=normRes(r.result);
- return `<div class="row wrap" style="margin-bottom:16px"><div style="flex:1 1 240px;min-width:0"><h1 class="serif" style="font-size:22px;overflow-wrap:anywhere">${esc(r.team)} vs ${esc(r.opponent)}</h1><p class="mu" style="overflow-wrap:anywhere">${esc(fmtD(r.match_date))} · ${esc(r.map)}${r.league?' · '+esc(r.league):''}</p></div><button class="no" data-a="smback">${sco.fromPrep?'Back to Anti-Strat':'Back'}</button></div>
+ return `<div class="row wrap" style="margin-bottom:16px"><div style="flex:1 1 240px;min-width:0"><h1 class="serif" style="font-size:22px;overflow-wrap:anywhere">Editing ${esc(r.team)} vs ${esc(r.opponent)}</h1><p class="mu" style="overflow-wrap:anywhere">${esc(fmtD(r.match_date))} · ${esc(r.map)}${r.league?' · '+esc(r.league):''}. Changes save as you type.</p></div><button class="go" data-a="smview">Done editing</button></div>
  <section class="cd" style="gap:10px;margin-bottom:16px">${mapPhoto(r.map)}<div class="row wrap" style="gap:10px"><span style="font-size:24px;font-weight:600">${esc(r.round_score||'No score')}</span>${res?`<span class="fm f${res}">${res}</span>`:''}${/^https?:\/\//i.test(r.vod_link||'')?`<a class="vod" href="${esc(r.vod_link)}" target="_blank" rel="noopener noreferrer">VOD</a>`:''}${/^https:\/\//i.test(r.replay_link||'')?`<a class="vod" href="${esc(r.replay_link)}" target="_blank" rel="noopener noreferrer">Replay</a>`:''}</div><p>${checkTag(r)}</p>${lk?`<p class="mu" style="overflow-wrap:anywhere">${lk}</p>`:''}${r.check_status==='mismatch'||oppIssues([{r,res,score:r.round_score,foe:r.opponent,map:r.map,date:r.match_date}]).length?'<div><button class="no" data-a="smok">Mark as reviewed</button></div>':''}</section>
  <div id="wrtop">${wrongTop(r)}</div>${fixB(r)}<form class="cd" data-s="smatch" data-dirty data-auto="smatch">
  <h2 style="font-size:15px;font-weight:600">Match details</h2>
@@ -3576,7 +3596,38 @@ function matchB(r){
  ${box(f('ot_start','OT Side')+f('vod_link','VOD link'))}
  ${box(f('r6esports_id','Official match ID')+f('siegegg_id','siege.gg match ID'))}
  <div><span class="lb">Rounds won on each side (optional)</span>${box(n('t1_atk','T1 ATK')+n('t1_def','T1 DEF')+n('t1_ot_atk','T1 OT ATK')+n('t1_ot_def','T1 OT DEF'))}<div style="height:8px"></div>${box(n('t2_atk','T2 ATK')+n('t2_def','T2 DEF')+n('t2_ot_atk','T2 OT ATK')+n('t2_ot_def','T2 OT DEF'))}</div>
- <div class="row wrap" style="justify-content:space-between"><button type="button" class="no" data-a="smdel">Delete game</button><span class="row"><button type="button" class="no" data-a="smback">Cancel</button><button class="go svb">Save changes</button></span></div></form>${rdB(r)}`;
+ <div class="row wrap" style="justify-content:space-between"><button type="button" class="no" data-a="smdel">Delete game</button><span class="row"><button type="button" class="go" data-a="smview">Done editing</button><button class="go svb">Save changes</button></span></div></form>${rdB(r)}`;
+}
+// GAME PAGE, read-only: score, teams and map up top, then the details, bans, sides and rounds. Edit opens the form.
+function matchView(r){
+ const res=normRes(r.result),p=parseScore(r.round_score),T1=twinOf(r.team)||{name:r.team},T2=twinOf(r.opponent)||{name:r.opponent};
+ const c1=normHex(T1.color)||'#e07cc0',c2x=normHex(T2.color)||'#9aa3b5',c2=c2x.toLowerCase()===c1.toLowerCase()?'#9aa3b5':c2x,ph=mapPath(r.map);
+ const side=s=>{const k=startNorm(s);return k==='attack'?'Attack':k==='defense'?'Defense':s||''};
+ const meta=[fmtD(r.match_date),r.league,r.phase].filter(Boolean).map(esc).join(' · ');
+ const tm=(x,won)=>`<div class="mvt">${tile(x,60)}<b>${esc(x.name)}</b>${won==null?'':`<span class="fm f${won?'W':'L'}">${won?'W':'L'}</span>`}</div>`;
+ const w1=res==='W'?true:res==='L'?false:null,w2=w1==null?null:!w1;
+ const num=p?`<span class="${p.a<p.b?'lo':''}">${p.a}</span><i>–</i><span class="${p.b<p.a?'lo':''}">${p.b}</span>`:'<span style="font-size:20px;opacity:.7">No score</span>';
+ const lk=[/^https?:\/\//i.test(r.vod_link||'')?`<a class="vod" href="${esc(r.vod_link)}" target="_blank" rel="noopener noreferrer">▶ Watch VOD</a>`:'',/^https:\/\//i.test(r.replay_link||'')?`<a class="vod" style="background:#6b5bd2" href="${esc(r.replay_link)}" target="_blank" rel="noopener noreferrer">Replay</a>`:'',/^\d+$/.test(r.r6esports_id||'')?safeLink('https://www.ubisoft.com/en-us/esports/rainbow-six/siege/match/'+r.r6esports_id,'Official match page'):'',/^\d+$/.test(r.siegegg_id||'')?safeLink('https://siege.gg/matches/'+r.siegegg_id,'siege.gg'):'',r.source_link?safeLink(r.source_link,r.source_name||'Source'):''].filter(Boolean).join('');
+ const hero=`<section class="mvh">${ph?`<img src="${UBI}${ph}?imwidth=1280" alt="" loading="lazy">`:''}<div class="mvi">${meta?`<div class="mvm">${meta}</div>`:''}<div class="mvs">${tm(T1,w1)}<div class="mvn">${num}</div>${tm(T2,w2)}</div><div class="mvmap">${esc(r.map||'')}</div>${lk?`<div class="mvl">${lk}</div>`:''}</div></section>`;
+ const card=(l,v)=>v?`<div><span>${l}</span><b>${esc(v)}</b></div>`:'';
+ const ss=startNorm(r.start_side),facts=[card('Result',res==='W'?r.team+' won':res==='L'?r.opponent+' won':res==='D'?'Draw':''),card(esc(r.team)+' started on',side(r.start_side)),card(esc(r.opponent)+' started on',ss==='attack'?'Defense':ss==='defense'?'Attack':''),card('Map picked by',r.picked_by),card('Score after 6 rounds',r.split_score),card('Overtime side',side(r.ot_start))].join('');
+ const ban=(l,o)=>`<p><span>${l}</span>${o?opIcon(o)+'<b style="font-weight:600">'+esc(o)+'</b>':'<span class="mu" style="width:auto">None</span>'}</p>`;
+ const anyBan=r.our_atk_ban||r.our_def_ban||r.opp_atk_ban||r.opp_def_ban;
+ const bans=anyBan?`<section class="cd" style="gap:10px;margin-bottom:16px"><h2 style="font-size:15px;font-weight:600">Bans</h2><div class="mvb"><div><b style="font-weight:600">${esc(r.team)}</b>${ban('Attack',r.our_atk_ban)}${ban('Defense',r.our_def_ban)}</div><div><b style="font-weight:600">${esc(r.opponent)}</b>${ban('Attack',r.opp_atk_ban)}${ban('Defense',r.opp_def_ban)}</div></div></section>`:'';
+ const hasSides=['t1_atk','t1_def','t2_atk','t2_def'].some(k=>r[k]!=null),ot=['t1_ot_atk','t1_ot_def','t2_ot_atk','t2_ot_def'].some(k=>r[k]);
+ const sideRow=(n,k)=>`<tr><th scope="row" style="text-align:left;font-weight:600">${esc(n)}</th><td class="num">${r[k+'_atk']??0}</td><td class="num">${r[k+'_def']??0}</td>${ot?`<td class="num">${r[k+'_ot_atk']??0}</td><td class="num">${r[k+'_ot_def']??0}</td>`:''}</tr>`;
+ const sides=hasSides?`<section class="cd" style="gap:8px;margin-bottom:16px"><h2 style="font-size:15px;font-weight:600">Rounds won on each side</h2><div style="overflow-x:auto"><table class="tbl" style="max-width:520px"><thead><tr><th scope="col"></th><th scope="col" class="num">Attack</th><th scope="col" class="num">Defense</th>${ot?'<th scope="col" class="num">OT attack</th><th scope="col" class="num">OT defense</th>':''}</tr></thead><tbody>${sideRow(r.team,'t1')}${sideRow(r.opponent,'t2')}</tbody></table></div></section>`:'';
+ const chk=`<p style="font-size:12.5px;margin:0 0 12px">${checkTag(r)}${r.check_status==='mismatch'||oppIssues([{r,res,score:r.round_score,foe:r.opponent,map:r.map,date:r.match_date}]).length?' <button class="no" style="height:26px;font-size:12px;margin-left:6px" data-a="smok">Mark as reviewed</button>':''}</p>`;
+ return `<div class="row wrap" style="justify-content:flex-end;gap:8px;margin-bottom:12px">${canEditS()?'<button class="go" data-a="smedit">Edit</button>':''}<button class="no" data-a="smback">${sco.fromPrep?'Back to Anti-Strat':'Back'}</button></div>${hero}<div id="wrtop">${wrongTop(r)}</div>${fixB(r)}${chk}${facts?`<div class="mvk">${facts}</div>`:''}${bans}${sides}${rdView(r,c1,c2)}`;
+}
+function rdView(g,c1='#e07cc0',c2='#9aa3b5'){
+ const rs=gameRounds(g);if(!rs.length)return `<section id="rdsec" class="cd" style="gap:8px"><h2 style="font-size:15px;font-weight:600">Rounds</h2><p class="mu">No rounds saved for this game yet.</p></section>`;
+ const L=rs.map(r=>{const o=roundFor(g,r);return{r,o,tm:roundTeams(o),res:normRes(o.result)}});
+ const ab=s=>s==='attack'?'ATK':s==='defense'?'DEF':'';
+ const strip=`<div class="mvr" aria-label="Round by round">${L.map(x=>`<span style="background:${x.res==='W'?c1:x.res==='L'?c2:'var(--bd)'}" title="Round ${x.r.round_number}: ${x.res==='W'?esc(g.team):x.res==='L'?esc(g.opponent):'not set'} won${x.o.site?', '+esc(x.o.site):''}">${x.r.round_number}<small>${ab(x.tm[0].side)}</small></span>`).join('')}</div><p class="mu" style="font-size:12px;margin:0"><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${c1};vertical-align:middle"></span> ${esc(g.team)} won · <span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${c2};vertical-align:middle"></span> ${esc(g.opponent)} won · ATK/DEF is ${esc(g.team)}'s side</p>`;
+ const ops=l=>l.length?`<span class="mvo">${l.map(o=>`<span title="${esc(o)}">${opIcon(o)}<span style="position:absolute;left:-9999px">${esc(o)}</span></span>`).join('')}</span>`:'<span class="mu">—</span>';
+ const body=L.map(x=>`<tr style="vertical-align:middle"><td class="num" style="font-weight:600">${x.r.round_number}</td><td>${x.tm[0].side==='attack'?'Attack':x.tm[0].side==='defense'?'Defense':'<span class="mu">—</span>'}</td><td><b style="font-weight:600;color:${x.res==='W'?c1:x.res==='L'?c2:'inherit'}">${x.res==='W'?esc(g.team):x.res==='L'?esc(g.opponent):'<span class="mu">Not set</span>'}</b></td><td style="white-space:normal;min-width:150px">${x.o.site?esc(x.o.site):'<span class="mu">—</span>'}</td><td>${ops(x.tm[0].ops)}</td><td>${ops(x.tm[1].ops)}</td></tr>`).join('');
+ return `<section id="rdsec" class="cd" style="gap:12px"><h2 style="font-size:15px;font-weight:600">Rounds (${rs.length})</h2>${strip}<div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col" class="num">Rd</th><th scope="col">${esc(g.team)} side</th><th scope="col">Won by</th><th scope="col">Site</th><th scope="col">${esc(g.team)}</th><th scope="col">${esc(g.opponent)}</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
 }
 async function saveMatch(form,qt){
  const row={},btn=form.querySelector('.go'),id=sco.matchId;
@@ -4022,7 +4073,8 @@ const A={
  somap:d=>{sco.oppMap=d.k;render()},
  sjoin:d=>sJoinGames(d.id,d.b),twinjoin:()=>twinJoinAll(false),smatch:d=>{sco.deckBack=false;sco.fromPrep=null;sco.mBack={page:sco.page,kind:sco.kind,tab:sco.tab,oppId:sco.oppId};sco.page='match';sco.matchId=d.id;render();window.scrollTo?.(0,0)},
  prepgame:d=>{const r=prep.round;if(!sco||sco.tid!==prep.tid)sco=scoNew({tid:prep.tid,league:'',q:'',f:{}});Object.assign(sco,{matchId:d.id,mBack:null,deckBack:false,fromPrep:r});openSc('match');window.scrollTo?.(0,0)},
- smback:()=>{if(sco.fromPrep&&prep){const r=sco.fromPrep;sco.fromPrep=null;view='prep';prep.round=r;render();window.scrollTo?.(0,0);return}Object.assign(sco,sco.mBack||{page:'home'});render();if(sco.deckBack&&sco.page==='opp')dkOpen();sco.deckBack=false},
+ smedit:()=>{sco.meditId=sco.matchId;render();window.scrollTo?.(0,0)},smview:async()=>{await autoFlush();sco.meditId=null;sdirty=false;render();window.scrollTo?.(0,0)},
+ smback:()=>{sco.meditId=null;if(sco.fromPrep&&prep){const r=sco.fromPrep;sco.fromPrep=null;view='prep';prep.round=r;render();window.scrollTo?.(0,0);return}Object.assign(sco,sco.mBack||{page:'home'});render();if(sco.deckBack&&sco.page==='opp')dkOpen();sco.deckBack=false},
  fixuse:d=>fixSave(d.id||sco.matchId,{round_score:d.s,result:d.r,total_rounds:+d.n,...NO_SIDES},'Used '+d.s+' from '+d.w),
  fixmap:d=>{const id=d.id||sco.matchId,r=sco.m.find(x=>x.id===id),c=fixScore(r,{a:+d.x,b:+d.y,winner:d.v});return fixSave(id,{map:mapCanon(d.m),round_score:c.score,result:c.result,total_rounds:c.total,...NO_SIDES},'Changed to '+mapCanon(d.m)+' '+c.score)},
  fixadd:(d,b)=>fixAdd(d,b),ccall:()=>{if(sco.cc){sco.cc.all=!sco.cc.all;ccDraw()}},ccok:async(d,b)=>{const ids=String(d.ids||'').split(',').filter(Boolean);b.disabled=true;const r=await sb.from('scout_matches').update({check_status:'reviewed'}).in('id',ids).select();b.disabled=false;if(r.error)return toast(scErr(r.error));r.data.forEach(x=>{const o=sco.m.find(y=>y.id===x.id);if(o)Object.assign(o,x)});fixRedraw();toast('Marked as reviewed')},
