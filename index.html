@@ -3303,6 +3303,26 @@ function gapRows(team){
 }
 const gapIco='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="vertical-align:-2px;margin-right:5px"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>';
 const gapBtn=(id,cls='no')=>`<button class="${cls}" data-a="gapopen" data-t="${id||''}">${gapIco}Missing data</button>`;
+// The other row of the same match: same two teams by any name, within a day. Only offered on the row without an official source.
+function gapMate(x,all){
+ if(x.has.src)return null;const r=x.r,lo=dayShift(x.date,-1),hi=dayShift(x.date,1);
+ const c=all.filter(y=>y!==x&&y.date>=lo&&y.date<=hi&&(twinSame(y.r.team,r.team)&&twinSame(y.r.opponent,r.opponent)||twinSame(y.r.team,r.opponent)&&twinSame(y.r.opponent,r.team)));
+ return c.sort((a,b)=>(+!!b.has.src-+!!a.has.src)||(+(b.date===x.date)-+(a.date===x.date)))[0]||null;
+}
+// Joins every game of one row into the other row's games, map by map. A map the other row doesn't have joins its match details.
+async function gapJoin(fromIds,toIds){
+ const s=sco,F=fromIds.map(id=>s.m.find(x=>x.id===id)).filter(Boolean),T=toIds.map(id=>s.m.find(x=>x.id===id)).filter(Boolean);if(!F.length||!T.length)return;
+ const used=new Set(),pairs=[],alone=[];
+ F.forEach(g=>{const m=T.find(y=>!used.has(y.id)&&mapCanon(y.map)===mapCanon(g.map));if(m){used.add(m.id);pairs.push({g,m,swap:!twinSame(g.team,m.team)})}else alone.push(g)});
+ const k=T[0],nl='\n',sc=x=>mapCanon(x.map)+' '+(x.round_score||'no score');
+ if(!confirm('Join these into one match?'+nl+nl+'Kept: '+k.team+' vs '+k.opponent+', '+fmtD(k.match_date)+([k.league,k.phase].filter(Boolean).length?' ('+[k.league,k.phase].filter(Boolean).join(' · ')+')':'')+nl+(pairs.length?nl+'Joined map by map:'+nl+pairs.map(p=>'  '+sc(p.g)+'  into  '+sc(p.m)).join(nl):'')+(alone.length?nl+nl+'Added to the match (no such map there yet):'+nl+alone.map(g=>'  '+sc(g)).join(nl):'')+nl+nl+'The kept games keep their score and links. Rounds, operators and scoreboard move onto them.'))return;
+ const job=actStart('Joining into one match');let ok=0;const errs=[];
+ for(const p of pairs){const r=await sJoinGames(p.m.id,p.g.id,{quiet:true,main:p.m.id,swap:p.swap});if(r===true)ok++;else if(r)errs.push(mapCanon(p.g.map)+': '+r)}
+ for(const g of alone){const u=await sb.from('scout_matches').update({match_date:k.match_date,league:k.league||g.league||'',phase:k.phase||'',source_name:g.source_name==='Replay'?g.source_name:k.source_name||g.source_name,source_link:k.source_link||g.source_link||'',r6esports_id:k.r6esports_id||'',siegegg_id:k.siegegg_id||''}).eq('id',g.id).select().single();if(u.error)errs.push(mapCanon(g.map)+': '+scErr(u.error));else ok++}
+ const [m,r]=await Promise.all([allRows(()=>sb.from('scout_matches').select('*').eq('owner_team_id',s.tid).order('id')),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',s.tid).order('id'))]);
+ if(sco===s){if(!m.error)s.m=m.data;if(!r.error)s.r=r.data;if(view==='sc'&&!sdirty)render()}
+ actEnd(job,errs.length?'warn':'ok','Joined '+plural(ok,'map')+(errs.length?'. Not joined: '+errs.join('; '):''));toast(errs.length?'Joined '+plural(ok,'map')+'. Not joined: '+errs.join('; '):'Joined into one match.');
+}
 function gapB(){
  const team=sco.gapTeam?sco.teams.find(t=>t.id===sco.gapTeam):null,all=gapRows(team),miss=c=>all.filter(x=>!x.has[c]).length,open=all.filter(x=>GAP_COLS.some(c=>!x.has[c[0]])),F=sco.gapF||'',l=F?all.filter(x=>!x.has[F]):open,show=l.slice(0,200);
  const chip=(key,label,n)=>`<button class="ch" data-a="gapf" data-k="${key}" aria-pressed="${F===key}" ${n?'':'style="opacity:.55"'}>${label} <b style="font-weight:700;margin-left:3px;color:${n?'#ff8a8a':'#34c46a'}">${n}</b></button>`;
@@ -3310,7 +3330,7 @@ function gapB(){
  const src=x=>{const r=x.r,tag=(t,u,bad)=>u?`<a class="${bad?'over':''}" style="font-size:11px;font-weight:700;text-decoration:none;${bad?'':'color:var(--pk)'}" href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(t)}">${t[0]}</a>`:'';return `<span class="row" style="gap:6px">${tag('Official page',/^\d+$/.test(r.r6esports_id||'')?'https://www.ubisoft.com/en-us/esports/rainbow-six/siege/match/'+r.r6esports_id:'')}${tag('Siege.gg',/^\d+$/.test(r.siegegg_id||'')?'https://siege.gg/matches/'+r.siegegg_id:'',x.rows.some(y=>y.gg_missing))}${tag('Liquipedia',/^https:/.test(r.source_link||'')?r.source_link:'')}${x.rows.some(y=>y.gg_missing)?`<button class="no" style="height:22px;padding:0 8px;font-size:11.5px" data-a="lpggclear" data-g="${esc(r.siegegg_id)}">Remove dead siege.gg link</button>`:''}</span>`};
  return `<div class="row wrap" style="margin-bottom:8px"><div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:24px;overflow-wrap:anywhere">${gapIco}Missing data</h1><p class="mu">${team?esc(team.name):'All teams'}. Click + to fill a gap.</p></div><button class="no" data-a="gapback">Back</button></div>
  ${twinsB()}${wrongB(team)}<div class="row wrap" style="gap:6px;margin-bottom:8px" role="group" aria-label="Filter gaps">${chip('','All gaps',open.length)}${GAP_COLS.map(c=>chip(c[0],c[1],miss(c[0]))).join('')}</div>
- ${show.length?`<section class="cd" style="padding:8px 10px"><div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">${team?'Opponent':'Match'}</th><th scope="col">Event</th>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<th scope="col" style="text-align:center">${c[1]}</th>`).join('')}<th scope="col">Source</th></tr></thead><tbody>${show.map(x=>`<tr><td>${esc(x.date)}</td><td><button class="no" style="border:0;height:auto;padding:0;font-weight:600;background:none;text-align:left;white-space:normal" data-a="smatch" data-id="${x.r.id}">${esc(x.who)}</button></td><td class="mu" style="max-width:150px;overflow:hidden;text-overflow:ellipsis" title="${esc(x.event)}">${esc(x.event)}</td>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<td style="text-align:center">${cell(x,c[0])}</td>`).join('')}<td>${x.has.src?src(x):x.r.r6esports_id||x.r.siegegg_id?src(x):cell(x,'src')}</td></tr>`).join('')}</tbody></table></div>${l.length>200?'<p class="mu">Showing the first 200.</p>':''}</section>`:`<div class="cd"><p>Nothing missing${F?' here':''}.</p></div>`}`;
+ ${show.length?`<section class="cd" style="padding:8px 10px"><div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">${team?'Opponent':'Match'}</th><th scope="col">Event</th>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<th scope="col" style="text-align:center">${c[1]}</th>`).join('')}<th scope="col">Source</th></tr></thead><tbody>${show.map(x=>`<tr><td>${esc(x.date)}</td><td><button class="no" style="border:0;height:auto;padding:0;font-weight:600;background:none;text-align:left;white-space:normal" data-a="smatch" data-id="${x.r.id}">${esc(x.who)}</button>${(()=>{const y=gapMate(x,all);return y?`<button class="no" style="display:block;margin-top:3px;height:22px;padding:0 8px;font-size:11.5px" data-a="gapjoin" data-f="${esc(x.rows.map(g=>g.id).join(','))}" data-t="${esc(y.rows.map(g=>g.id).join(','))}" title="Same teams within a day as ${esc(y.date+' '+(y.event||y.who))}">Join with ${esc(y.event||y.date)}</button>`:''})()}</td><td class="mu" style="max-width:150px;overflow:hidden;text-overflow:ellipsis" title="${esc(x.event)}">${esc(x.event)}</td>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<td style="text-align:center">${cell(x,c[0])}</td>`).join('')}<td>${x.has.src?src(x):x.r.r6esports_id||x.r.siegegg_id?src(x):cell(x,'src')}</td></tr>`).join('')}</tbody></table></div>${l.length>200?'<p class="mu">Showing the first 200.</p>':''}</section>`:`<div class="cd"><p>Nothing missing${F?' here':''}.</p></div>`}`;
 }
 const hubRows=()=>sco.m.map(r=>({r,foe:r.opponent,map:r.map,date:r.match_date,res:normRes(r.result),score:r.round_score}));
 // Another game with the same two teams, on the same map, on the same day: often one game split in two by a restart
@@ -3859,7 +3879,7 @@ const A={
  lpteam:()=>{const t=sco.teams.find(x=>x.id===sco.oppId);if(t&&!sco.lp?.running)lpRunTeam(t)},
  lpstop:()=>{sco.lp.stop=true;render()},
  gapopen:d=>{sco.gapBack={page:sco.page,oppId:sco.oppId,tab:sco.tab};Object.assign(sco,{page:'gaps',gapTeam:d.t||null,gapF:''});render();window.scrollTo?.(0,0)},
- gapback:()=>{Object.assign(sco,sco.gapBack||{page:'home'});render()},
+ gapjoin:d=>gapJoin(String(d.f).split(','),String(d.t).split(',')),gapback:()=>{Object.assign(sco,sco.gapBack||{page:'home'});render()},
  gapf:d=>{sco.gapF=d.k;render()},
  gapfix:d=>{if(d.k==='vod')return A.scvod({id:d.id});if(['board','log','ops'].includes(d.k))return openAnalyst('parse');if(d.k==='veto')return openSc('lib','v');A.smatch({id:d.id})},
  ccopen:d=>ccOpen(d.t||null),
