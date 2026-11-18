@@ -148,6 +148,22 @@ const R={coach:'Coach',assistant_coach:'Assistant Coach',analyst:'Analyst',playe
 const REG=['North America','South America','Europe','Asia Pacific','China'],COL=['#e07cc0','#7cc0e0','#e0c07c','#9ae07c','#c07ce0','#e07c7c','#7ce0c0','#ece8f0'];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=s=>document.querySelector(s),ico=p=>`<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+// TEAM DATE RANGE (Team Settings): a team only sees games, vetoes, rounds, scrims, player stats and schedule inside it. Rows with no date stay.
+const teamDR=tid=>{const x=(teams||[]).find(y=>y.id===tid);return x&&(x.view_from||x.view_to)?{from:x.view_from||'',to:x.view_to||''}:null};
+const inTeamDR=(r,d)=>{if(!r||!d)return true;const k=String(d).slice(0,10);return(!r.from||k>=r.from)&&(!r.to||k<=r.to)};
+const tdrRows=(tid,rows,col)=>{const r=teamDR(tid);return r&&Array.isArray(rows)?rows.filter(x=>inTeamDR(r,x[col])):rows};
+const tdrQ=(tid,q,col)=>q&&Array.isArray(q.data)?{...q,data:tdrRows(tid,q.data,col)}:q;
+const tdrSay=r=>(r.from?fmtD(r.from):'the start')+' to '+(r.to?fmtD(r.to):'today');
+// scouting state: m, v and r read through the team's date range; .all holds every row (used where a hidden copy must still be found)
+function scoNew(o){
+ const s={...o},raw={},cache={},col={m:'match_date',v:'veto_date',r:'round_date'};
+ Object.keys(col).forEach(k=>Object.defineProperty(s,k,{enumerable:true,configurable:true,set(v){raw[k]=v},get(){
+  const a=raw[k],r=teamDR(s.tid);if(!r||!Array.isArray(a))return a;
+  const key=r.from+'|'+r.to,c=cache[k];if(c&&c.a===a&&c.n===a.length&&c.key===key)return c.out;
+  const out=a.filter(x=>inTeamDR(r,x[col[k]]));cache[k]={a,n:a.length,key,out};return out}}));
+ Object.defineProperty(s,'all',{enumerable:false,get:()=>raw});return s;
+}
+const scAll=k=>sco?.all?.[k]||sco?.[k]||[];
 let siteSet=null,allScout=[],me=null,teams=[],mem={},allMem=[],profs=[],invs=[],cur=null,view='dash',viewing=false,fm=null,sel=null,mode='in',scr=null,sch=null,pl=null,ros=null,an=null,stra=null,cov=null,sco=null,rost=null,sdirty=false;
 const staff=()=>me&&['owner','admin'].includes(me.site_role),owner=()=>me&&me.site_role==='owner';
 // The Activity panel, bottom right. toast() logs something finished; actStart() logs something still running.
@@ -265,6 +281,7 @@ function render(){
  ${mine.length>1?`<select class="tb" data-c="sw" aria-label="Switch team">${mine.map(t=>`<option value="${t.id}"${cur&&t.id===cur.id?' selected':''}>${esc(t.name)}</option>`).join('')}</select>`:''}
  <button class="tb" data-a="go" data-v="dash">Dashboard</button><button class="tb" data-a="settings">Settings</button><button class="tb" data-a="profile">Profile</button></header>
  ${viewing&&view==='dash'&&cur?`<div class="bar"><span>Viewing ${esc(cur.name)} as ${me.site_role}</span><button class="no" data-a="go" data-v="teamsV">Back to teams</button></div>`:''}
+ ${(()=>{const r=cur&&!['admin','teamsV','users','roles','invitesV','pulls','actlog','siteset','mteams','bprints','backup','create'].includes(view)&&teamDR(cur.id);return r?`<div class="bar"><span>${esc(cur.name)} shows ${esc(tdrSay(r))} only.</span>${canEditSch()&&view!=='tset'?'<button class="no" data-a="tset">Change in Team Settings</button>':''}</div>`:''})()}
  <main>${({dash:dashV,admin:adminV,teamsV,users:usersV,roles:()=>admGuard(rolesV),invitesV:()=>admGuard(invitesV),pulls:()=>admGuard(pullsV),actlog:()=>admGuard(actlogV),siteset:()=>admGuard(sitesetV),mteams:()=>admGuard(mteamsV),bprints:()=>admGuard(bprintsV),backup:()=>admGuard(backupV),create:createV,scrims:scrimsV,schedule:scheduleV,player:playerV,roster:rosterV,analyst:analystV,strats:stratsV,prep:prepV,cover:coverV,sc:scoutV,tset:teamSetV})[view]()}</main><footer>Map and operator images © Ubisoft. Some data from Liquipedia, CC-BY-SA. Liv Analytics is not affiliated with Ubisoft.</footer>`;
  if(view==='analyst')drawCharts();
  if(view==='sc')scDraw();
@@ -386,11 +403,11 @@ function scrimForm(embed=false){
  <div class="row" style="justify-content:flex-end">${embed||s?'':'<button type="button" class="no" data-a="scancel">Cancel</button>'}<button class="go${s?' svb':''}">${s?'Done':'Add scrim'}</button></div></form>`;
 }
 async function fetchScrims(){
- const tid=scr.tid,r=await sb.from('scrims').select('*').eq('team_id',tid).order('scrim_date',{ascending:false}).order('created_at',{ascending:false});
+ const tid=scr.tid,r=tdrQ(tid,await sb.from('scrims').select('*').eq('team_id',tid).order('scrim_date',{ascending:false}).order('created_at',{ascending:false}),'scrim_date');
  if(scr?.tid!==tid)return;
  const tm=await sb.from('scout_teams').select('*').eq('owner_team_id',tid);if(scr?.tid!==tid)return;scr.teams=tm.data||[];
  const[vn,ro]=await Promise.all([allRows(()=>sb.from('scrim_vod_notes').select('*').eq('team_id',tid).order('id')),sb.from('team_roster').select('id,name,linked_user_id').eq('team_id',tid)]);if(scr?.tid!==tid)return;scr.vn=vn.error?null:vn.data;scr.roster=(ro.data||[]).sort((a,b)=>a.name.localeCompare(b.name));
- const mr=await allRows(()=>sb.from('scrim_map_results').select('*').eq('team_id',tid).order('scrim_id').order('map'));if(scr?.tid!==tid)return;scr.allMr=mr.error?null:mr.data;
+ const mr=await allRows(()=>sb.from('scrim_map_results').select('*').eq('team_id',tid).order('scrim_id').order('map'));if(scr?.tid!==tid)return;scr.allMr=mr.error?null:teamDR(tid)&&r.data?mr.data.filter(x=>r.data.some(c=>c.id===x.scrim_id)):mr.data;
  scr.err=r.error?sErr(r.error):'';scr.list=r.data||[];
 }
 async function loadDetail(id){
@@ -646,7 +663,7 @@ function schForm(){
  <div class="row" style="justify-content:flex-end"><button type="button" class="no" data-a="schcancel">Cancel</button><button class="go${e?' svb':''}">${e?'Save changes':'Add'}</button></div></form>`;
 }
 async function fetchSch(){
- const tid=sch.tid,r=await sb.from('schedule_entries').select('*').eq('team_id',tid);
+ const tid=sch.tid,r=tdrQ(tid,await sb.from('schedule_entries').select('*').eq('team_id',tid),'entry_date');
  if(sch?.tid!==tid)return;
  if(r.error){sch.err=schE(r.error);sch.list=[];return}
  const mids=allMem.filter(m=>m.team_id===tid).map(m=>m.user_id),ids=[...new Set([...mids,...r.data.map(e=>e.user_id).filter(Boolean)])];
@@ -696,7 +713,7 @@ async function openPlayer(page){
 }
 async function loadPlayer(){
  const s=pl,uid=s.uid,tid=s.tid,ids=[...new Set([...allMem.filter(m=>m.team_id===tid&&m.roles.includes('player')).map(m=>m.user_id),...(uid?[uid]:[])])];
- const none={data:[]},[p,g,n,e,r,sn,lk,vn]=await Promise.all([
+ let none={data:[]},[p,g,n,e,r,sn,lk,vn]=await Promise.all([
   ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none,
   uid?sb.from('journal_goals').select('*').eq('team_id',tid).eq('user_id',uid):none,
   uid?sb.from('journal_notes').select('*').eq('team_id',tid).eq('user_id',uid):none,
@@ -708,6 +725,7 @@ async function loadPlayer(){
  const sc=(sn.data||[]).length?await sb.from('scrims').select('id,opponent,scrim_date').in('id',sn.data.map(x=>x.scrim_id)):none;
  const by=[...new Set((g.data||[]).map(x=>x.assigned_by).filter(Boolean))],bp=by.length?await sb.from('profiles').select('id,display_name').in('id',by):none;
  if(pl!==s||s.uid!==uid)return;
+ e=tdrQ(tid,e,'entry_date');if(teamDR(tid)&&sc.data){const ok=new Set(tdrRows(tid,sc.data,'scrim_date').map(x=>x.id));sn={...sn,data:(sn.data||[]).filter(x=>ok.has(x.scrim_id))}}vn=tdrQ(tid,vn,'scrim_date');
  s.byNames=Object.fromEntries((bp.data||[]).map(x=>[x.id,x.display_name]));
  s.names=Object.fromEntries((p.data||[]).map(x=>[x.id,x.display_name||x.email]));
  s.players=ids.filter(i=>allMem.some(m=>m.team_id===tid&&m.user_id===i&&m.roles.includes('player'))).map(i=>({id:i,name:s.names[i]||'Player'})).sort((a,b)=>a.name.localeCompare(b.name));
@@ -793,7 +811,7 @@ async function openRoster(){
  view='roster';ros={tid:cur.id,rows:null,err:'',off:[],late:[]};render();
  if(!canPick())return;
  const s=ros,tid=s.tid,t=today(),ids=[...new Set(allMem.filter(m=>m.team_id===tid&&m.roles.includes('player')).map(m=>m.user_id))],none={data:[]};
- const[p,g,r,e,lk]=await Promise.all([ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none,sb.from('journal_goals').select('*').eq('team_id',tid),statRows(tid),sb.from('schedule_entries').select('*').eq('team_id',tid),sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid)]);
+ const[p,g,r,e,lk]=await Promise.all([ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none,sb.from('journal_goals').select('*').eq('team_id',tid),statRows(tid),sb.from('schedule_entries').select('*').eq('team_id',tid).then(q=>tdrQ(tid,q,'entry_date')),sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid)]);
  if(ros!==s)return;
  const bad=[g,r,e].find(x=>x.error);if(bad){s.err=pErr(bad.error);s.rows=[];if(view==='roster')render();return}
  const nm=Object.fromEntries((p.data||[]).map(x=>[x.id,x.display_name||x.email])),off=(e.data||[]).filter(x=>x.kind==='off_day'&&schLocal(x).d>=t).sort((a,b)=>schKey(a).localeCompare(schKey(b)));
@@ -857,7 +875,7 @@ async function openAnalyst(page){
  if(page==='import')scr={tid:cur.id,st:'form',list:[],err:'',id:null,people:null,notes:{},dErr:''};
  render();
  if(!canAn())return;
- const s=an,tid=s.tid,[r,m]=await Promise.all([sb.from('scrims').select('*').eq('team_id',tid),sb.from('scrim_map_results').select('*').eq('team_id',tid)]);
+ const s=an,tid=s.tid;let[r,m]=await Promise.all([sb.from('scrims').select('*').eq('team_id',tid),sb.from('scrim_map_results').select('*').eq('team_id',tid)]);r=tdrQ(tid,r,'scrim_date');if(teamDR(tid)&&r.data&&m.data){const ok=new Set(r.data.map(x=>x.id));m={...m,data:m.data.filter(x=>ok.has(x.scrim_id))}}
  if(an!==s)return;
  const bad=r.error||m.error;
  s.err=bad?aErr(bad):'';s.list=r.data||[];s.res=m.data||[];
@@ -1422,7 +1440,7 @@ async function recJoinClean(a,s,game){
   const d1=await sb.from('player_round_stats').delete().eq('owner_team_id',a.tid).eq('scout_match_id',row.id);if(d1.error)continue;
   if(mid!==matchId(game)){const d2=await sb.from('scout_rounds').delete().eq('owner_team_id',a.tid).eq('match_id',mid);if(d2.error)continue}
   const d3=await sb.from('scout_matches').delete().eq('id',row.id);if(d3.error)continue;
-  n++;if(a.rlib)a.rlib=a.rlib.filter(x=>x.id!==row.id);if(sco?.m)sco.m=sco.m.filter(x=>x.id!==row.id);
+  n++;if(a.rlib)a.rlib=a.rlib.filter(x=>x.id!==row.id);if(sco?.m)sco.m=scAll('m').filter(x=>x.id!==row.id);
  }
  if(n)a.joinN=(a.joinN||0)+n;
  if(n&&/^Game \d+$/.test(game.phase||'')&&game.source_name==='Replay'){
@@ -2204,7 +2222,7 @@ async function openCover(){
  view='cover';cov={tid:cur.id,ready:false};render();
  if(!canEditSch())return;
  const s=cov,tid=s.tid,ids=[...new Set(allMem.filter(m=>m.team_id===tid&&m.roles.includes('player')).map(m=>m.user_id))],none={data:[]};
- const[e,c,g,t,o,p]=await Promise.all([sb.from('schedule_entries').select('*').eq('team_id',tid),sb.from('scrims').select('*').eq('team_id',tid),sb.from('journal_goals').select('*').eq('team_id',tid),sb.from('strats').select('*').eq('team_id',tid),sb.from('strat_opens').select('*').eq('team_id',tid).eq('user_id',me.id),ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none]);
+ const[e,c,g,t,o,p]=await Promise.all([sb.from('schedule_entries').select('*').eq('team_id',tid).then(q=>tdrQ(tid,q,'entry_date')),sb.from('scrims').select('*').eq('team_id',tid).then(q=>tdrQ(tid,q,'scrim_date')),sb.from('journal_goals').select('*').eq('team_id',tid),sb.from('strats').select('*').eq('team_id',tid),sb.from('strat_opens').select('*').eq('team_id',tid).eq('user_id',me.id),ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none]);
  if(cov!==s)return;
  const nm=Object.fromEntries((p.data||[]).map(x=>[x.id,x.display_name||x.email])),td=today(),end=addD(td,6),ev=e.data||[];
  Object.assign(s,{ready:true,evErr:e.error?schE(e.error):'',scErr:c.error?sErr(c.error):'',gErr:g.error?pErr(g.error):'',stErr:t.error||o.error?stErr(t.error||o.error):''});
@@ -2316,11 +2334,11 @@ async function allRows(q){
  const out=[...first.data];
  for(let i=1000;;i+=6000){const rs=await Promise.all([0,1,2,3,4,5].map(k=>q().range(i+k*1000,i+k*1000+999)));for(const r of rs){if(r.error)return r;out.push(...r.data);if(r.data.length<1000)return{data:out}}}
 }
-const statRows=async tid=>{const r=await allRows(()=>sb.from('player_round_stats').select('*').eq('owner_team_id',tid).order('id'));return r.error?r:{data:r.data.map(x=>({...x,died:x.deaths>0}))}};
+const statRows=async tid=>{const r=await allRows(()=>sb.from('player_round_stats').select('*').eq('owner_team_id',tid).order('id'));return r.error?r:{data:tdrRows(tid,r.data,'match_date').map(x=>({...x,died:x.deaths>0}))}};
 const scErr=e=>/schema cache|does not exist/i.test(e.message)?'The scouting database tables are not set up yet. Paste stage8.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
 async function openSc(page,kind,oppId){
  view='sc';
- if(!sco||sco.tid!==cur.id)sco={tid:cur.id,league:'',q:'',f:{}};
+ if(!sco||sco.tid!==cur.id)sco=scoNew({tid:cur.id,league:'',q:'',f:{}});
  const had=Array.isArray(sco.m)&&!sco.err;
  Object.assign(sco,{page,kind:kind||sco.kind,form:null,imp:null,loaded:had,err:'',tab:'over'});if(oppId)sco.oppId=oppId;
  render();
@@ -2331,7 +2349,7 @@ async function openSc(page,kind,oppId){
  const bad=t.error||m.error||v.error||r.error;
  if(!bad&&canEditS())setTimeout(()=>{if(sco===s)scoreRepair(s)},0);Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
  if(!an||an.tid!==tid)an={tid,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,rc:{},rex:{},rpick:{},rp:null,rerr:'',rteams:null,rroster:[],page:'over'};
- an.list=c.data||[];an.res=x.data||[];s.st=(st.data||[])[0]||null;
+ {const cl=tdrRows(tid,c.data||[],'scrim_date'),ok=new Set(cl.map(y=>y.id));an.list=cl;an.res=teamDR(tid)?(x.data||[]).filter(y=>ok.has(y.scrim_id)):x.data||[]}s.st=(st.data||[])[0]||null;
  sb.from('scout_events').select('*').eq('owner_team_id',tid).then(r=>{if(sco!==s)return;s.events=r.error?[]:r.data||[];if(view==='sc'&&s.events.length)render()});
  // a refresh behind a page already showing does not redraw over a form or dialog being filled in
  if(view==='sc'&&!(had&&(s.form||sdirty||$('#dlg')?.open)))render();
@@ -2932,6 +2950,7 @@ function teamSetV(){
  <div class="row wrap" style="gap:12px;align-items:flex-start"><div style="${half}"><label for="tsr">Region</label><select id="tsr" class="fi">${[...new Set([...REG,...(cur.region?[cur.region]:[])])].map(r=>`<option${cur.region===r?' selected':''}>${esc(r)}</option>`).join('')}</select></div><div style="${half}"><label for="tsl">League</label><input id="tsl" class="fi" maxlength="80" value="${esc(cur.league||'')}"></div></div>
  <div><span class="lb">Team color</span><div class="row wrap" style="gap:10px">${COL.map(x=>`<button type="button" class="sw" data-a="tsw" data-c="${x}" style="background:${x}" aria-label="Color ${x}" aria-pressed="${x===c}"></button>`).join('')}</div><div style="margin-top:12px;max-width:220px"><label for="tsx">Or enter a hex code</label><input id="tsx" class="fi" data-c="tsx" maxlength="7" spellcheck="false" autocomplete="off" value="${esc(c)}"></div></div>
  <div><label for="tsf">Logo (PNG or SVG, up to 2 MB)</label><div class="row wrap"><span id="tsp">${tile(cur,56)}</span><input id="tsf" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" data-c="tsf" style="min-width:0;max-width:100%"></div>${cur.logo_url?'<label class="row" style="gap:8px;margin-top:8px;color:var(--tx)"><input id="tsd" type="checkbox">Remove the current logo</label>':''}</div>
+ <div><span class="lb">Date range</span><div class="row wrap" style="gap:12px;align-items:flex-end"><div style="flex:1;min-width:160px"><label for="tsvf">From</label><input id="tsvf" type="date" class="fi" value="${esc(cur.view_from||'')}"></div><div style="flex:1;min-width:160px"><label for="tsvt">To</label><input id="tsvt" type="date" class="fi" value="${esc(cur.view_to||'')}"></div><button type="button" class="no" style="height:40px" data-a="tsvclr">Show all dates</button></div><p class="mu" style="font-size:12.5px;margin-top:4px">Everyone on ${esc(cur.name)} only sees games, vetoes, rounds, scrims, player stats and schedule inside this range, on every page. Leave To empty to keep it running up to today. Nothing is deleted.</p></div>
  <div class="row wrap" style="justify-content:space-between"><span>${staff()?`<button type="button" class="no" style="color:#ff8a8a" data-a="tdel" data-id="${cur.id}">Delete team</button>`:''}</span><span class="row"><button type="button" class="no" data-a="sdash">Cancel</button><button class="go svb">Save changes</button></span></div></form>
  <section class="cd" id="rosc" style="max-width:720px;margin-top:16px">${rostInner()}</section>`;
 }
@@ -2970,13 +2989,17 @@ async function saveTeamSet(form,qt){
  if(f){const path=crypto.randomUUID()+'.'+(f.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,''),up=await sb.storage.from('logos').upload(path,f,{contentType:f.type});if(up.error){btn.disabled=false;return say(qt,/row-level security/i.test(up.error.message)?'You do not have permission to upload a logo.':up.error.message)}row.logo_url=sb.storage.from('logos').getPublicUrl(path).data.publicUrl}
  else if($('#tsd')?.checked)row.logo_url=null;
  row.aliases=aliasList($('#tsa').value);
+ {let a=$('#tsvf').value||null,b=$('#tsvt').value||null;if(a&&b&&a>b)[a,b]=[b,a];if('view_from' in cur||a||b){row.view_from=a;row.view_to=b}}
+ const drWas=(cur.view_from||'')+'|'+(cur.view_to||'');
  const lpRaw=$('#tslp').value.trim(),lpName=lpTeamOf(lpRaw);
  if(lpRaw&&!lpName){btn.disabled=false;return say(qt,'Paste a Liquipedia Rainbow Six team link, like https://liquipedia.net/rainbowsix/Cloud9')}
  row.liquipedia=lpName||'';row.aliases=lpKeepOld(row.aliases,cur.liquipedia,lpName,row.name,a=>teams.some(o=>o.id!==cur.id&&[o.name,...(o.aliases||[])].some(y=>norm(y)===norm(a))));
  const r=await sb.from('teams').update(row).eq('id',cur.id).select().single();
  btn.disabled=false;
- if(r.error)return say(qt,/liquipedia/i.test(r.error.message)?'The Liquipedia link needs a database update. Paste stage26.sql into the Supabase SQL Editor and run it.':r.error.code==='PGRST116'||/row-level security/i.test(r.error.message)?'You do not have permission to make that change. If you are a coach, paste stage8.sql into the Supabase SQL Editor and run it.':r.error.message);
+ if(r.error)return say(qt,/view_(from|to)/i.test(r.error.message)?'The date range needs a database update. Paste stage37.sql into the Supabase SQL Editor and run it.':/liquipedia/i.test(r.error.message)?'The Liquipedia link needs a database update. Paste stage26.sql into the Supabase SQL Editor and run it.':r.error.code==='PGRST116'||/row-level security/i.test(r.error.message)?'You do not have permission to make that change. If you are a coach, paste stage8.sql into the Supabase SQL Editor and run it.':r.error.message);
  Object.assign(cur,r.data);const t=teams.find(x=>x.id===cur.id);if(t)Object.assign(t,r.data);
+ // a new range: pages already loaded for this team load again through it (the match library reads through it on its own)
+ if((cur.view_from||'')+'|'+(cur.view_to||'')!==drWas){[scr,sch,pl,ros,an,cov]=[scr,sch,pl,ros,an,cov].map(x=>x&&x.tid===cur.id?null:x);if(qt){if(f)$('#tsf').value='';applyAccent();const id=document.activeElement?.id;render();if(id)document.getElementById(id)?.focus();return{}}}
  if(qt){if(f)$('#tsf').value='';applyAccent();return{}}
  sdirty=false;render();toast('Team saved');
 }
@@ -3264,7 +3287,7 @@ async function rdSave(b,qt){
  // the player numbers from the replay follow the change
  const sd=startNorm(side),pside=i=>i===0?sd:otherSide(sd);
  for(const [i,l] of [[0,a],[1,c]])for(const x of l){if(!x.pid)continue;const st=f.stats.find(p=>p.id===x.pid),up={};if(x.op&&!isNA(x.op)&&x.op!==x.was){up.operator=x.op;up.operator_id=''}if(sd&&st&&st.side!==pside(i))up.side=pside(i);if(Object.keys(up).length){const q=await sb.from('player_round_stats').update(up).eq('id',x.pid);if(q.error){b.disabled=false;return say(qt,scErr(q.error))}if(st)Object.assign(st,up)}}
- if(r)Object.assign(r,w.data);else sco.r=[...sco.r,w.data];
+ if(r)Object.assign(r,w.data);else sco.r=[...scAll('r'),w.data];
  if(qt&&r){b.disabled=false;d.querySelectorAll('[data-rdo]').forEach(x=>x.dataset.was=x.value);rdPaint(g);return{}}
  d.close();rdPaint(g);toast(r?`Round ${n} saved`:`Round ${n} added`);
 }
@@ -3273,7 +3296,7 @@ async function rdDel(b){
  if(!confirm(`Delete round ${r.round_number}? ${f.stats.length?'Its player numbers are deleted too. ':''}This cannot be undone.`))return;
  b.disabled=true;const q=await sb.from('scout_rounds').delete().eq('id',r.id);if(q.error){b.disabled=false;return toast(scErr(q.error))}
  if(f.stats.length){const q2=await sb.from('player_round_stats').delete().eq('owner_team_id',sco.tid).eq('scout_match_id',g.id).eq('round_number',r.round_number);if(q2.error)toast(scErr(q2.error))}
- sco.r=sco.r.filter(x=>x.id!==r.id);$('#dlg').close();rdPaint(g);toast(`Round ${r.round_number} deleted`);
+ sco.r=scAll('r').filter(x=>x.id!==r.id);$('#dlg').close();rdPaint(g);toast(`Round ${r.round_number} deleted`);
 }
 // a game's rounds move with it when its date, map or teams change
 async function rdMove(old,now){
@@ -3281,7 +3304,7 @@ async function rdMove(old,now){
  const rs=sco.r.filter(x=>norm(x.match_id)===norm(a));
  for(const x of rs){const same=sameName(x.team,old.team)||!sameName(x.team,old.opponent),up={match_id:z,map:now.map,round_date:now.match_date,team:same?now.team:now.opponent,opponent:same?now.opponent:now.team};const q=await sb.from('scout_rounds').update(up).eq('id',x.id).select().single();if(q.error)return toast('The game saved, but its rounds could not move with it: '+scErr(q.error));Object.assign(x,q.data)}
  if(now.replay_match_id||rs.length)await sb.from('player_round_stats').update({map:now.map,match_date:now.match_date}).eq('owner_team_id',sco.tid).eq('scout_match_id',now.id);
- sco.r=[...sco.r];
+ sco.r=[...scAll('r')];
 }
 // One line per match: what we hold for it and what we don't. team=null means every team.
 function gapRows(team){
@@ -3516,14 +3539,14 @@ async function fixAdd(d,b){
  const r=sco.m.find(x=>x.id===(d.id||sco.matchId));if(!r||sco.fixBusy)return;sco.fixBusy=true;if(b)b.disabled=true;
  try{
   const map=mapCanon(d.m),c=fixScore(r,{a:+d.x,b:+d.y,winner:d.v}),pair=x=>sameName(x.team,r.team)&&sameName(x.opponent,r.opponent)||sameName(x.team,r.opponent)&&sameName(x.opponent,r.team);
-  let g=sco.m.find(x=>x.id!==r.id&&x.match_date===r.match_date&&mapCanon(x.map)===map&&pair(x)),word;
+  let g=scAll('m').find(x=>x.id!==r.id&&x.match_date===r.match_date&&mapCanon(x.map)===map&&pair(x)),word;
   if(g){
    if(g.r6esports_id&&r.r6esports_id&&g.r6esports_id!==r.r6esports_id)return toast(map+' between these teams on that day is already saved, as part of another match.');
    const u=await sb.from('scout_matches').update({r6esports_id:g.r6esports_id||r.r6esports_id||'',siegegg_id:g.siegegg_id||r.siegegg_id||''}).eq('id',g.id).select().single();if(u.error)return toast(scErr(u.error));Object.assign(g,u.data);word=map+' was already saved, now linked to this match';
   }else{
    const n=await sb.from('scout_matches').insert({owner_team_id:sco.tid,match_date:r.match_date,team:r.team,opponent:r.opponent,league:r.league,phase:r.phase,source_name:r.source_name,source_link:r.source_link,r6esports_id:r.r6esports_id,siegegg_id:r.siegegg_id,map,round_score:c.score,result:c.result,total_rounds:c.total}).select().single();
    if(n.error)return toast(n.error.code==='23505'||/duplicate key/i.test(n.error.message)?map+' between these teams on that day is already saved. Refresh the page to see it.':scErr(n.error));
-   sco.m.push(n.data);word='Added '+map+' '+c.score;
+   sco.m=[...scAll('m'),n.data];word='Added '+map+' '+c.score;
   }
   // maps of this match that now agree with every source stop being flagged
   const sib=sco.m.filter(x=>x.check_status==='mismatch'&&((r.r6esports_id&&x.r6esports_id===r.r6esports_id)||(r.siegegg_id&&x.siegegg_id===r.siegegg_id))).filter(x=>{const f=fixFacts(x);return !f.opts.size&&!f.missing.length&&!f.extra.size});
@@ -3965,7 +3988,7 @@ const A={
  pmysch:()=>openSch(pl?.tid===cur.id&&pl.uid?pl.uid:isPl()?me.id:'',true),
  pover:()=>openPlayer('over'),pjournal:()=>openPlayer('journal'),pstats:()=>openPlayer('stats'),pnotes:()=>openPlayer('notes'),
  phub:()=>openRoster(),
- tset:()=>openTset(),
+ tset:()=>openTset(),tsvclr:()=>{const a=$('#tsvf'),b=$('#tsvt');if(!a)return;a.value='';b.value='';a.dispatchEvent(new Event('change',{bubbles:true}))},
  rosdel:d=>{const r=rost.list.find(x=>x.id===d.id);askDel('Remove '+r.name+' from the roster?','Stats already saved under this name stay, but the linked player will no longer see them.','rosdelyes',d.id)},
  rosdelyes:async(d,b)=>{b.disabled=true;const r=await sb.from('team_roster').delete().eq('id',d.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast('You do not have permission to change the roster.');rost.list=rost.list.filter(x=>x.id!==d.id);$('#rosc').innerHTML=rostInner()},
  tsw:(d,b)=>{sdirty=true;$('#tsx').value=d.c;document.querySelectorAll('.sw').forEach(x=>x.setAttribute('aria-pressed',x===b))},
@@ -3998,7 +4021,7 @@ const A={
  sopp:d=>{sco.page='opp';sco.oppId=d.id;sco.tab='over';sco.form=null;sco.oppMap='';sco.oppF='';render()},
  somap:d=>{sco.oppMap=d.k;render()},
  sjoin:d=>sJoinGames(d.id,d.b),twinjoin:()=>twinJoinAll(false),smatch:d=>{sco.deckBack=false;sco.fromPrep=null;sco.mBack={page:sco.page,kind:sco.kind,tab:sco.tab,oppId:sco.oppId};sco.page='match';sco.matchId=d.id;render();window.scrollTo?.(0,0)},
- prepgame:d=>{const r=prep.round;if(!sco||sco.tid!==prep.tid)sco={tid:prep.tid,league:'',q:'',f:{}};Object.assign(sco,{matchId:d.id,mBack:null,deckBack:false,fromPrep:r});openSc('match');window.scrollTo?.(0,0)},
+ prepgame:d=>{const r=prep.round;if(!sco||sco.tid!==prep.tid)sco=scoNew({tid:prep.tid,league:'',q:'',f:{}});Object.assign(sco,{matchId:d.id,mBack:null,deckBack:false,fromPrep:r});openSc('match');window.scrollTo?.(0,0)},
  smback:()=>{if(sco.fromPrep&&prep){const r=sco.fromPrep;sco.fromPrep=null;view='prep';prep.round=r;render();window.scrollTo?.(0,0);return}Object.assign(sco,sco.mBack||{page:'home'});render();if(sco.deckBack&&sco.page==='opp')dkOpen();sco.deckBack=false},
  fixuse:d=>fixSave(d.id||sco.matchId,{round_score:d.s,result:d.r,total_rounds:+d.n,...NO_SIDES},'Used '+d.s+' from '+d.w),
  fixmap:d=>{const id=d.id||sco.matchId,r=sco.m.find(x=>x.id===id),c=fixScore(r,{a:+d.x,b:+d.y,winner:d.v});return fixSave(id,{map:mapCanon(d.m),round_score:c.score,result:c.result,total_rounds:c.total,...NO_SIDES},'Changed to '+mapCanon(d.m)+' '+c.score)},
@@ -4008,7 +4031,7 @@ const A={
  ccclose:()=>$('#dlg').close(),
  smok:async(d,b)=>{const id=d.id||sco.matchId;b.disabled=true;const r=await sb.from('scout_matches').update({check_status:'reviewed'}).eq('id',id).select().single();b.disabled=false;if(r.error)return toast(scErr(r.error));Object.assign(sco.m.find(x=>x.id===id),r.data);fixRedraw();toast('Marked as reviewed')},
  smdel:()=>askDel('Delete this game?','This permanently removes it from your Match Library.','smdelyes',sco.matchId),
- smdelyes:async(d,b)=>{b.disabled=true;const r=await sb.from('scout_matches').delete().eq('id',d.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast(r.error?scErr(r.error):'You do not have permission to make that change.');sdirty=false;sco.m=sco.m.filter(x=>x.id!==d.id);Object.assign(sco,sco.mBack||{page:'home'});render();toast('Game deleted')},
+ smdelyes:async(d,b)=>{b.disabled=true;const r=await sb.from('scout_matches').delete().eq('id',d.id).select();$('#dlg').close();if(r.error||!r.data.length)return toast(r.error?scErr(r.error):'You do not have permission to make that change.');sdirty=false;sco.m=scAll('m').filter(x=>x.id!==d.id);Object.assign(sco,sco.mBack||{page:'home'});render();toast('Game deleted')},
  lpcheck:()=>{lpCheckOnly()},
  pladd:()=>{plSync();const n=$('#pladdn').value.trim();if(!n)return toast('Enter a player name');const rows=sco.plr.rows;if(rows.some(x=>norm(x.name)===norm(n)))return toast('That player is already on the roster');rows.push({name:n,role:$('#pladdr').value,aka:[]});sdirty=true;render();$('#pladdn')?.focus()},
  plrm:d=>{plSync();sco.plr.rows.splice(+d.i,1);sdirty=true;render()},
