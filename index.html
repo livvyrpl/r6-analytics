@@ -3391,7 +3391,7 @@ async function ytRead(){
  const team=s.gapTeam?s.teams.find(x=>x.id===s.gapTeam):null,units=gapRows(team).map(x=>({x,r:x.r,day:ytDay(x.date)}));
  const vids=(d.videos||[]).slice().sort((x,y)=>String(x.published).localeCompare(String(y.published)));
  const list=vids.map(v=>({v,cands:ytCands(v,units),pick:null,on:v.id?s.m.filter(g=>String(g.vod_link||'').includes(v.id)):[]})).filter(q=>q.cands.some(c=>c.u.x.rows.some(g=>!ytVod(g)))||!q.cands.length&&!q.on.length);
- s.yt={url,busy:false,err:'',title:d.title||'',total:vids.length,already:vids.length-list.length,list,i:0,linked:0};
+ s.yt={url,busy:false,err:'',title:d.title||'',total:vids.length,already:vids.length-list.length,list,i:0,linked:0,vodBefore:units.filter(u=>!u.x.has.vod).length};
  if(sco===s&&view==='sc'&&!sdirty)render();if(list.length)ytOpen();
 }
 // The review screen: one video at a time, with every match it could be
@@ -3415,13 +3415,16 @@ function ytDraw(){
 async function ytPick(d,b){
  const y=sco.yt,q=y?.list[y.i],c=q?.cands[+d.c];if(!c)return;b.disabled=true;
  const games=d.g?c.u.x.rows.filter(g=>g.id===d.g):c.u.x.rows,r=await sb.from('scout_matches').update({vod_link:'https://www.youtube.com/watch?v='+q.v.id}).in('id',games.map(g=>g.id)).select();
- if(r.error){b.disabled=false;return toast(scErr(r.error))}
- r.data.forEach(x=>{const o=sco.m.find(z=>z.id===x.id);if(o)Object.assign(o,x)});if(!q.pick)y.linked++;
+ if(r.error){b.disabled=false;return toast('Not saved: '+scErr(r.error))}
+ r.data.forEach(x=>{const o=sco.m.find(z=>z.id===x.id);if(o)Object.assign(o,x)});
+ if(r.data.length<games.length){b.disabled=false;return toast(r.data.length?'Only '+r.data.length+' of '+games.length+' maps were saved. You may not have permission to change the others.':'Not saved: the database did not change this game. You may not have permission to edit it.')}
+ if(!q.pick)y.linked++;
  q.pick=c.u.r.team+' vs '+c.u.r.opponent+(d.g?', '+mapCanon(games[0].map):'')+', '+fmtD(c.u.x.date);y.i++;ytDraw();
 }
 function ytB(){
  const y=sco.yt,saved=(()=>{try{return localStorage.getItem('liv.ytpl')||''}catch{return ''}})();
- const res=y?.list?`<p>${y.title?'<b style="font-weight:600">'+esc(y.title)+'</b>: ':''}${plural(y.total,'video')} read${y.already?', '+y.already+' left out because their games all have a VOD':''}. <span style="color:#34c46a;font-weight:600">Linked ${plural(y.linked,'video')}</span>${y.list.length?` <button class="no" style="height:26px;font-size:12px;margin-left:6px" data-a="ytreopen">${y.i<y.list.length?'Continue ('+(y.list.length-y.i)+' left)':'Review again'}</button>`:''}</p>`:'';
+ const vodNow=y?.list?gapRows(sco.gapTeam?sco.teams.find(x=>x.id===sco.gapTeam):null).filter(x=>!x.has.vod).length:0;
+ const res=y?.list?`<p>${y.title?'<b style="font-weight:600">'+esc(y.title)+'</b>: ':''}${plural(y.total,'video')} read${y.already?', '+y.already+' left out because their games all have a VOD':''}. <span style="color:#34c46a;font-weight:600">Linked ${plural(y.linked,'video')}</span>. Matches missing a VOD: ${y.vodBefore} before, ${vodNow} now.${y.list.length?` <button class="no" style="height:26px;font-size:12px;margin-left:6px" data-a="ytreopen">${y.i<y.list.length?'Continue ('+(y.list.length-y.i)+' left)':'Review again'}</button>`:''}</p>`:'';
  return `<details class="cd" style="gap:8px;margin-bottom:8px" ${y?'open':''}><summary style="cursor:pointer;font-weight:600">Find VODs from a YouTube playlist</summary>
  <p class="mu" style="font-size:12.5px">Paste a playlist link. For each video, every game between the two teams in its title is shown, closest to the upload date first, and you pick the one it belongs to. A video is left out when every game it could belong to already has a VOD.</p>
  <form data-s="ytread" class="row wrap" style="gap:8px"><input id="ytu" class="fi" style="flex:1 1 260px;min-width:0" inputmode="url" aria-label="YouTube playlist link" placeholder="https://www.youtube.com/playlist?list=…" value="${esc(y?.url??saved)}"><button class="go" ${y?.busy?'disabled':''}>${y?.busy?'Reading…':'Match VODs'}</button></form>
