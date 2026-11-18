@@ -3353,58 +3353,77 @@ function ytTeam(n,tw,ts,cache){
 }
 const ytMaps=tw=>MAP_POOL.map(m=>m[0]).filter(m=>{const a=ytW(m),b=ytW(m.replace(/ dostoyevsky| labs/gi,''));return ytHas(tw,a)||ytHas(tw,b)||ytHas(tw,a.replace(/ /g,''))});
 const ytVod=g=>/^https?:\/\//i.test(g.vod_link||'');
-function ytMatch(videos,team){
- const units=gapRows(team).map(x=>({x,r:x.r,missing:x.rows.filter(g=>!ytVod(g)),day:ytDay(x.date)})).filter(u=>u.missing.length),byDay=new Map(),cache=new Map();
- units.forEach(u=>(byDay.get(u.day)||byDay.set(u.day,[]).get(u.day)).push(u));
- const out=[];let none=0;
- videos.forEach(v=>{
-  const tw=ytW(v.title),ts=squash(v.title),maps=ytMaps(tw),pub=ytDay(v.published),cands=[];if(!Number.isFinite(pub)){none++;return}
-  for(let d=-2;d<=14;d++)(byDay.get(pub-d)||[]).forEach(u=>{
-   const a=ytTeam(u.r.team,tw,ts,cache);if(!a)return;const b=ytTeam(u.r.opponent,tw,ts,cache);if(!b)return;
-   const games=maps.length===1?u.missing.filter(g=>mapCanon(g.map)===maps[0]):u.missing;if(!games.length)return;
-   const lg=ytLeague(u.r.league,tw),near=d>=-1&&d<=2,why=[];
-   if(a<2||b<2)why.push('the team names are not an exact match');
-   if(!near)why.push(d<0?'posted '+plural(-d,'day')+' before the game':'posted '+plural(d,'day')+' after the game');
-   if(lg===false)why.push("the title doesn't name this game's league");
-   const one=games.length===1&&(maps.length===1||u.missing.length<u.x.rows.length);
-   cands.push({u,games,why,score:(a+b)*10+(lg===true?6:lg===false?-4:0)+(near?5:0)-Math.abs(d-1)*.5+(maps.length===1?2:0),
-    label:u.r.team+' vs '+u.r.opponent+(one||maps.length===1?', '+mapCanon(games[0].map):games.length>1?' ('+plural(games.length,'map')+')':', '+mapCanon(games[0].map))+', '+fmtD(u.x.date)+(u.r.league?' · '+u.r.league:'')});
-  });
-  if(!cands.length){none++;return}
-  cands.sort((x,y)=>y.score-x.score);
-  const best=cands[0],sure=!best.why.length&&!(cands[1]&&!cands[1].why.length);
-  if(!best.why.length&&!sure)best.why=['more than one game fits'];
-  out.push({v,cands:cands.slice(0,3),sure});
- });
- // two sure videos for the same game: ask about both
- const claim=new Map();out.filter(x=>x.sure).forEach(x=>x.cands[0].games.forEach(g=>claim.set(g.id,(claim.get(g.id)||0)+1)));
- out.forEach(x=>{if(x.sure&&x.cands[0].games.some(g=>claim.get(g.id)>1)){x.sure=false;x.cands[0].why=['another video also fits this game']}});
- return{sure:out.filter(x=>x.sure),ask:out.filter(x=>!x.sure),none};
+// How alike two team names are, 0 to 1: the same, one inside the other (Falcons, Team Falcons), letters in order (C9, Cloud9), or close spelling
+const ytBig=s=>{const o=new Set();for(let i=0;i<s.length-1;i++)o.add(s.slice(i,i+2));return o};
+function ytSim(x,y){
+ const a=nameCore(x),b=nameCore(y);if(!a||!b)return 0;if(a===b)return 1;const [s,l]=a.length<=b.length?[a,b]:[b,a];
+ if(s.length>=3&&l.includes(s))return .9;
+ if(s.length>=2&&s[0]===l[0]){let i=0;for(const c of l)if(c===s[i])i++;if(i===s.length)return .75}
+ if(s.length<3)return 0;const A=ytBig(a),B=ytBig(b);let n=0;A.forEach(g=>{if(B.has(g))n++});const d=2*n/(A.size+B.size);return d>=.5?d*.9:0;
 }
-async function ytLink(v,games){
- const ids=games.filter(g=>!ytVod(g)).map(g=>g.id);if(!ids.length)return 0;
- const r=await sb.from('scout_matches').update({vod_link:'https://www.youtube.com/watch?v='+v.id}).in('id',ids).select();if(r.error){toast(scErr(r.error));return 0}
- r.data.forEach(x=>{const o=sco.m.find(y=>y.id===x.id);if(o)Object.assign(o,x)});return r.data.length;
+// The two sides of "A vs B" in a title, without the map, game number or event around them
+const ytCut=s=>{let x=String(s).replace(/\b(map|game|bo[1357]|day|week|round|highlights?|full|vod)\b.*$/i,'');MAP_POOL.forEach(m=>{x=x.replace(new RegExp('\\b'+m[0].replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','ig'),'')});return x.replace(/[#()[\]]/g,' ').replace(/\s+/g,' ').trim()};
+function ytSides(title){
+ const m=String(title).match(/^(.*?)\s+(?:vs\.?|v\.?|versus)\s+(.*)$/i);if(!m)return null;
+ const L=ytCut(m[1].split(/\s*[|•]\s*|\s[-–—:]\s/).pop()),R=ytCut(m[2].split(/\s*[|•]\s*|\s[-–—:]\s/)[0]);return L&&R?[L,R]:null;
+}
+// Every match between the two teams in a video's title, closest to the upload date first
+function ytCands(v,units){
+ const tw=ytW(v.title),ts=squash(v.title),maps=ytMaps(tw),pub=ytDay(v.published),sides=ytSides(v.title),names=new Map(),sim=new Map(),lv=new Map();
+ const namesOf=n=>{let l=names.get(n);if(!l){const t=twinOf(n);l=[...new Set([n,...(t?[t.name,t.short_name,t.source_ids?.liquipedia,...(t.aliases||[])]:[])].filter(Boolean).map(String))];names.set(n,l)}return l};
+ const S=(side,n)=>{const k=side+'|'+n;if(!sim.has(k))sim.set(k,Math.max(...namesOf(n).map(x=>ytSim(side,x))));return sim.get(k)};
+ const T=n=>{if(!lv.has(n))lv.set(n,ytTeam(n,tw,ts,names));return lv.get(n)};
+ const out=[];
+ units.forEach(u=>{
+  let s=0;
+  if(sides)s=Math.max(Math.min(S(sides[0],u.r.team),S(sides[1],u.r.opponent)),Math.min(S(sides[0],u.r.opponent),S(sides[1],u.r.team)));
+  if(s<.5){const x=T(u.r.team),y=x?T(u.r.opponent):0;if(x&&y)s=Math.max(s,(x+y)/4)}
+  if(s<.5)return;
+  const dd=Number.isFinite(pub)?pub-u.day:0,lg=ytLeague(u.r.league,tw),mapG=maps.length===1?u.x.rows.find(g=>mapCanon(g.map)===maps[0]):null;
+  out.push({u,s,dd,lg,mapG,score:s*100+(lg===true?10:lg===false?-5:0)+(mapG?5:0)-(dd>=-1?Math.min(dd<0?0:dd,90)*.6:30+Math.abs(dd))});
+ });
+ return out.sort((x,y)=>y.score-x.score).slice(0,8);
 }
 async function ytRead(){
  const s=sco,url=($('#ytu')?.value||'').trim();if(!url)return;try{localStorage.setItem('liv.ytpl',url)}catch{}
- s.yt={url,busy:true,err:'',linked:[],ask:[]};render();
- let d;try{d=await ytCall(url)}catch(e){s.yt.busy=false;s.yt.err=e.message;if(sco===s&&view==='sc')render();return}
- const team=s.gapTeam?s.teams.find(x=>x.id===s.gapTeam):null,res=ytMatch(d.videos||[],team),linked=[];let games=0;
- const job=res.sure.length?actStart('Linking VODs from '+(d.title||'the playlist')):null;
- for(const [i,x] of res.sure.entries()){if(sco!==s)break;actSet(job,{detail:(i+1)+' of '+res.sure.length,pct:Math.round(i/res.sure.length*100)});const n=await ytLink(x.v,x.cands[0].games);if(n){games+=n;linked.push({v:x.v,label:x.cands[0].label})}}
- if(job)actEnd(job,'ok','Linked '+plural(games,'game')+' to '+plural(linked.length,'video'));
- s.yt={url,busy:false,err:'',title:d.title||'',total:(d.videos||[]).length,linked,games,ask:res.ask,none:res.none};if(sco===s&&view==='sc'&&!sdirty)render();
+ s.yt={url,busy:true,err:''};render();
+ let d;try{d=await ytCall(url)}catch(e){s.yt={url,busy:false,err:e.message};if(sco===s&&view==='sc')render();return}
+ const team=s.gapTeam?s.teams.find(x=>x.id===s.gapTeam):null,units=gapRows(team).map(x=>({x,r:x.r,day:ytDay(x.date)}));
+ const vids=(d.videos||[]).slice().sort((x,y)=>String(x.published).localeCompare(String(y.published))),done=v=>s.m.some(g=>String(g.vod_link||'').includes(v.id));
+ const list=vids.filter(v=>!done(v)).map(v=>({v,cands:ytCands(v,units),pick:null}));
+ s.yt={url,busy:false,err:'',title:d.title||'',total:vids.length,already:vids.length-list.length,list,i:0,linked:0};
+ if(sco===s&&view==='sc'&&!sdirty)render();if(list.length)ytOpen();
 }
-const ytPrune=y=>{y.ask.forEach(q=>q.cands=q.cands.filter(c=>c.games.some(g=>!ytVod(g))));y.ask=y.ask.filter(q=>q.cands.length)};
+// The review screen: one video at a time, with every match it could be
+function ytOpen(){const d=$('#dlg');d.className='ccw';ytDraw();if(d.open)return;d.showModal();d.addEventListener('close',()=>{d.className='';if(view==='sc'&&!sdirty)render()},{once:true})}
+function ytDraw(){
+ const d=$('#dlg'),y=sco.yt;if(!y?.list)return;const n=y.list.length,end=y.i>=n,q=y.list[y.i];
+ const head=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><h2 class="serif" style="font-size:22px">Match VODs${y.title?' · '+esc(y.title):''}</h2><button class="no" style="height:28px" data-a="ytclose">Close</button></div>`;
+ if(end){d.innerHTML=head+`<p style="font-weight:600">Done. Linked ${plural(y.linked,'video')}.</p><p class="mu">${plural(n-y.linked,'video')} skipped. Run Match VODs again any time: videos already linked are left out.</p><div class="row" style="gap:8px;margin-top:10px">${n?'<button class="no" data-a="ytnav" data-d="-1">Back</button>':''}<button class="go" data-a="ytclose">Close</button></div>`;return}
+ const v=q.v,pub=String(v.published).slice(0,10);
+ const mapsOf=c=>c.u.x.rows.slice().sort((a,b)=>String(a.map).localeCompare(String(b.map))).map(g=>`<span style="white-space:nowrap;${c.mapG&&c.mapG.id===g.id?'font-weight:700;color:var(--pk)':''}">${esc(mapCanon(g.map))} ${esc(g.round_score||'—')}${ytVod(g)?(String(g.vod_link).includes(v.id)?' <span style="color:#34c46a">(this video)</span>':' <span class="mu">(has a VOD)</span>'):''}</span>`).join(' · ');
+ const when=c=>c.dd===0?'same day as the video':c.dd>0?plural(c.dd,'day')+' before the video':plural(-c.dd,'day')+' after the video';
+ const rows=q.cands.map((c,j)=>{const r=c.u.r,multi=c.u.x.rows.length>1;return `<div class="cd" style="padding:10px 12px;gap:6px;${j===0?'border-color:var(--pk)':''}"><div class="row wrap" style="gap:4px 12px;justify-content:space-between"><b style="font-weight:600;overflow-wrap:anywhere">${esc(r.team)} vs ${esc(r.opponent)}</b>${j===0?'<span style="font-size:11.5px;font-weight:700;color:var(--pk)">Best match</span>':''}</div>
+  <p class="mu" style="font-size:12.5px">${esc(fmtD(c.u.x.date))} (${when(c)})${r.league||r.phase?' · '+esc([r.league,r.phase].filter(Boolean).join(' · ')):''}</p><p style="font-size:12.5px">${mapsOf(c)}</p>
+  <div class="row wrap" style="gap:6px"><button class="go" style="height:28px;font-size:12.5px" data-a="ytpick" data-c="${j}">${multi?'Link to this match ('+plural(c.u.x.rows.length,'map')+')':'Link to this game'}</button>${multi?c.u.x.rows.map(g=>`<button class="no" style="height:28px;font-size:12px" data-a="ytpick" data-c="${j}" data-g="${esc(g.id)}">Only ${esc(mapCanon(g.map))}</button>`).join(''):''}</div></div>`}).join('');
+ d.innerHTML=head+`<p class="mu" style="margin-bottom:8px">Video ${y.i+1} of ${n}${y.already?' · '+plural(y.already,'video')+' already linked, left out':''}</p>
+ <div class="cd" style="padding:10px 12px;gap:4px;margin-bottom:10px"><a href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer" style="font-weight:600;font-size:15px;overflow-wrap:anywhere">${esc(v.title)}</a><span class="mu" style="font-size:12.5px">Posted ${esc(fmtD(pub))}${q.pick?' · <span style="color:#34c46a;font-weight:600">Linked to '+esc(q.pick)+'</span>':''}</span></div>
+ <div style="overflow:auto;max-height:52vh;display:flex;flex-direction:column;gap:8px">${rows||'<p class="mu">No games found between the teams in this title. Skip it, or add the VOD on the game by hand.</p>'}</div>
+ <div class="row wrap" style="gap:8px;margin-top:10px;justify-content:space-between"><div class="row" style="gap:8px">${y.i?'<button class="no" data-a="ytnav" data-d="-1">Back</button>':''}<button class="no" data-a="ytnav" data-d="1">${q.cands.length?'None of these, skip':'Skip'}</button></div></div>`;
+ d.querySelector('[style*="max-height:52vh"]')?.scrollTo(0,0);
+}
+async function ytPick(d,b){
+ const y=sco.yt,q=y?.list[y.i],c=q?.cands[+d.c];if(!c)return;b.disabled=true;
+ const games=d.g?c.u.x.rows.filter(g=>g.id===d.g):c.u.x.rows,r=await sb.from('scout_matches').update({vod_link:'https://www.youtube.com/watch?v='+q.v.id}).in('id',games.map(g=>g.id)).select();
+ if(r.error){b.disabled=false;return toast(scErr(r.error))}
+ r.data.forEach(x=>{const o=sco.m.find(z=>z.id===x.id);if(o)Object.assign(o,x)});if(!q.pick)y.linked++;
+ q.pick=c.u.r.team+' vs '+c.u.r.opponent+(d.g?', '+mapCanon(games[0].map):'')+', '+fmtD(c.u.x.date);y.i++;ytDraw();
+}
 function ytB(){
  const y=sco.yt,saved=(()=>{try{return localStorage.getItem('liv.ytpl')||''}catch{return ''}})();
- const vid=v=>`<a href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer" style="font-weight:600;overflow-wrap:anywhere">${esc(v.title)}</a> <span class="mu" style="font-size:12px">posted ${esc(fmtD(String(v.published).slice(0,10)))}</span>`;
- const res=y&&!y.busy&&!y.err&&y.total!=null?`<p>${y.title?'<b style="font-weight:600">'+esc(y.title)+'</b>: ':''}${plural(y.total,'video')} read. <span style="color:#34c46a;font-weight:600">Linked ${plural(y.games||0,'game')}</span>${y.ask.length?` · <span class="over">${y.ask.length} to check below</span>`:''}${y.none?` · <span class="mu">${plural(y.none,'video')} matched no game missing a VOD</span>`:''}</p>
- ${y.linked.length?`<details><summary class="mu" style="cursor:pointer">See what was linked</summary><div style="max-height:220px;overflow-y:auto;margin-top:4px">${y.linked.map(l=>`<p style="font-size:12.5px;margin:3px 0">${vid(l.v)} <span class="mu">→ ${esc(l.label)}</span></p>`).join('')}</div></details>`:''}
- ${y.ask.map((q,i)=>`<div style="border-top:1px solid var(--bd);padding-top:8px;display:flex;flex-direction:column;gap:6px"><div>${vid(q.v)}</div>${q.cands.map((c,j)=>`<div class="row wrap" style="gap:6px 10px"><button class="${j?'no':'go'}" style="height:28px;font-size:12.5px" data-a="ytyes" data-i="${i}" data-c="${j}">Link to ${esc(c.label)}</button>${c.why.length?`<span class="over" style="font-size:12px">${esc(c.why.join(', '))}</span>`:''}</div>`).join('')}<div><button class="no" style="height:26px;font-size:12px" data-a="ytno" data-i="${i}">Not any of these</button></div></div>`).join('')}`:'';
+ const res=y?.list?`<p>${y.title?'<b style="font-weight:600">'+esc(y.title)+'</b>: ':''}${plural(y.total,'video')} read${y.already?', '+y.already+' already linked':''}. <span style="color:#34c46a;font-weight:600">Linked ${plural(y.linked,'video')}</span>${y.list.length?` <button class="no" style="height:26px;font-size:12px;margin-left:6px" data-a="ytreopen">${y.i<y.list.length?'Continue ('+(y.list.length-y.i)+' left)':'Review again'}</button>`:''}</p>`:'';
  return `<details class="cd" style="gap:8px;margin-bottom:8px" ${y?'open':''}><summary style="cursor:pointer;font-weight:600">Find VODs from a YouTube playlist</summary>
- <p class="mu" style="font-size:12.5px">Paste a playlist link. Each video's title (team names, league, map) and upload date are matched to games missing a VOD. Sure matches are linked straight away. If the names aren't an exact match, or the video was posted more than 2 days after the game, you're asked first.</p>
+ <p class="mu" style="font-size:12.5px">Paste a playlist link. For each video, every game between the two teams in its title is shown, closest to the upload date first, and you pick the one it belongs to. Videos already linked to a game are left out.</p>
  <form data-s="ytread" class="row wrap" style="gap:8px"><input id="ytu" class="fi" style="flex:1 1 260px;min-width:0" inputmode="url" aria-label="YouTube playlist link" placeholder="https://www.youtube.com/playlist?list=…" value="${esc(y?.url??saved)}"><button class="go" ${y?.busy?'disabled':''}>${y?.busy?'Reading…':'Match VODs'}</button></form>
  ${y?.err?`<p class="over">${esc(y.err)}</p>`:''}${res}</details>`;
 }
@@ -3964,7 +3983,7 @@ const A={
  lpteam:()=>{const t=sco.teams.find(x=>x.id===sco.oppId);if(t&&!sco.lp?.running)lpRunTeam(t)},
  lpstop:()=>{sco.lp.stop=true;render()},
  gapopen:d=>{sco.gapBack={page:sco.page,oppId:sco.oppId,tab:sco.tab};Object.assign(sco,{page:'gaps',gapTeam:d.t||null,gapF:''});render();window.scrollTo?.(0,0)},
- gapjoin:d=>gapJoin(String(d.f).split(','),String(d.t).split(',')),gapres:async(d,b)=>{const ids=String(d.ids||'').split(',').filter(Boolean),v=!!d.v;b.disabled=true;const r=await sb.from('scout_matches').update({gaps_resolved:v}).in('id',ids).select();if(r.error){b.disabled=false;return toast(/gaps_resolved/.test(r.error.message||'')?'Marking games resolved needs a database update. Paste stage36.sql into the Supabase SQL Editor and run it.':scErr(r.error))}r.data.forEach(x=>{const o=sco.m.find(y=>y.id===x.id);if(o)Object.assign(o,x)});if(!v&&!sco.m.some(x=>x.gaps_resolved))sco.gapF='';render();toast(v?'Marked resolved. It stays under Resolved if you need it back.':'Showing it in Missing data again')},ytyes:async(d,b)=>{const y=sco.yt,q=y?.ask[+d.i],c=q?.cands[+d.c];if(!c)return;b.disabled=true;const n=await ytLink(q.v,c.games);if(n){y.games=(y.games||0)+n;y.linked.push({v:q.v,label:c.label});y.ask.splice(+d.i,1);ytPrune(y);toast('Linked to '+c.label)}else b.disabled=false;render()},ytno:d=>{const y=sco.yt;if(!y)return;y.ask.splice(+d.i,1);render()},gapback:()=>{Object.assign(sco,sco.gapBack||{page:'home'});render()},
+ gapjoin:d=>gapJoin(String(d.f).split(','),String(d.t).split(',')),gapres:async(d,b)=>{const ids=String(d.ids||'').split(',').filter(Boolean),v=!!d.v;b.disabled=true;const r=await sb.from('scout_matches').update({gaps_resolved:v}).in('id',ids).select();if(r.error){b.disabled=false;return toast(/gaps_resolved/.test(r.error.message||'')?'Marking games resolved needs a database update. Paste stage36.sql into the Supabase SQL Editor and run it.':scErr(r.error))}r.data.forEach(x=>{const o=sco.m.find(y=>y.id===x.id);if(o)Object.assign(o,x)});if(!v&&!sco.m.some(x=>x.gaps_resolved))sco.gapF='';render();toast(v?'Marked resolved. It stays under Resolved if you need it back.':'Showing it in Missing data again')},ytpick:(d,b)=>ytPick(d,b),ytnav:d=>{const y=sco.yt;if(!y?.list)return;y.i=Math.max(0,Math.min(y.list.length,y.i+ +d.d));ytDraw()},ytclose:()=>$('#dlg').close(),ytreopen:()=>{const y=sco.yt;if(y?.list){if(y.i>=y.list.length)y.i=0;ytOpen()}},gapback:()=>{Object.assign(sco,sco.gapBack||{page:'home'});render()},
  gapf:d=>{sco.gapF=d.k;render()},
  gapfix:d=>{if(d.k==='vod')return A.scvod({id:d.id});if(['board','log','ops'].includes(d.k))return openAnalyst('parse');if(d.k==='veto')return openSc('lib','v');A.smatch({id:d.id})},
  ccopen:d=>ccOpen(d.t||null),
