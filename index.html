@@ -3323,13 +3323,98 @@ async function gapJoin(fromIds,toIds){
  if(sco===s){if(!m.error)s.m=m.data;if(!r.error)s.r=r.data;if(view==='sc'&&!sdirty)render()}
  actEnd(job,errs.length?'warn':'ok','Joined '+plural(ok,'map')+(errs.length?'. Not joined: '+errs.join('; '):''));toast(errs.length?'Joined '+plural(ok,'map')+'. Not joined: '+errs.join('; '):'Joined into one match.');
 }
+// ---- VODs from a YouTube playlist: each video's title (team names, league, map) and upload date are matched to games missing a VOD ----
+const ytCall=async playlist=>{
+ let r;try{r=await sb.functions.invoke('youtube-playlist',{body:{playlist}})}catch(e){throw new Error('The YouTube reader could not be reached. Try again.')}
+ if(r.error){const st=r.error.context?.status;let m='';try{m=(await r.error.context?.json?.())?.error||''}catch{}if(m)throw new Error(m);if(st===404)throw new Error('The YouTube reader is not set up yet. Follow the steps to create the youtube-playlist Edge Function in Supabase.');throw new Error('No answer from the YouTube reader. Try again.')}
+ if(r.data?.error)throw new Error(r.data.error);return r.data;
+};
+const ytW=s=>' '+norm(s).replace(/[^a-z0-9]+/g,' ').trim()+' ';
+const ytDay=d=>Math.round(Date.parse(String(d).slice(0,10)+'T00:00:00Z')/864e5);
+const ytHas=(tw,w)=>!!w.trim()&&tw.includes(' '+w.trim()+' ');
+const YT_LEAGUE=[['nal','north america league'],['eml','europe mena league'],['apl','asia pacific league'],['sal','south america league'],['cnl','china league'],['si','six invitational']];
+const YT_GENERIC=new Set(['2023','2024','2025','2026','2027','stage','group','groups','playoffs','playoff','day','week','the','of','r6','rainbow','six','siege','league','season','split','final','finals','regular','main','event','esports','qualifier','qualifiers','open','championship','north','south','east','west']);
+// true when the title names the game's league, false when it doesn't, null when the game has no league
+function ytLeague(league,tw){
+ const L=ytW(league),w=L.trim().split(' ').filter(x=>x&&!YT_GENERIC.has(x));if(!L.trim())return null;
+ if(w.some(x=>x.length>=2&&ytHas(tw,x)))return true;
+ return YT_LEAGUE.some(([a,b])=>(ytHas(L,a)||L.includes(' '+b+' '))&&(ytHas(tw,a)||tw.includes(' '+b+' ')));
+}
+// 2 = the name is in the title (every word of it, leaving out words like Team or Esports), 1 = close (part of it), 0 = not there
+function ytTeam(n,tw,ts,cache){
+ let names=cache.get(n);if(!names){const t=twinOf(n);names=[...new Set([n,...(t?[t.name,t.short_name,t.source_ids?.liquipedia,...(t.aliases||[])]:[])].filter(Boolean).map(String))];cache.set(n,names)}
+ let lv=0;
+ for(const x of names){
+  if(ytHas(tw,ytW(x)))return 2;
+  const w=nameWords(x).filter(y=>!TEAM_FILLER.has(y));if(w.length&&w.every(y=>ytHas(tw,y)))return 2;
+  const c=nameCore(x);if(c.length>=4&&ts.includes(c))lv=1;if(w[0]&&w[0].length>=4&&ytHas(tw,w[0]))lv=1;
+ }
+ return lv;
+}
+const ytMaps=tw=>MAP_POOL.map(m=>m[0]).filter(m=>{const a=ytW(m),b=ytW(m.replace(/ dostoyevsky| labs/gi,''));return ytHas(tw,a)||ytHas(tw,b)||ytHas(tw,a.replace(/ /g,''))});
+const ytVod=g=>/^https?:\/\//i.test(g.vod_link||'');
+function ytMatch(videos,team){
+ const units=gapRows(team).map(x=>({x,r:x.r,missing:x.rows.filter(g=>!ytVod(g)),day:ytDay(x.date)})).filter(u=>u.missing.length),byDay=new Map(),cache=new Map();
+ units.forEach(u=>(byDay.get(u.day)||byDay.set(u.day,[]).get(u.day)).push(u));
+ const out=[];let none=0;
+ videos.forEach(v=>{
+  const tw=ytW(v.title),ts=squash(v.title),maps=ytMaps(tw),pub=ytDay(v.published),cands=[];if(!Number.isFinite(pub)){none++;return}
+  for(let d=-2;d<=14;d++)(byDay.get(pub-d)||[]).forEach(u=>{
+   const a=ytTeam(u.r.team,tw,ts,cache);if(!a)return;const b=ytTeam(u.r.opponent,tw,ts,cache);if(!b)return;
+   const games=maps.length===1?u.missing.filter(g=>mapCanon(g.map)===maps[0]):u.missing;if(!games.length)return;
+   const lg=ytLeague(u.r.league,tw),near=d>=-1&&d<=2,why=[];
+   if(a<2||b<2)why.push('the team names are not an exact match');
+   if(!near)why.push(d<0?'posted '+plural(-d,'day')+' before the game':'posted '+plural(d,'day')+' after the game');
+   if(lg===false)why.push("the title doesn't name this game's league");
+   const one=games.length===1&&(maps.length===1||u.missing.length<u.x.rows.length);
+   cands.push({u,games,why,score:(a+b)*10+(lg===true?6:lg===false?-4:0)+(near?5:0)-Math.abs(d-1)*.5+(maps.length===1?2:0),
+    label:u.r.team+' vs '+u.r.opponent+(one||maps.length===1?', '+mapCanon(games[0].map):games.length>1?' ('+plural(games.length,'map')+')':', '+mapCanon(games[0].map))+', '+fmtD(u.x.date)+(u.r.league?' · '+u.r.league:'')});
+  });
+  if(!cands.length){none++;return}
+  cands.sort((x,y)=>y.score-x.score);
+  const best=cands[0],sure=!best.why.length&&!(cands[1]&&!cands[1].why.length);
+  if(!best.why.length&&!sure)best.why=['more than one game fits'];
+  out.push({v,cands:cands.slice(0,3),sure});
+ });
+ // two sure videos for the same game: ask about both
+ const claim=new Map();out.filter(x=>x.sure).forEach(x=>x.cands[0].games.forEach(g=>claim.set(g.id,(claim.get(g.id)||0)+1)));
+ out.forEach(x=>{if(x.sure&&x.cands[0].games.some(g=>claim.get(g.id)>1)){x.sure=false;x.cands[0].why=['another video also fits this game']}});
+ return{sure:out.filter(x=>x.sure),ask:out.filter(x=>!x.sure),none};
+}
+async function ytLink(v,games){
+ const ids=games.filter(g=>!ytVod(g)).map(g=>g.id);if(!ids.length)return 0;
+ const r=await sb.from('scout_matches').update({vod_link:'https://www.youtube.com/watch?v='+v.id}).in('id',ids).select();if(r.error){toast(scErr(r.error));return 0}
+ r.data.forEach(x=>{const o=sco.m.find(y=>y.id===x.id);if(o)Object.assign(o,x)});return r.data.length;
+}
+async function ytRead(){
+ const s=sco,url=($('#ytu')?.value||'').trim();if(!url)return;try{localStorage.setItem('liv.ytpl',url)}catch{}
+ s.yt={url,busy:true,err:'',linked:[],ask:[]};render();
+ let d;try{d=await ytCall(url)}catch(e){s.yt.busy=false;s.yt.err=e.message;if(sco===s&&view==='sc')render();return}
+ const team=s.gapTeam?s.teams.find(x=>x.id===s.gapTeam):null,res=ytMatch(d.videos||[],team),linked=[];let games=0;
+ const job=res.sure.length?actStart('Linking VODs from '+(d.title||'the playlist')):null;
+ for(const [i,x] of res.sure.entries()){if(sco!==s)break;actSet(job,{detail:(i+1)+' of '+res.sure.length,pct:Math.round(i/res.sure.length*100)});const n=await ytLink(x.v,x.cands[0].games);if(n){games+=n;linked.push({v:x.v,label:x.cands[0].label})}}
+ if(job)actEnd(job,'ok','Linked '+plural(games,'game')+' to '+plural(linked.length,'video'));
+ s.yt={url,busy:false,err:'',title:d.title||'',total:(d.videos||[]).length,linked,games,ask:res.ask,none:res.none};if(sco===s&&view==='sc'&&!sdirty)render();
+}
+const ytPrune=y=>{y.ask.forEach(q=>q.cands=q.cands.filter(c=>c.games.some(g=>!ytVod(g))));y.ask=y.ask.filter(q=>q.cands.length)};
+function ytB(){
+ const y=sco.yt,saved=(()=>{try{return localStorage.getItem('liv.ytpl')||''}catch{return ''}})();
+ const vid=v=>`<a href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer" style="font-weight:600;overflow-wrap:anywhere">${esc(v.title)}</a> <span class="mu" style="font-size:12px">posted ${esc(fmtD(String(v.published).slice(0,10)))}</span>`;
+ const res=y&&!y.busy&&!y.err&&y.total!=null?`<p>${y.title?'<b style="font-weight:600">'+esc(y.title)+'</b>: ':''}${plural(y.total,'video')} read. <span style="color:#34c46a;font-weight:600">Linked ${plural(y.games||0,'game')}</span>${y.ask.length?` · <span class="over">${y.ask.length} to check below</span>`:''}${y.none?` · <span class="mu">${plural(y.none,'video')} matched no game missing a VOD</span>`:''}</p>
+ ${y.linked.length?`<details><summary class="mu" style="cursor:pointer">See what was linked</summary><div style="max-height:220px;overflow-y:auto;margin-top:4px">${y.linked.map(l=>`<p style="font-size:12.5px;margin:3px 0">${vid(l.v)} <span class="mu">→ ${esc(l.label)}</span></p>`).join('')}</div></details>`:''}
+ ${y.ask.map((q,i)=>`<div style="border-top:1px solid var(--bd);padding-top:8px;display:flex;flex-direction:column;gap:6px"><div>${vid(q.v)}</div>${q.cands.map((c,j)=>`<div class="row wrap" style="gap:6px 10px"><button class="${j?'no':'go'}" style="height:28px;font-size:12.5px" data-a="ytyes" data-i="${i}" data-c="${j}">Link to ${esc(c.label)}</button>${c.why.length?`<span class="over" style="font-size:12px">${esc(c.why.join(', '))}</span>`:''}</div>`).join('')}<div><button class="no" style="height:26px;font-size:12px" data-a="ytno" data-i="${i}">Not any of these</button></div></div>`).join('')}`:'';
+ return `<details class="cd" style="gap:8px;margin-bottom:8px" ${y?'open':''}><summary style="cursor:pointer;font-weight:600">Find VODs from a YouTube playlist</summary>
+ <p class="mu" style="font-size:12.5px">Paste a playlist link. Each video's title (team names, league, map) and upload date are matched to games missing a VOD. Sure matches are linked straight away. If the names aren't an exact match, or the video was posted more than 2 days after the game, you're asked first.</p>
+ <form data-s="ytread" class="row wrap" style="gap:8px"><input id="ytu" class="fi" style="flex:1 1 260px;min-width:0" inputmode="url" aria-label="YouTube playlist link" placeholder="https://www.youtube.com/playlist?list=…" value="${esc(y?.url??saved)}"><button class="go" ${y?.busy?'disabled':''}>${y?.busy?'Reading…':'Match VODs'}</button></form>
+ ${y?.err?`<p class="over">${esc(y.err)}</p>`:''}${res}</details>`;
+}
 function gapB(){
  const team=sco.gapTeam?sco.teams.find(t=>t.id===sco.gapTeam):null,every=gapRows(team),all=every.filter(x=>!x.resolved),done=every.filter(x=>x.resolved&&GAP_COLS.some(c=>!x.has[c[0]])),miss=c=>all.filter(x=>!x.has[c]).length,open=all.filter(x=>GAP_COLS.some(c=>!x.has[c[0]])),F=sco.gapF||'',l=F==='resolved'?done:F?all.filter(x=>!x.has[F]):open,show=l.slice(0,200);
  const chip=(key,label,n)=>`<button class="ch" data-a="gapf" data-k="${key}" aria-pressed="${F===key}" ${n?'':'style="opacity:.55"'}>${label} <b style="font-weight:700;margin-left:3px;color:${n?'#ff8a8a':'#34c46a'}">${n}</b></button>`;
  const cell=(x,c)=>x.has[c]?'<span style="color:#34c46a" aria-label="Have it">✓</span>':`<button class="no" style="height:20px;width:26px;padding:0;border-radius:999px;color:#ff8a8a;font-size:12px" data-a="gapfix" data-k="${c}" data-id="${x.r.id}" aria-label="Add ${c} for ${esc(x.who)}">+</button>`;
  const src=x=>{const r=x.r,tag=(t,u,bad)=>u?`<a class="${bad?'over':''}" style="font-size:11px;font-weight:700;text-decoration:none;${bad?'':'color:var(--pk)'}" href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(t)}">${t[0]}</a>`:'';return `<span class="row" style="gap:6px">${tag('Official page',/^\d+$/.test(r.r6esports_id||'')?'https://www.ubisoft.com/en-us/esports/rainbow-six/siege/match/'+r.r6esports_id:'')}${tag('Siege.gg',/^\d+$/.test(r.siegegg_id||'')?'https://siege.gg/matches/'+r.siegegg_id:'',x.rows.some(y=>y.gg_missing))}${tag('Liquipedia',/^https:/.test(r.source_link||'')?r.source_link:'')}${x.rows.some(y=>y.gg_missing)?`<button class="no" style="height:22px;padding:0 8px;font-size:11.5px" data-a="lpggclear" data-g="${esc(r.siegegg_id)}">Remove dead siege.gg link</button>`:''}</span>`};
  return `<div class="row wrap" style="margin-bottom:8px"><div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:24px;overflow-wrap:anywhere">${gapIco}Missing data</h1><p class="mu">${team?esc(team.name):'All teams'}. Click + to fill a gap.</p></div><button class="no" data-a="gapback">Back</button></div>
- ${twinsB()}${wrongB(team)}<div class="row wrap" style="gap:6px;margin-bottom:8px" role="group" aria-label="Filter gaps">${chip('','All gaps',open.length)}${GAP_COLS.map(c=>chip(c[0],c[1],miss(c[0]))).join('')}${done.length?`<button class="ch" data-a="gapf" data-k="resolved" aria-pressed="${F==='resolved'}">Resolved <b style="font-weight:700;margin-left:3px">${done.length}</b></button>`:''}</div>
+ ${twinsB()}${ytB()}${wrongB(team)}<div class="row wrap" style="gap:6px;margin-bottom:8px" role="group" aria-label="Filter gaps">${chip('','All gaps',open.length)}${GAP_COLS.map(c=>chip(c[0],c[1],miss(c[0]))).join('')}${done.length?`<button class="ch" data-a="gapf" data-k="resolved" aria-pressed="${F==='resolved'}">Resolved <b style="font-weight:700;margin-left:3px">${done.length}</b></button>`:''}</div>
  ${show.length?`<section class="cd" style="padding:8px 10px"><div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">${team?'Opponent':'Match'}</th><th scope="col">Event</th>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<th scope="col" style="text-align:center">${c[1]}</th>`).join('')}<th scope="col">Source</th><th scope="col"><span class="sr">Resolve</span></th></tr></thead><tbody>${show.map(x=>`<tr><td>${esc(x.date)}</td><td><button class="no" style="border:0;height:auto;padding:0;font-weight:600;background:none;text-align:left;white-space:normal" data-a="smatch" data-id="${x.r.id}">${esc(x.who)}</button>${(()=>{const y=gapMate(x,all);return y?`<button class="no" style="display:block;margin-top:3px;height:22px;padding:0 8px;font-size:11.5px" data-a="gapjoin" data-f="${esc(x.rows.map(g=>g.id).join(','))}" data-t="${esc(y.rows.map(g=>g.id).join(','))}" title="Same teams within a day as ${esc(y.date+' '+(y.event||y.who))}">Join with ${esc(y.event||y.date)}</button>`:''})()}</td><td class="mu" style="max-width:150px;overflow:hidden;text-overflow:ellipsis" title="${esc(x.event)}">${esc(x.event)}</td>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<td style="text-align:center">${cell(x,c[0])}</td>`).join('')}<td>${x.has.src?src(x):x.r.r6esports_id||x.r.siegegg_id?src(x):cell(x,'src')}</td><td><button class="no" style="height:22px;padding:0 8px;font-size:11.5px;white-space:nowrap" data-a="gapres" data-ids="${esc(x.rows.map(g=>g.id).join(','))}" data-v="${x.resolved?'':'1'}" title="${x.resolved?'Show this game in Missing data again':'The missing information is not available: stop showing this game here'}">${x.resolved?'Undo':'Mark resolved'}</button></td></tr>`).join('')}</tbody></table></div>${l.length>200?'<p class="mu">Showing the first 200.</p>':''}</section>`:`<div class="cd"><p>Nothing missing${F?' here':''}.</p></div>`}${F==='resolved'?'':done.length?`<p class="mu" style="margin-top:8px;font-size:12px">${plural(done.length,'game')} marked resolved ${done.length>1?'are':'is'} hidden. See them under Resolved.</p>`:''}`;
 }
 const hubRows=()=>sco.m.map(r=>({r,foe:r.opponent,map:r.map,date:r.match_date,res:normRes(r.result),score:r.round_score}));
@@ -3879,7 +3964,7 @@ const A={
  lpteam:()=>{const t=sco.teams.find(x=>x.id===sco.oppId);if(t&&!sco.lp?.running)lpRunTeam(t)},
  lpstop:()=>{sco.lp.stop=true;render()},
  gapopen:d=>{sco.gapBack={page:sco.page,oppId:sco.oppId,tab:sco.tab};Object.assign(sco,{page:'gaps',gapTeam:d.t||null,gapF:''});render();window.scrollTo?.(0,0)},
- gapjoin:d=>gapJoin(String(d.f).split(','),String(d.t).split(',')),gapres:async(d,b)=>{const ids=String(d.ids||'').split(',').filter(Boolean),v=!!d.v;b.disabled=true;const r=await sb.from('scout_matches').update({gaps_resolved:v}).in('id',ids).select();if(r.error){b.disabled=false;return toast(/gaps_resolved/.test(r.error.message||'')?'Marking games resolved needs a database update. Paste stage36.sql into the Supabase SQL Editor and run it.':scErr(r.error))}r.data.forEach(x=>{const o=sco.m.find(y=>y.id===x.id);if(o)Object.assign(o,x)});if(!v&&!sco.m.some(x=>x.gaps_resolved))sco.gapF='';render();toast(v?'Marked resolved. It stays under Resolved if you need it back.':'Showing it in Missing data again')},gapback:()=>{Object.assign(sco,sco.gapBack||{page:'home'});render()},
+ gapjoin:d=>gapJoin(String(d.f).split(','),String(d.t).split(',')),gapres:async(d,b)=>{const ids=String(d.ids||'').split(',').filter(Boolean),v=!!d.v;b.disabled=true;const r=await sb.from('scout_matches').update({gaps_resolved:v}).in('id',ids).select();if(r.error){b.disabled=false;return toast(/gaps_resolved/.test(r.error.message||'')?'Marking games resolved needs a database update. Paste stage36.sql into the Supabase SQL Editor and run it.':scErr(r.error))}r.data.forEach(x=>{const o=sco.m.find(y=>y.id===x.id);if(o)Object.assign(o,x)});if(!v&&!sco.m.some(x=>x.gaps_resolved))sco.gapF='';render();toast(v?'Marked resolved. It stays under Resolved if you need it back.':'Showing it in Missing data again')},ytyes:async(d,b)=>{const y=sco.yt,q=y?.ask[+d.i],c=q?.cands[+d.c];if(!c)return;b.disabled=true;const n=await ytLink(q.v,c.games);if(n){y.games=(y.games||0)+n;y.linked.push({v:q.v,label:c.label});y.ask.splice(+d.i,1);ytPrune(y);toast('Linked to '+c.label)}else b.disabled=false;render()},ytno:d=>{const y=sco.yt;if(!y)return;y.ask.splice(+d.i,1);render()},gapback:()=>{Object.assign(sco,sco.gapBack||{page:'home'});render()},
  gapf:d=>{sco.gapF=d.k;render()},
  gapfix:d=>{if(d.k==='vod')return A.scvod({id:d.id});if(['board','log','ops'].includes(d.k))return openAnalyst('parse');if(d.k==='veto')return openSc('lib','v');A.smatch({id:d.id})},
  ccopen:d=>ccOpen(d.t||null),
@@ -4093,7 +4178,7 @@ if(c==='sodr'){const r=sco.dr={...(sco.dr||{}),[e.target.dataset.k]:e.target.val
  if(c==='gstat'){const g=pl.goals.find(x=>x.id===e.target.dataset.id);if(!leaveOk()){e.target.value=g.status;return}sb.from('journal_goals').update({status:e.target.value}).eq('id',g.id).select().single().then(async r=>{if(r.error){toast(pErr(r.error));e.target.value=g.status;return}Object.assign(pl,{form:null,noteFor:null});await loadPlayer();render()})}
  if(c==='shk')$('#shgame').hidden=!['scrim','gameday'].includes(e.target.value);
  if(c==='logo'&&e.target.files[0]){const u=URL.createObjectURL(e.target.files[0]);$('#lp').innerHTML=`<span class="lt" style="--s:56px;border-color:${esc(fm.color)}"><img src="${u}" alt=""></span>`}});
-document.addEventListener('submit',async e=>{if(e.target.dataset.s==='mtsave'){e.preventDefault();return mtSave(e.target)}if(e.target.dataset.s==='scrim'){e.preventDefault();return saveScrim(e.target)}if(e.target.dataset.s==='sched'){e.preventDefault();return saveSch(e.target)}if(e.target.dataset.s==='goal'){e.preventDefault();return saveGoal(e.target)}if(e.target.dataset.s==='gnote'){e.preventDefault();return saveNote(e.target)}if(e.target.dataset.s==='strat'){e.preventDefault();return saveStrat(e.target)}if(e.target.dataset.s==='sopp'){e.preventDefault();return saveSo(e.target)}if(e.target.dataset.s==='smatch'){e.preventDefault();return saveMatch(e.target)}if(e.target.dataset.s==='srate'){e.preventDefault();return saveRate(e.target)}if(e.target.dataset.s==='lplink'){e.preventDefault();const u=$('#lpu').value.trim();if(!/^https?:\/\/(www\.)?liquipedia\.net\/rainbowsix\/\S+/i.test(u)){sco.lp.url=u;sco.lp.err='Paste a Liquipedia Rainbow Six link, like https://liquipedia.net/rainbowsix/North_America_League/2026/Stage_2';render();return}return lpResolve(u)}if(e.target.dataset.s==='tset'){e.preventDefault();return saveTeamSet(e.target)}if(e.target.dataset.s==='rost'){e.preventDefault();return addRoster(e.target)}if(e.target.dataset.s!=='auth')return;e.preventDefault();
+document.addEventListener('submit',async e=>{if(e.target.dataset.s==='ytread'){e.preventDefault();return ytRead()}if(e.target.dataset.s==='mtsave'){e.preventDefault();return mtSave(e.target)}if(e.target.dataset.s==='scrim'){e.preventDefault();return saveScrim(e.target)}if(e.target.dataset.s==='sched'){e.preventDefault();return saveSch(e.target)}if(e.target.dataset.s==='goal'){e.preventDefault();return saveGoal(e.target)}if(e.target.dataset.s==='gnote'){e.preventDefault();return saveNote(e.target)}if(e.target.dataset.s==='strat'){e.preventDefault();return saveStrat(e.target)}if(e.target.dataset.s==='sopp'){e.preventDefault();return saveSo(e.target)}if(e.target.dataset.s==='smatch'){e.preventDefault();return saveMatch(e.target)}if(e.target.dataset.s==='srate'){e.preventDefault();return saveRate(e.target)}if(e.target.dataset.s==='lplink'){e.preventDefault();const u=$('#lpu').value.trim();if(!/^https?:\/\/(www\.)?liquipedia\.net\/rainbowsix\/\S+/i.test(u)){sco.lp.url=u;sco.lp.err='Paste a Liquipedia Rainbow Six link, like https://liquipedia.net/rainbowsix/North_America_League/2026/Stage_2';render();return}return lpResolve(u)}if(e.target.dataset.s==='tset'){e.preventDefault();return saveTeamSet(e.target)}if(e.target.dataset.s==='rost'){e.preventDefault();return addRoster(e.target)}if(e.target.dataset.s!=='auth')return;e.preventDefault();
  const email=$('#em').value.trim(),password=$('#pw').value;
  if(mode==='in'){const{error}=await sb.auth.signInWithPassword({email,password});if(!error)return;
   // not confirmed yet: send a fresh link that comes back to this page
