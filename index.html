@@ -133,6 +133,12 @@ body.vodon{padding-right:calc(var(--vodw,min(44vw,760px)) + 24px)}body.vodon #to
 .mvn{font-size:46px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;line-height:1}.mvn .lo{opacity:.45}.mvn i{font-style:normal;opacity:.4;padding:0 6px}
 .mvmap{font-size:20px;font-weight:600}
 .mvl{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}.mvl .vod{height:32px;padding:0 16px;font-size:13px}
+.mvform{display:flex;flex-direction:column;gap:16px;margin-bottom:16px}
+.mvg{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 14px}.mvf{min-width:0}
+.mvc .fi:focus{border-color:rgba(var(--pk-rgb),.7);box-shadow:0 0 0 3px rgba(var(--pk-rgb),.18),0 0 14px -4px rgba(var(--pk-rgb),.7)}
+.mvst{border-collapse:collapse;width:100%;max-width:560px}.mvst th{font-size:12px;font-weight:600;padding:4px 6px;text-align:center;white-space:nowrap}.mvst th[scope=row]{text-align:left;font-size:13px;white-space:normal;min-width:96px;overflow-wrap:normal;word-break:normal}.mvst td{padding:4px 6px;text-align:center}
+.mvs2{}@media (max-width:520px){.mvnum{width:50px!important}}
+.mvnum{width:62px!important;height:36px!important;text-align:center;padding:0 6px!important}
 .mvk{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:16px}
 .mvk>div{border:1px solid rgba(var(--pk-rgb),.38);border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:2px;min-width:0;background:linear-gradient(150deg,rgba(var(--pk-rgb),.13),rgba(6,5,9,.6) 70%);box-shadow:0 0 16px -8px rgba(var(--pk-rgb),.75),inset 0 0 12px -8px rgba(var(--pk-rgb),.6)}
 .mvk b{font-size:12.5px;font-weight:600;letter-spacing:.02em}.mvk span{font-size:14px;opacity:.82;overflow-wrap:anywhere}
@@ -3283,7 +3289,7 @@ function rdB(g){
  const off=tallyOff(t,p),fix=off&&t.n>=p.a+p.b;
  return `<section id="rdsec" class="cd" style="gap:8px;margin-top:16px"><div class="row wrap" style="justify-content:space-between"><h2 style="font-size:15px;font-weight:600">Rounds (${rs.length})</h2><button class="go" style="height:32px" data-a="rdadd">Add a round</button></div>${off?`<div class="row wrap" style="gap:8px"><span class="over">The rounds add up to ${t.w}-${t.l} but the score says ${esc(g.round_score)}.</span>${fix?`<button class="no" style="height:28px;font-size:12.5px" data-a="rdscore">Use ${t.w}-${t.l}</button>`:''}</div>`:''}${rs.length?`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col" class="num">Rd</th><th scope="col">${esc(g.team)} side</th><th scope="col">Won by</th><th scope="col">Site</th><th scope="col">${esc(g.team)} operators</th><th scope="col">${esc(g.opponent)} operators</th><th scope="col"><span style="position:absolute;left:-9999px">Edit</span></th></tr></thead><tbody>${body}</tbody></table></div>`:'<p class="mu">No rounds saved for this game. Import its replay on the Parse page, or add rounds here.</p>'}</section>`;
 }
-function rdPaint(g){const s=$('#rdsec');if(s)s.outerHTML=sco.meditId===g.id?rdB(g):rdView(g,...mvColors(g.team,g.opponent));const w=$('#wrtop');if(w)w.innerHTML=wrongTop(g)}
+function rdPaint(g){const s=$('#rdsec');if(s)s.outerHTML=rdView(g,...mvColors(g.team,g.opponent),sco.meditId===g.id);const w=$('#wrtop');if(w)w.innerHTML=wrongTop(g)}
 async function rdOpen(id){
  const g=sco.m.find(x=>x.id===sco.matchId);if(!g)return;const r=id?sco.r.find(x=>x.id===id):null;
  let stats=[];if(r&&g.replay_match_id){const q=await sb.from('player_round_stats').select('id,player_username,team_name,operator,side').eq('owner_team_id',sco.tid).eq('scout_match_id',g.id).eq('round_number',r.round_number);if(q.error)return toast(scErr(q.error));stats=q.data||[]}
@@ -3589,26 +3595,25 @@ async function fixSave(id,row,word){const r=await sb.from('scout_matches').updat
 const NO_SIDES={t1_atk:null,t1_def:null,t1_ot_atk:null,t1_ot_def:null,t2_atk:null,t2_def:null,t2_ot_atk:null,t2_ot_def:null};
 function matchB(r){
  if(sco.meditId!==r.id)return matchView(r);
- const f=(k,l,ty='text',att='')=>`<div style="flex:1 1 150px;min-width:0"><label for="mf-${k}">${l}</label><input id="mf-${k}" class="fi" type="${ty}" data-mf="${k}" value="${esc(r[k]??'')}" ${att}></div>`;
- const n=(k,l)=>`<div style="flex:1 1 58px;min-width:0"><label for="mf-${k}">${l}</label><input id="mf-${k}" class="fi" inputmode="numeric" data-mn="${k}" value="${esc(r[k]??'')}"></div>`;
- const box=c=>`<div class="row wrap" style="gap:12px;align-items:flex-start">${c}</div>`;
- const lk=[/^\d+$/.test(r.r6esports_id||'')?safeLink('https://www.ubisoft.com/en-us/esports/rainbow-six/siege/match/'+r.r6esports_id,'Official match page'):'',/^\d+$/.test(r.siegegg_id||'')?safeLink('https://siege.gg/matches/'+r.siegegg_id,'siege.gg'):'',r.source_link?safeLink(r.source_link,r.source_name||'Source'):''].filter(Boolean).join(' · ');
- const res=normRes(r.result);
- return `<div class="row wrap" style="margin-bottom:16px"><div style="flex:1 1 240px;min-width:0"><h1 class="serif" style="font-size:22px;overflow-wrap:anywhere">Editing ${esc(r.team)} vs ${esc(r.opponent)}</h1><p class="mu" style="overflow-wrap:anywhere">${esc(fmtD(r.match_date))} · ${esc(r.map)}${r.league?' · '+esc(r.league):''}. Changes save as you type.</p></div><button class="go" data-a="smview">Done editing</button></div>
- <section class="cd" style="gap:10px;margin-bottom:16px">${mapPhoto(r.map)}<div class="row wrap" style="gap:10px"><span style="font-size:24px;font-weight:600">${esc(r.round_score||'No score')}</span>${res?`<span class="fm f${res}">${res}</span>`:''}${/^https?:\/\//i.test(r.vod_link||'')?`<a class="vod" href="${esc(r.vod_link)}" target="_blank" rel="noopener noreferrer">VOD</a>`:''}${/^https:\/\//i.test(r.replay_link||'')?`<a class="vod" href="${esc(r.replay_link)}" target="_blank" rel="noopener noreferrer">Replay</a>`:''}</div><p>${checkTag(r)}</p>${lk?`<p class="mu" style="overflow-wrap:anywhere">${lk}</p>`:''}${r.check_status==='mismatch'||oppIssues([{r,res,score:r.round_score,foe:r.opponent,map:r.map,date:r.match_date}]).length?'<div><button class="no" data-a="smok">Mark as reviewed</button></div>':''}</section>
- <div id="wrtop">${wrongTop(r)}</div>${fixB(r)}<form class="cd" data-s="smatch" data-dirty data-auto="smatch">
- <h2 style="font-size:15px;font-weight:600">Match details</h2>
- ${box(f('match_date','Date','date','required')+f('map','Map','text','required maxlength="120" list="mfmaps"'))}<datalist id="mfmaps">${MAP_POOL.map(m=>`<option value="${esc(m[0])}">`).join('')}</datalist>
- ${box(f('team','Team 1','text','required maxlength="120"')+f('opponent','Team 2','text','required maxlength="120"'))}
- ${box(f('league','League')+f('phase','Phase'))}
- ${box(f('start_side','Starting Side')+f('picked_by','Map Picked By'))}
- ${box(f('our_atk_ban','T1 ATK Ban')+f('our_def_ban','T1 DEF Ban'))}
- ${box(f('opp_atk_ban','T2 ATK Ban')+f('opp_def_ban','T2 DEF Ban'))}
- ${box(f('split_score','Split (after 6 rounds)')+f('round_score','Score')+`<div style="flex:1 1 150px;min-width:0"><label for="mf-result">Win/Loss</label><select id="mf-result" class="fi" data-mf="result">${[['','Not set'],['W','Win'],['L','Loss'],['D','Draw']].map(o=>`<option value="${o[0]}"${res===o[0]?' selected':''}>${o[1]}</option>`).join('')}</select></div>`)}
- ${box(f('ot_start','OT Side')+f('vod_link','VOD link'))}
- ${box(f('r6esports_id','Official match ID')+f('siegegg_id','siege.gg match ID'))}
- <div><span class="lb">Rounds won on each side (optional)</span>${box(n('t1_atk','T1 ATK')+n('t1_def','T1 DEF')+n('t1_ot_atk','T1 OT ATK')+n('t1_ot_def','T1 OT DEF'))}<div style="height:8px"></div>${box(n('t2_atk','T2 ATK')+n('t2_def','T2 DEF')+n('t2_ot_atk','T2 OT ATK')+n('t2_ot_def','T2 OT DEF'))}</div>
- <div class="row wrap" style="justify-content:space-between"><button type="button" class="no" data-a="smdel">Delete game</button><span class="row"><button type="button" class="go" data-a="smview">Done editing</button><button class="go svb">Save changes</button></span></div></form>${rdB(r)}`;
+ const res=normRes(r.result),[c1,c2]=mvColors(r.team,r.opponent),T1=esc(r.team||'Team 1'),T2=esc(r.opponent||'Team 2');
+ const sideV=v=>{const k=startNorm(v);return k==='attack'?'Attack':k==='defense'?'Defense':v||''};
+ const inp=(k,l,ty='text',att='')=>`<div class="mvf"><label for="mf-${k}">${l}</label><input id="mf-${k}" class="fi" type="${ty}" data-mf="${k}" value="${esc(r[k]??'')}" ${att}></div>`;
+ const sel=(k,l,opts,v=r[k]??'')=>{const o=[...opts];if(v&&!o.some(x=>x[0]===v))o.push([v,v]);return `<div class="mvf"><label for="mf-${k}">${l}</label><select id="mf-${k}" class="fi" data-mf="${k}">${o.map(x=>`<option value="${esc(x[0])}"${x[0]===v?' selected':''}>${esc(x[1])}</option>`).join('')}</select></div>`};
+ const SIDES=[['','Not set'],['Attack','Attack'],['Defense','Defense']];
+ const num=(k,l)=>`<td><input id="mf-${k}" class="fi mvnum" inputmode="numeric" data-mn="${k}" value="${esc(r[k]??'')}" aria-label="${l}"></td>`;
+ const sec=(h,body,note='')=>`<section class="cd mvc" style="gap:12px"><div><h2 style="font-size:15px;font-weight:600">${h}</h2>${note?`<p class="mu" style="font-size:12.5px">${note}</p>`:''}</div>${body}</section>`;
+ const ban=(k,l)=>`<div class="mvf"><label for="mf-${k}">${l}</label><input id="mf-${k}" class="fi" data-mf="${k}" list="mfops" value="${esc(r[k]??'')}" autocomplete="off"></div>`;
+ return `<div class="row wrap" style="margin-bottom:12px;gap:8px"><div style="flex:1 1 240px;min-width:0"><h1 class="serif" style="font-size:22px;overflow-wrap:anywhere">Editing</h1><p class="mu">Changes save as you type.</p></div><span class="row wrap" style="gap:8px"><button class="no" data-a="mgopen">Merge with another series</button><button class="go" data-a="smview">Done editing</button></span></div>
+ ${matchView(r,true)}<div id="wrtop">${wrongTop(r)}</div>${fixB(r)}
+ <form class="mvform" data-s="smatch" data-dirty data-auto="smatch"><button class="go svb">Save changes</button>
+ <datalist id="mfmaps">${MAP_POOL.map(m=>`<option value="${esc(m[0])}">`).join('')}</datalist><datalist id="mfops">${OPS.map(o=>`<option value="${esc(o[0])}">`).join('')}</datalist>
+ ${sec('Game',`<div class="mvg">${inp('match_date','Date','date','required')}${inp('map','Map','text','required maxlength="120" list="mfmaps"')}${inp('league','League')}${inp('phase','Phase')}</div>`)}
+ ${sec('Teams and sides',`<div class="mvg">${inp('team','Team 1','text','required maxlength="120"')}${inp('opponent','Team 2','text','required maxlength="120"')}${sel('picked_by','Map picked by',[['','Not set'],[r.team,r.team],[r.opponent,r.opponent]])}${sel('start_side',T1+' started on',SIDES,sideV(r.start_side))}${sel('ot_start',T1+' overtime side',SIDES,sideV(r.ot_start))}</div>`)}
+ ${sec('Score',`<div class="mvg">${inp('round_score','Final score','text','placeholder="7-5"')}${inp('split_score','Score after 6 rounds','text','placeholder="4-2"')}${sel('result','Result',[['','Not set'],['W',r.team+' won'],['L',r.opponent+' won'],['D','Draw']],res)}</div>`,'Scores are from '+T1+"'s side, like 7-5.")}
+ ${sec('Bans',`<div class="mvb"><div><b style="font-weight:600">${T1}</b>${ban('our_atk_ban','Attack ban')}${ban('our_def_ban','Defense ban')}</div><div><b style="font-weight:600">${T2}</b>${ban('opp_atk_ban','Attack ban')}${ban('opp_def_ban','Defense ban')}</div></div>`)}
+ ${sec('Rounds won on each side',`<div style="overflow-x:auto"><table class="mvst"><thead><tr><th scope="col"></th><th scope="col">Attack</th><th scope="col">Defense</th><th scope="col">OT attack</th><th scope="col">OT defense</th></tr></thead><tbody><tr><th scope="row">${T1}</th>${num('t1_atk',T1+' attack')}${num('t1_def',T1+' defense')}${num('t1_ot_atk',T1+' overtime attack')}${num('t1_ot_def',T1+' overtime defense')}</tr><tr><th scope="row">${T2}</th>${num('t2_atk',T2+' attack')}${num('t2_def',T2+' defense')}${num('t2_ot_atk',T2+' overtime attack')}${num('t2_ot_def',T2+' overtime defense')}</tr></tbody></table></div>`,'Optional. They have to add up to the final score.')}
+ ${sec('Links',`<div class="mvg">${inp('vod_link','VOD link','text','inputmode="url" placeholder="https://www.youtube.com/watch?v=…"')}${inp('r6esports_id','Official match ID')}${inp('siegegg_id','siege.gg match ID')}</div>`)}
+ <div class="row wrap" style="justify-content:space-between"><span class="row wrap" style="gap:8px"><button type="button" class="no" data-a="smdel">Delete game</button><button type="button" class="no" data-a="mgopen">Merge with another series</button></span><button type="button" class="go" data-a="smview">Done editing</button></div></form>${rdView(r,c1,c2,true)}`;
 }
 const mvRGB=h=>{const m=/^#?([0-9a-f]{6})$/i.exec(h||'');if(!m)return null;const n=parseInt(m[1],16);return[n>>16&255,n>>8&255,n&255]};
 const mvLive=h=>{const c=mvRGB(h);if(!c)return false;const mx=Math.max(...c)/255,mn=Math.min(...c)/255,l=(mx+mn)/2,s=mx===mn?0:(mx-mn)/(1-Math.abs(2*l-1));return s>.25&&l>.18&&l<.9};
@@ -3620,7 +3625,7 @@ function mvColors(n1,n2){
 }
 const mvLogo=(x,c)=>logoOk(x.logo_url)?`<img class="mvlg" src="${esc(x.logo_url)}" alt="">`:`<span class="mvlg mvin" style="color:${c}" aria-hidden="true">${esc(String(x.name||'?').slice(0,2).toUpperCase())}</span>`;
 // GAME PAGE, read-only: score, teams and map up top, then the details, bans, sides and rounds. Edit opens the form.
-function matchView(r){
+function matchView(r,only){
  const res=normRes(r.result),p=parseScore(r.round_score),T1=twinOf(r.team)||{name:r.team},T2=twinOf(r.opponent)||{name:r.opponent};
  const [c1,c2]=mvColors(r.team,r.opponent),ph=mapPath(r.map);
  const side=s=>{const k=startNorm(s);return k==='attack'?'Attack':k==='defense'?'Defense':s||''};
@@ -3630,6 +3635,7 @@ function matchView(r){
  const num=p?`<span class="${p.a<p.b?'lo':''}">${p.a}</span><i>–</i><span class="${p.b<p.a?'lo':''}">${p.b}</span>`:'<span style="font-size:20px;opacity:.7">No score</span>';
  const lk=[/^https?:\/\//i.test(r.vod_link||'')?`<a class="vod" href="${esc(r.vod_link)}" target="_blank" rel="noopener noreferrer">▶ Watch VOD</a>`:'',/^https:\/\//i.test(r.replay_link||'')?`<a class="vod" style="background:#6b5bd2" href="${esc(r.replay_link)}" target="_blank" rel="noopener noreferrer">Replay</a>`:'',/^\d+$/.test(r.r6esports_id||'')?safeLink('https://www.ubisoft.com/en-us/esports/rainbow-six/siege/match/'+r.r6esports_id,'Official match page'):'',/^\d+$/.test(r.siegegg_id||'')?safeLink('https://siege.gg/matches/'+r.siegegg_id,'siege.gg'):'',r.source_link?safeLink(r.source_link,r.source_name||'Source'):''].filter(Boolean).join('');
  const hero=`<section class="mvh">${ph?`<img src="${UBI}${ph}?imwidth=1280" alt="" loading="lazy">`:''}<div class="mvi">${meta?`<div class="mvm">${meta}</div>`:''}<div class="mvs">${tm(T1,w1,c1)}<div class="mvn">${num}</div>${tm(T2,w2,c2)}</div><div class="mvmap">${esc(r.map||'')}</div>${lk?`<div class="mvl">${lk}</div>`:''}</div></section>`;
+ if(only)return hero;
  const card=(l,v)=>v?`<div><b>${l}</b><span>${esc(v)}</span></div>`:'';
  const ss=startNorm(r.start_side),facts=[card('Result',res==='W'?r.team+' won':res==='L'?r.opponent+' won':res==='D'?'Draw':''),card(esc(r.team)+' started on',side(r.start_side)),card(esc(r.opponent)+' started on',ss==='attack'?'Defense':ss==='defense'?'Attack':''),card('Map picked by',r.picked_by),card('Score after 6 rounds',r.split_score),card('Overtime side',side(r.ot_start))].join('');
  const ban=(l,o)=>`<p><span>${l}</span>${o?opIcon(o)+'<b style="font-weight:600">'+esc(o)+'</b>':'<span class="mu" style="width:auto">None</span>'}</p>`;
@@ -3641,16 +3647,42 @@ function matchView(r){
  const chk=`<p style="font-size:12.5px;margin:0 0 12px">${checkTag(r)}${r.check_status==='mismatch'||oppIssues([{r,res,score:r.round_score,foe:r.opponent,map:r.map,date:r.match_date}]).length?' <button class="no" style="height:26px;font-size:12px;margin-left:6px" data-a="smok">Mark as reviewed</button>':''}</p>`;
  return `<div class="row wrap" style="justify-content:flex-end;gap:8px;margin-bottom:12px">${canEditS()?'<button class="go" data-a="smedit">Edit</button>':''}<button class="no" data-a="smback">${sco.fromPrep?'Back to Anti-Strat':'Back'}</button></div>${hero}<div id="wrtop">${wrongTop(r)}</div>${fixB(r)}${chk}${facts?`<div class="mvk">${facts}</div>`:''}${bans}${sides}${rdView(r,c1,c2)}`;
 }
-function rdView(g,c1='#e07cc0',c2='#9b6bff'){
- const rs=gameRounds(g);if(!rs.length)return `<section id="rdsec" class="cd mvc" style="gap:8px"><h2 style="font-size:15px;font-weight:600">Rounds</h2><p class="mu">No rounds saved for this game yet.</p></section>`;
+function rdView(g,c1='#e07cc0',c2='#9b6bff',edit=false){
+ const rs=gameRounds(g),addB=edit?'<button class="go" style="height:32px" data-a="rdadd">Add a round</button>':'';
+ const head=`<div class="row wrap" style="justify-content:space-between"><h2 style="font-size:15px;font-weight:600">Rounds${rs.length?' ('+rs.length+')':''}</h2>${addB}</div>`;
+ const tl=roundTally(g),ps=parseScore(g.round_score),off=edit&&tallyOff(tl,ps),fx=off&&tl.n>=ps.a+ps.b;
+ const warn=off?`<div class="row wrap" style="gap:8px"><span class="over">The rounds add up to ${tl.w}-${tl.l} but the score says ${esc(g.round_score)}.</span>${fx?`<button class="no" style="height:28px;font-size:12.5px" data-a="rdscore">Use ${tl.w}-${tl.l}</button>`:''}</div>`:'';
+ if(!rs.length)return `<section id="rdsec" class="cd mvc" style="gap:8px">${head}<p class="mu">No rounds saved for this game yet.${edit?' Import its replay on the Parse page, or add rounds here.':''}</p></section>`;
  const k1=mvRGB(c1).join(','),k2=mvRGB(c2).join(','),k0='120,116,140',sel=sco.mvRd;let w=0,l=0,prev='';
  const L=rs.map(r=>{const o=roundFor(g,r),tm=roundTeams(o),res=normRes(o.result);if(res==='W')w++;if(res==='L')l++;return{r,o,tm,res,run:w+'-'+l,rc:res==='W'?k1:res==='L'?k2:k0}});
  const ab=s=>s==='attack'?'ATK':s==='defense'?'DEF':'—';
  const tiles=L.map(x=>{const s=x.tm[0].side,cut=prev&&s&&s!==prev;if(s)prev=s;return `${cut?'<i aria-hidden="true"></i>':''}<button type="button" data-a="mvrd" data-n="${x.r.round_number}" style="--rc:${x.rc}" aria-pressed="${sel===x.r.round_number}" title="Round ${x.r.round_number}: ${x.res==='W'?esc(g.team):x.res==='L'?esc(g.opponent):'not set'}${x.o.site?', '+esc(x.o.site):''}"><b>${x.r.round_number}</b><small>${ab(s)}</small><em>${x.run}</em></button>`}).join('');
  const key=`<div class="mvkey"><span style="--rc:${k1}">${esc(g.team)} won</span><span style="--rc:${k2}">${esc(g.opponent)} won</span><em style="font-style:normal;opacity:.8">ATK/DEF is ${esc(g.team)}'s side · score after each round · click a round to find it below</em></div>`;
  const ops=l=>l.length?`<span class="mvo">${l.map(o=>`<span title="${esc(o)}">${opIcon(o)}<span style="position:absolute;left:-9999px">${esc(o)}</span></span>`).join('')}</span>`:'<span class="mu">—</span>';
- const body=L.map(x=>`<tr id="mvr-${x.r.round_number}" class="${sel===x.r.round_number?'mvsel':''}" style="vertical-align:middle;--rc:${x.rc}"><td class="num" style="font-weight:600">${x.r.round_number}</td><td>${x.tm[0].side==='attack'?'Attack':x.tm[0].side==='defense'?'Defense':'<span class="mu">—</span>'}</td><td><b style="font-weight:600;color:rgb(${x.rc})">${x.res==='W'?esc(g.team):x.res==='L'?esc(g.opponent):'Not set'}</b></td><td style="white-space:normal;min-width:150px">${x.o.site?esc(x.o.site):'<span class="mu">—</span>'}</td><td>${ops(x.tm[0].ops)}</td><td>${ops(x.tm[1].ops)}</td></tr>`).join('');
- return `<section id="rdsec" class="cd mvc" style="gap:12px"><h2 style="font-size:15px;font-weight:600">Rounds (${rs.length})</h2><div class="mvr" role="group" aria-label="Rounds">${tiles}</div>${key}<div style="overflow-x:auto"><table class="tbl mvrt"><thead><tr><th scope="col" class="num">Rd</th><th scope="col">${esc(g.team)} side</th><th scope="col">Won by</th><th scope="col">Site</th><th scope="col">${esc(g.team)}</th><th scope="col">${esc(g.opponent)}</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
+ const body=L.map(x=>`<tr id="mvr-${x.r.round_number}" class="${sel===x.r.round_number?'mvsel':''}" style="vertical-align:middle;--rc:${x.rc}${edit&&roundWrong(x.r).length?';background:rgba(255,138,138,.08)':''}"><td class="num" style="font-weight:600">${edit&&roundWrong(x.r).length?'<span class="over" aria-label="Looks wrong">⚠</span> ':''}${x.r.round_number}</td><td>${x.tm[0].side==='attack'?'Attack':x.tm[0].side==='defense'?'Defense':'<span class="mu">—</span>'}</td><td><b style="font-weight:600;color:rgb(${x.rc})">${x.res==='W'?esc(g.team):x.res==='L'?esc(g.opponent):'Not set'}</b></td><td style="white-space:normal;min-width:150px">${x.o.site?esc(x.o.site):'<span class="mu">—</span>'}</td><td>${ops(x.tm[0].ops)}</td><td>${ops(x.tm[1].ops)}</td>${edit?`<td><button class="no" style="height:28px;padding:0 12px;font-size:12px" data-a="rdedit" data-id="${x.r.id}" aria-label="Edit round ${x.r.round_number}">Edit</button></td>`:''}</tr>`).join('');
+ return `<section id="rdsec" class="cd mvc" style="gap:12px">${head}${warn}<div class="mvr" role="group" aria-label="Rounds">${tiles}</div>${key}<div style="overflow-x:auto"><table class="tbl mvrt"><thead><tr><th scope="col" class="num">Rd</th><th scope="col">${esc(g.team)} side</th><th scope="col">Won by</th><th scope="col">Site</th><th scope="col">${esc(g.team)}</th><th scope="col">${esc(g.opponent)}</th>${edit?'<th scope="col"><span style="position:absolute;left:-9999px">Edit</span></th>':''}</tr></thead><tbody>${body}</tbody></table></div></section>`;
+}
+// MERGE WITH ANOTHER SERIES: every series between the same two teams (any of their names), closest date first.
+// Picking one joins this map (or its whole series) into it, map by map, through gapJoin.
+const mgKey=r=>r.r6esports_id||r.siegegg_id||r.match_date+'|'+[squash(r.team),squash(r.opponent)].sort().join('|')+'|'+norm(r.phase);
+function mgOpen(){
+ const r=sco.m.find(x=>x.id===sco.matchId);if(!r)return;const d=$('#dlg'),mine=mgKey(r);
+ const pair=x=>twinSame(x.team,r.team)&&twinSame(x.opponent,r.opponent)||twinSame(x.team,r.opponent)&&twinSame(x.opponent,r.team);
+ const groups=new Map();sco.m.filter(pair).forEach(x=>{const k=mgKey(x);(groups.get(k)||groups.set(k,[]).get(k)).push(x)});
+ const own=groups.get(mine)||[r];groups.delete(mine);
+ const day=s=>Date.parse(s+'T00:00:00Z')||0,list=[...groups.values()].map(rows=>({rows:rows.sort((a,b)=>mapCanon(a.map).localeCompare(mapCanon(b.map))),g:rows[0]})).sort((a,b)=>Math.abs(day(a.g.match_date)-day(r.match_date))-Math.abs(day(b.g.match_date)-day(r.match_date)));
+ const maps=rows=>rows.map(x=>`<span class="ch" style="height:26px;cursor:default;${mapCanon(x.map)===mapCanon(r.map)?'border-color:rgba(var(--pk-rgb),.7)':''}">${esc(mapCanon(x.map)||x.map)} <b style="font-weight:600">${esc(x.round_score||'–')}</b></span>`).join('');
+ const gap=x=>{const n=Math.round((day(x)-day(r.match_date))/864e5);return n===0?'same day':Math.abs(n)+(Math.abs(n)===1?' day ':' days ')+(n<0?'before':'after')};
+ const card=x=>{const g=x.g,ev=[g.league,g.phase].filter(Boolean).join(' · ')||g.source_name||'',same=x.rows.some(y=>mapCanon(y.map)===mapCanon(r.map)),ids=x.rows.map(y=>y.id).join(',');
+  return `<section class="cd mvc" style="gap:8px"><div class="row wrap" style="justify-content:space-between;gap:6px"><div style="min-width:0"><b style="font-weight:600">${esc(g.team)} vs ${esc(g.opponent)}</b><p class="mu" style="font-size:12.5px">${esc(fmtD(g.match_date))} (${gap(g.match_date)})${ev?' · '+esc(ev):''} · ${plural(x.rows.length,'map')}</p></div></div><div class="row wrap" style="gap:6px">${maps(x.rows)}</div>${same?`<p class="mu" style="font-size:12.5px">Has ${esc(mapCanon(r.map))} too, so the two copies become one game.</p>`:''}<div class="row wrap" style="gap:8px"><button class="go" style="height:32px" data-a="mgdo" data-f="${r.id}" data-t="${ids}">Join this map into it</button>${own.length>1?`<button class="no" style="height:32px" data-a="mgdo" data-f="${own.map(y=>y.id).join(',')}" data-t="${ids}">Join all ${own.length} maps of this series</button>`:''}</div></section>`};
+ d.innerHTML=`<h2 class="serif" style="font-size:22px">Merge with another series</h2><p class="mu" style="margin-bottom:12px">Every series between ${esc(r.team)} and ${esc(r.opponent)}, closest to ${esc(fmtD(r.match_date))} first. This map's series: ${maps(own)}</p><div style="display:flex;flex-direction:column;gap:10px;max-height:62vh;overflow-y:auto;padding:2px">${list.length?list.map(card).join(''):'<p class="mu">No other series between these two teams.</p>'}</div><div class="row" style="justify-content:flex-end;margin-top:14px"><button class="no" data-a="close">Close</button></div>`;
+ if(!d.open)d.showModal();
+}
+async function mgDo(from,to){
+ const r=sco.m.find(x=>x.id===sco.matchId),map=r&&mapCanon(r.map);$('#dlg').close();
+ await gapJoin(from,to);
+ // this map may have become part of a game in the other series: stay on that one
+ if(!sco.m.find(x=>x.id===sco.matchId)){const k=sco.m.find(x=>to.includes(x.id)&&mapCanon(x.map)===map);if(k){sco.matchId=k.id;sco.meditId=k.id}render()}
 }
 async function saveMatch(form,qt){
  const row={},btn=form.querySelector('.go'),id=sco.matchId;
@@ -4097,6 +4129,7 @@ const A={
  sjoin:d=>sJoinGames(d.id,d.b),twinjoin:()=>twinJoinAll(false),smatch:d=>{sco.deckBack=false;sco.fromPrep=null;sco.mBack={page:sco.page,kind:sco.kind,tab:sco.tab,oppId:sco.oppId};sco.page='match';sco.matchId=d.id;sco.mvRd=null;render();window.scrollTo?.(0,0)},
  prepgame:d=>{const r=prep.round;if(!sco||sco.tid!==prep.tid)sco=scoNew({tid:prep.tid,league:'',q:'',f:{}});Object.assign(sco,{matchId:d.id,mBack:null,deckBack:false,fromPrep:r});openSc('match');window.scrollTo?.(0,0)},
  mvrd:d=>{const n=+d.n,on=sco.mvRd!==n;sco.mvRd=on?n:null;document.querySelectorAll('.mvr button').forEach(x=>x.setAttribute('aria-pressed',String(on&&+x.dataset.n===n)));document.querySelectorAll('.mvrt tr.mvsel').forEach(x=>x.classList.remove('mvsel'));const row=on&&document.getElementById('mvr-'+n);if(row){row.classList.add('mvsel');row.scrollIntoView({block:'nearest',behavior:'smooth'})}},
+ mgopen:()=>mgOpen(),mgdo:d=>mgDo(String(d.f).split(','),String(d.t).split(',')),
  smedit:()=>{sco.meditId=sco.matchId;render();window.scrollTo?.(0,0)},smview:async()=>{await autoFlush();sco.meditId=null;sdirty=false;render();window.scrollTo?.(0,0)},
  smback:()=>{sco.meditId=null;if(sco.fromPrep&&prep){const r=sco.fromPrep;sco.fromPrep=null;view='prep';prep.round=r;render();window.scrollTo?.(0,0);return}Object.assign(sco,sco.mBack||{page:'home'});render();if(sco.deckBack&&sco.page==='opp')dkOpen();sco.deckBack=false},
  fixuse:d=>fixSave(d.id||sco.matchId,{round_score:d.s,result:d.r,total_rounds:+d.n,...NO_SIDES},'Used '+d.s+' from '+d.w),
