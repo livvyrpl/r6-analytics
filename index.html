@@ -3229,7 +3229,7 @@ function scoreOpts(main,other,sw,jt){
 }
 function scorePick(title,opts){return new Promise(res=>{const d=$('#dlg');scorePick.res=res;scorePick.opts=opts;
  d.innerHTML=`<h2 class="serif" style="font-size:22px">Which score is right?</h2><p class="mu" style="margin-bottom:12px">${esc(title)}. The copies do not agree on the score.${opts.some(o=>/saved rounds/.test(o.from))?' If you pick the opposite of what the saved rounds add up to, each round\'s win and loss is turned round too, so they match.':''}</p><div style="display:flex;flex-direction:column;gap:8px">${opts.map((o,i)=>`<button class="no" style="height:auto;padding:10px 14px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left" data-a="scpk" data-i="${i}"><b style="font-weight:700;font-size:16px">${esc(o.label)}</b><span class="mu" style="font-size:12.5px">${esc(o.from)}</span></button>`).join('')}</div><div class="row" style="justify-content:flex-end;margin-top:14px"><button class="no" data-a="scpk" data-i="-1">Cancel</button></div>`;
- if(!d.open)d.showModal();d.addEventListener('close',()=>{if(scorePick.res){const r=scorePick.res;scorePick.res=null;r(null)}},{once:true})})}
+ if(!d.open)d.showModal();d.addEventListener('close',()=>{if(scorePick.res===res){scorePick.res=null;res(null)}},{once:true})})}
 async function sJoinGames(idA,idB,o={}){
  const s=sco,A=s.m.find(x=>x.id===idA),B=s.m.find(x=>x.id===idB);if(!A||!B)return;
  const rs=g=>gameRounds(g),lo=g=>{const l=rs(g);return l.length?Math.min(...l.map(r=>r.round_number)):99},lib=g=>!!g.source_name&&g.source_name!=='Replay';
