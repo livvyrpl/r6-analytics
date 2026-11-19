@@ -3192,7 +3192,7 @@ function savedTally(r,s=sco){
  if(s._rb!==s.r){const m=new Map();(s.r||[]).forEach(x=>{const k=x.match_id;if(!m.has(k))m.set(k,[]);m.get(k).push(x)});s._rb=s.r;s._rm=m}
  const l=s._rm.get(matchId(r))||[];if(!l.length)return null;
  const by=new Map(),t1=norm(r.team),t2=norm(r.opponent);
- l.forEach(x=>{if(!x.round_number||by.has(x.round_number))return;let v=normRes(x.result);if(norm(x.team)===t2&&t1!==t2)v=v==='W'?'L':v==='L'?'W':v;by.set(x.round_number,v)});
+ l.forEach(x=>{if(!x.round_number||by.has(x.round_number))return;let v=normRes(x.result);if(t1!==t2&&!sameName(x.team,r.team)&&sameName(x.team,r.opponent))v=v==='W'?'L':v==='L'?'W':v;by.set(x.round_number,v)});
  if(!by.size)return null;
  const nums=[...by.keys()].sort((a,b)=>a-b),top=nums[nums.length-1],miss=[];for(let i=1;i<top;i++)if(!by.has(i))miss.push(i);
  let w=0,lo=0,blank=0;by.forEach(v=>{if(v==='W')w++;else if(v==='L')lo++;else blank++});
@@ -3200,19 +3200,24 @@ function savedTally(r,s=sco){
 }
 // A game whose saved rounds are all there (round 1 to the last, each with a winner) and add up to a finished game gets that score and result.
 // This puts right a score saved part-way through an import. It runs once per visit.
-async function scoreRepair(s){
- if(scoreRepair.done?.has(s.tid))return;(scoreRepair.done||(scoreRepair.done=new Set())).add(s.tid);
+async function scoreRepair(s,quiet){
+ if(!s||s.srBusy||!canEditS()||!Array.isArray(s.m))return;s.srBusy=true;try{
  const fix=[];
  s.m.forEach(r=>{const t=savedTally(r,s);if(!t||t.miss.length||t.blank||!gameDone(t.w,t.l))return;const sc=t.w+'-'+t.l,res=t.w>t.l?'W':'L';if(r.round_score!==sc||normRes(r.result)!==res)fix.push({r,up:{round_score:sc,result:res,total_rounds:t.w+t.l}})});
  if(!fix.length)return;let n=0;
  const go=async()=>{while(fix.length){const x=fix.shift(),q=await sb.from('scout_matches').update(x.up).eq('id',x.r.id);if(!q.error){Object.assign(x.r,x.up);n++}}};
  await Promise.all([0,1,2,3,4,5].map(go));
- if(n){toast('Fixed the score and result of '+plural(n,'game')+' from their saved rounds.');if(sco===s&&view==='sc'&&!s.form&&!sdirty)render()}
+ if(n){if(!quiet)toast('Fixed the score and result of '+plural(n,'game')+' so they match their rounds.');if(sco===s&&view==='sc'&&!s.form&&!sdirty&&!autoPending())render()}
+ }finally{s.srBusy=false}
 }
 // Joins two games into one. The game kept is the one from Liquipedia (or the one holding round 1). Where both have a round,
 // the copy from the later piece is kept, as a restarted match replays the round it stopped at. Rounds and player stats move over,
 // the other game is removed, and the score and result are worked out again from the joined rounds.
 // JOINING COPIES WITH DIFFERENT SCORES: the person picks the right one. Scores are in the kept game's team order.
+function joinTally(main,other){
+ const by=new Map();[...gameRounds(main),...gameRounds(other)].forEach(r=>{if(!r.round_number||by.has(r.round_number))return;const v=normRes(roundFor(main,r).result);if(v==='W'||v==='L')by.set(r.round_number,v)});
+ const top=Math.max(0,...by.keys());if(!top||by.size!==top)return null;const w=[...by.values()].filter(v=>v==='W').length,l=top-w;return gameDone(w,l)?{score:w+'-'+l,result:w>l?'W':'L'}:null;
+}
 function scoreOpts(main,other,sw){
  const out=[],add=(s,res,from)=>{const p=parseScore(s);if(!p)return;const k=p.a+'-'+p.b,ex=out.find(x=>x.score===k);if(ex){ex.from+=' · '+from;return}
   const r=res||(p.a>p.b?'W':p.a<p.b?'L':'D'),win=r==='W'?main.team:r==='L'?main.opponent:'';out.push({score:k,result:r,label:(win?win+' won ':'Draw ')+Math.max(p.a,p.b)+'–'+Math.min(p.a,p.b),from})};
@@ -3233,6 +3238,7 @@ async function sJoinGames(idA,idB,o={}){
  const both=[...new Set(mr.filter(r=>or.some(o=>o.round_number===r.round_number)).map(r=>r.round_number))];
  const nl='\n',fo=r=>o.swap!=null&&or.includes(r)?(o.swap?flipRound(r):r):roundFor(main,r);
  if(!o.quiet&&!confirm('Join these into one game?'+nl+nl+'Kept: '+main.team+' vs '+main.opponent+', '+main.map+', '+(main.round_score||'no score')+(main.phase?' ('+main.phase+')':'')+nl+'Joined into it and removed: '+(other.round_score||'no score')+(other.phase?' ('+other.phase+')':'')+(both.length?nl+nl+'Both have round'+(both.length>1?'s ':' ')+rangeList(both)+'. The copy from the '+(later==='other'?'second':'first')+' piece is kept, as a restarted match plays that round again.':'')))return false;
+if(!o.score){const jt=joinTally(main,other);if(jt)o={...o,score:jt.score,result:jt.result}}
  if(!o.quiet&&!o.score){const op=scoreOpts(main,other,o.swap!=null?o.swap:!sameName(other.team,main.team)&&sameName(other.team,main.opponent));if(op.length>1){const c=await scorePick(main.team+' vs '+main.opponent+', '+mapCanon(main.map),op);if(!c)return false;o={...o,score:c.score,result:c.result}}}
  const tid=s.tid,others=s.m.filter(x=>x.id!==A.id&&x.id!==B.id&&joinMates(main).some(y=>y.id===x.id)),phase=/^Game \d+$/.test(main.phase||'')&&!others.some(o=>!norm(o.phase))?'':main.phase||'',newMid=matchId({...main,phase});
  const job=o.quiet?null:actStart('Joining games');
@@ -3260,7 +3266,7 @@ async function sJoinGames(idA,idB,o={}){
   if(o.quiet)return true;actEnd(job,'ok','Joined into '+(u.data.round_score||'one game'));toast('Joined into one game: '+main.team+' vs '+main.opponent+', '+main.map+', '+(u.data.round_score||'')+'.'+(whole?'':' Some rounds are still missing.'));
  }catch(e){if(o.quiet)return scErr(e);actEnd(job,'warn',scErr(e));toast('Could not join the games: '+scErr(e))}
  const [m,r]=await Promise.all([allRows(()=>sb.from('scout_matches').select('*').eq('owner_team_id',tid).order('id')),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',tid).order('id'))]);
- if(sco!==s)return;if(!m.error)s.m=m.data;if(!r.error)s.r=r.data;if(view==='sc'&&!sdirty)render();
+ if(sco!==s)return;if(!m.error)s.m=m.data;if(!r.error)s.r=r.data;if(view==='sc'&&!sdirty)render();scoreRepair(s,true);
 }
 const twinMemo=()=>{const s=sco;if(!s._tm||s._tm.t!==s.teams||s._tm.n!==(s.teams||[]).length)s._tm={t:s.teams,n:(s.teams||[]).length,o:new Map(),s:new Map()};return s._tm};
 const twinOf=n=>{const s=sco,k=norm(n),m=twinMemo().o;if(m.has(k))return m.get(k);const c=nameCore(n),v=(s.teams||[]).find(t=>scKeys(t).has(k))||(s.teams||[]).find(t=>[...scKeys(t)].some(x=>nameCore(x)===c))||null;m.set(k,v);return v};
@@ -3289,7 +3295,7 @@ async function twinJoinAll(auto){
  finally{s.twinBusy=false}
  const [m,r]=await Promise.all([allRows(()=>sb.from('scout_matches').select('*').eq('owner_team_id',s.tid).order('id')),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',s.tid).order('id'))]);
  if(sco===s){if(!m.error)s.m=m.data;if(!r.error)s.r=r.data;if(view==='sc'&&!sdirty&&!(s.cc&&$('#dlg').open))render()}
- actEnd(job,errs.length?'warn':'ok','Joined '+plural(ok,'replay game')+' to Liquipedia games'+(errs.length?'. Not joined: '+errs.slice(0,3).join('; '):''));
+ scoreRepair(sco,true);actEnd(job,errs.length?'warn':'ok','Joined '+plural(ok,'replay game')+' to Liquipedia games'+(errs.length?'. Not joined: '+errs.slice(0,3).join('; '):''));
  if(!auto||ok)toast('Joined '+plural(ok,'replay game')+' to Liquipedia games.');
 }
 function oppIssues(rows){
@@ -3349,7 +3355,7 @@ function rdB(g){
  const off=tallyOff(t,p),fix=off&&t.n>=p.a+p.b;
  return `<section id="rdsec" class="cd" style="gap:8px;margin-top:16px"><div class="row wrap" style="justify-content:space-between"><h2 style="font-size:15px;font-weight:600">Rounds (${rs.length})</h2><button class="go" style="height:32px" data-a="rdadd">Add a round</button></div>${off?`<div class="row wrap" style="gap:8px"><span class="over">The rounds add up to ${t.w}-${t.l} but the score says ${esc(g.round_score)}.</span>${fix?`<button class="no" style="height:28px;font-size:12.5px" data-a="rdscore">Use ${t.w}-${t.l}</button>`:''}</div>`:''}${rs.length?`<div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col" class="num">Rd</th><th scope="col">${esc(g.team)} side</th><th scope="col">Won by</th><th scope="col">Site</th><th scope="col">${esc(g.team)} operators</th><th scope="col">${esc(g.opponent)} operators</th><th scope="col"><span style="position:absolute;left:-9999px">Edit</span></th></tr></thead><tbody>${body}</tbody></table></div>`:'<p class="mu">No rounds saved for this game. Import its replay on the Parse page, or add rounds here.</p>'}</section>`;
 }
-function rdPaint(g){const s=$('#rdsec');if(s)s.outerHTML=rdView(g,...mvColors(g.team,g.opponent),sco.meditId===g.id);const w=$('#wrtop');if(w)w.innerHTML=wrongTop(g)}
+function rdPaint(g){setTimeout(()=>scoreRepair(sco,true),0);const s=$('#rdsec');if(s)s.outerHTML=rdView(g,...mvColors(g.team,g.opponent),sco.meditId===g.id);const w=$('#wrtop');if(w)w.innerHTML=wrongTop(g)}
 async function rdOpen(id){
  const g=sco.m.find(x=>x.id===sco.matchId);if(!g)return;const r=id?sco.r.find(x=>x.id===id):null;
  let stats=[];if(r&&g.replay_match_id){const q=await sb.from('player_round_stats').select('id,player_username,team_name,operator,side').eq('owner_team_id',sco.tid).eq('scout_match_id',g.id).eq('round_number',r.round_number);if(q.error)return toast(scErr(q.error));stats=q.data||[]}
@@ -3448,13 +3454,13 @@ async function gapJoin(fromIds,toIds){
  F.forEach(g=>{const m=T.find(y=>!used.has(y.id)&&mapCanon(y.map)===mapCanon(g.map));if(m){used.add(m.id);pairs.push({g,m,swap:!twinSame(g.team,m.team)})}else alone.push(g)});
  const k=T[0],nl='\n',sc=x=>mapCanon(x.map)+' '+(x.round_score||'no score');
  if(!confirm('Join these into one match?'+nl+nl+'Kept: '+k.team+' vs '+k.opponent+', '+fmtD(k.match_date)+([k.league,k.phase].filter(Boolean).length?' ('+[k.league,k.phase].filter(Boolean).join(' · ')+')':'')+nl+(pairs.length?nl+'Joined map by map:'+nl+pairs.map(p=>'  '+sc(p.g)+'  into  '+sc(p.m)).join(nl):'')+(alone.length?nl+nl+'Added to the match (no such map there yet):'+nl+alone.map(g=>'  '+sc(g)).join(nl):'')+nl+nl+'The kept games keep their score and links. Rounds, operators and scoreboard move onto them.'))return;
- for(const p of pairs){const op=scoreOpts(p.m,p.g,p.swap);if(op.length>1){const c=await scorePick(p.m.team+' vs '+p.m.opponent+', '+mapCanon(p.m.map),op);if(!c)return;p.sc=c}}
+ for(const p of pairs){if(joinTally(p.m,p.g))continue;const op=scoreOpts(p.m,p.g,p.swap);if(op.length>1){const c=await scorePick(p.m.team+' vs '+p.m.opponent+', '+mapCanon(p.m.map),op);if(!c)return;p.sc=c}}
  const job=actStart('Joining into one match');let ok=0;const errs=[];
  for(const p of pairs){const r=await sJoinGames(p.m.id,p.g.id,{quiet:true,main:p.m.id,swap:p.swap,...(p.sc?{score:p.sc.score,result:p.sc.result}:{})});if(r===true)ok++;else if(r)errs.push(mapCanon(p.g.map)+': '+r)}
  for(const g of alone){const u=await sb.from('scout_matches').update({match_date:k.match_date,league:k.league||g.league||'',phase:k.phase||'',source_name:g.source_name==='Replay'?g.source_name:k.source_name||g.source_name,source_link:k.source_link||g.source_link||'',r6esports_id:k.r6esports_id||'',siegegg_id:k.siegegg_id||''}).eq('id',g.id).select().single();if(u.error)errs.push(mapCanon(g.map)+': '+scErr(u.error));else ok++}
  const [m,r]=await Promise.all([allRows(()=>sb.from('scout_matches').select('*').eq('owner_team_id',s.tid).order('id')),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',s.tid).order('id'))]);
  if(sco===s){if(!m.error)s.m=m.data;if(!r.error)s.r=r.data;if(view==='sc'&&!sdirty)render()}
- actEnd(job,errs.length?'warn':'ok','Joined '+plural(ok,'map')+(errs.length?'. Not joined: '+errs.join('; '):''));toast(errs.length?'Joined '+plural(ok,'map')+'. Not joined: '+errs.join('; '):'Joined into one match.');
+ scoreRepair(sco,true);actEnd(job,errs.length?'warn':'ok','Joined '+plural(ok,'map')+(errs.length?'. Not joined: '+errs.join('; '):''));toast(errs.length?'Joined '+plural(ok,'map')+'. Not joined: '+errs.join('; '):'Joined into one match.');
 }
 // ---- VODs from a YouTube playlist: each video's title (team names, league, map) and upload date are matched to games missing a VOD ----
 const ytCall=async playlist=>{
@@ -3947,11 +3953,12 @@ async function saveMatch(form,qt){
  if(sc)row.round_score=sc.a+'-'+sc.b;if(sp)row.split_score=sp.a+'-'+sp.b;
  row.total_rounds=sc?sc.a+sc.b:null;
  row.check_status='';row.check_notes='';row.gg_missing=false;
+ {const g0=sco.m.find(x=>x.id===id),tt=g0&&savedTally({...g0,...row});if(tt&&!tt.miss.length&&!tt.blank&&gameDone(tt.w,tt.l)){const sc2=tt.w+'-'+tt.l;if(row.round_score!==sc2||normRes(row.result)!==(tt.w>tt.l?'W':'L')){row.round_score=sc2;row.result=tt.w>tt.l?'W':'L';row.total_rounds=tt.w+tt.l;const i1=form.querySelector('#mf-round_score');if(i1)i1.value=sc2;const i2=form.querySelector('#mf-result');if(i2)i2.value=row.result;toast('The score follows the saved rounds ('+wsc(sc2)+'). Change the rounds to change it.')}}}
  btn.disabled=true;
  const r=await sb.from('scout_matches').update(row).eq('id',id).select().single();
  btn.disabled=false;
  if(r.error)return say(qt,r.error.code==='23505'||/duplicate key/i.test(r.error.message)?'That date, teams, map and phase already exist as another game.':scErr(r.error));
- const old={...sco.m.find(x=>x.id===id)};Object.assign(sco.m.find(x=>x.id===id),r.data);await rdMove(old,r.data);sco._srv=(sco._srv||0)+1;if(r.data.r6esports_id||r.data.siegegg_id)seriesIdFill(sco).then(()=>{const sr=mvSeriesRows(sco.m.find(x=>x.id===id)||r.data).rows;if((r.data.r6esports_id||r.data.siegegg_id)&&banNeed(sr)){banTried.delete(srcKey(sr));banAuto(sco)}});if(qt){rdPaint(sco.m.find(x=>x.id===id));if(['round_score','result','map','match_date','r6esports_id','siegegg_id'].some(k=>old[k]!==r.data[k]))recheck(r.data);return{}}sdirty=false;render();toast('Game saved');recheck(r.data);
+ const old={...sco.m.find(x=>x.id===id)};Object.assign(sco.m.find(x=>x.id===id),r.data);await rdMove(old,r.data);sco._srv=(sco._srv||0)+1;if(r.data.r6esports_id||r.data.siegegg_id)seriesIdFill(sco).then(()=>{const sr=mvSeriesRows(sco.m.find(x=>x.id===id)||r.data).rows;if((r.data.r6esports_id||r.data.siegegg_id)&&banNeed(sr)){banTried.delete(srcKey(sr));banAuto(sco)}});if(qt){rdPaint(sco.m.find(x=>x.id===id));if(['round_score','result','map','match_date','r6esports_id','siegegg_id'].some(k=>old[k]!==r.data[k]))recheck(r.data);return{}}sdirty=false;render();toast('Game saved');recheck(r.data);scoreRepair(sco,true);
 }
 // after an edit, compare the game with the official page and siege.gg again
 async function recheck(r){
