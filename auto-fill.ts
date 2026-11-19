@@ -10,8 +10,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 const URL = Deno.env.get('SUPABASE_URL')!;
 const KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const db = createClient(URL, KEY, { auth: { persistSession: false } });
-// each run reads 6 series at a time and keeps going for about 2 minutes (Supabase stops a function at 150 seconds)
-const AT_ONCE = 6, TIME_BUDGET = 115000;
+// each run reads 2 series at a time and keeps going for about 2 minutes (Supabase stops a function at 150 seconds)
+const AT_ONCE = 2, TIME_BUDGET = 115000;
 // Supabase hands back at most 1,000 rows at a time, so long lists are read page by page
 async function every(make: () => any, max = 50000) {
   const out: any[] = [];
@@ -62,126 +62,17 @@ function facts(x: any, t1: any, t2: any) {
   }
   return up;
 }
-// ---- the page reader, the same as in match-bans.ts (kept here so this job makes no calls to other functions,
-// which Supabase limits). When match-bans.ts changes, copy its reader part here too.
-const UA = { 'User-Agent': 'Mozilla/5.0 (compatible; LivAnalytics/1.0)' };
-
-type Step = { type: 'ban' | 'pick' | 'decider'; team: string | null; map: string };
-type Side = { name: string; atk: string[]; def: string[]; players?: Record<string, unknown>[]; won_atk?: number | null; won_def?: number | null; won_ot_atk?: number | null; won_ot_def?: number | null; start?: string; ot_start?: string; split?: number | null; score?: number | null };
-type Game = { map: string; teams: Side[] };
-type Info = { league: string; phase: string; vod: string; replay: string };
-type Series = { teams: string[]; format: string; veto: Step[]; games: Game[]; info: Info };
-const key = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
-
-async function official(id: string): Promise<Series> {
-  const r = await fetch('https://www.ubisoft.com/en-us/esports/rainbow-six/siege/match/' + id, { headers: UA });
-  if (r.status === 404) throw new Error('The official page for match ' + id + ' does not exist.');
-  if (!r.ok) throw new Error('The official site answered ' + r.status + '.');
-  const m = (await r.text()).match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-  if (!m) throw new Error('The official page did not have match data.');
-  const data = JSON.parse(m[1])?.props?.pageProps?.pageData || {};
-  const match = data.match || {};
-  const names = new Map<number, string>();
-  const look = (o: unknown) => { if (o && typeof o === 'object') { const x = o as Record<string, unknown>; if (typeof x.id === 'number' && typeof x.name === 'string' && ('logoUrl' in x || 'guid' in x)) names.set(x.id, x.name); Object.values(x).forEach(look); } };
-  look(data);
-  const byRound = (l: any[]) => [...l].sort((a, b) => (a.roundIndex ?? 0) - (b.roundIndex ?? 0));
-  const games: Game[] = [...(match.games || [])].sort((a: any, b: any) => (a.index ?? 0) - (b.index ?? 0)).map((g: any) => ({
-    map: g?.map?.name || '',
-    teams: (g.teams || []).map((t: any) => {
-      const bans = byRound(t.operatorBans || []);
-      const rs = [...(g.rounds || [])].sort((a: any, b: any) => (a.index ?? 0) - (b.index ?? 0)), reg = rs.filter((x: any) => !x.isOvertime), ot = rs.filter((x: any) => x.isOvertime);
-      const won = (l: any[], side: string) => l.filter((x: any) => x.winnerId === t.id && x[side] === t.id).length;
-      const sideOf = (x: any) => !x ? '' : x.attackerId === t.id ? 'attack' : x.defenderId === t.id ? 'defense' : '';
-      const sides = rs.length ? { won_atk: won(reg, 'attackerId'), won_def: won(reg, 'defenderId'), won_ot_atk: won(ot, 'attackerId'), won_ot_def: won(ot, 'defenderId'), start: sideOf(rs[0]), ot_start: sideOf(ot[0]), split: rs.length >= 6 ? rs.slice(0, 6).filter((x: any) => x.winnerId === t.id).length : null } : {};
-      const c = (s: any, k: string) => (s?.[k] && typeof s[k] === 'object' ? s[k].count : null) ?? null;
-      const players = [...(t.players || [])].sort((x: any, y: any) => (x.positionIndex ?? 0) - (y.positionIndex ?? 0)).map((p: any) => ({
-        name: p.name || '', kills: c(p.stats, 'kills'), deaths: c(p.stats, 'deaths'), headshots: c(p.stats, 'headshots'),
-        opening_kills: c(p.stats, 'openingKills'), opening_deaths: c(p.stats, 'openingDeaths'),
-        kost: typeof p.stats?.kost === 'number' ? Math.round(p.stats.kost * 100) : null, plants: c(p.stats, 'diffuserPlanted'), clutches: c(p.stats, 'clutch'),
-      })).filter((p: any) => p.name);
-      return { name: names.get(t.id) || '', atk: bans.filter((b) => b.isAttacker).map((b) => b.name).filter(Boolean), def: bans.filter((b) => b.isAttacker === false).map((b) => b.name).filter(Boolean), players, score: t.score ?? null, ...sides };
-    }),
-  }));
-  const kinds: Record<number, Step['type']> = { 1: 'pick', 2: 'ban', 3: 'decider' };
-  const veto: Step[] = [...(match.mapSelections || [])].sort((a: any, b: any) => (a.index ?? 0) - (b.index ?? 0))
-    .filter((s: any) => kinds[s.selectionType] && s.mapName)
-    .map((s: any) => ({ type: kinds[s.selectionType], team: s.choosingTeam || null, map: s.mapName }));
-  const n = match.matchFormatNumberOfGames;
-  // league: the championship and the event, without saying a word twice (BLAST R6 Major + Osaka Major = BLAST R6 Major Osaka)
-  const ch = String(data.championship?.name || ''), co = String(data.competition?.name || ''), seen = new Set(ch.toLowerCase().split(/\s+/));
-  const league = [ch, co.split(/\s+/).filter((w) => !seen.has(w.toLowerCase())).join(' ')].filter(Boolean).join(' ').trim();
-  const info = { league, phase: String(data.phase?.name || ''), vod: String(match.youtubeLink || ''), replay: String(match.replayLink || '') };
-  return { teams: (match.teams || []).map((t: any) => names.get(t.id) || ''), format: n ? 'Bo' + n : '', veto, games, info };
+// pages are read by the match-bans function: each read there gets its own processing time, which this job would run out of.
+// Supabase also limits how fast one function calls another, so this job reads 2 at a time and stops for the run when told to slow down.
+let slowDown = false;
+async function readSeries(r6: string, gg: string) {
+  const r = await fetch(URL + '/functions/v1/match-bans', { method: 'POST', headers: { Authorization: 'Bearer ' + KEY, apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ r6, gg }) });
+  const j = await r.json().catch(() => ({}));
+  const msg = String(j.error || j.msg || j.message || '');
+  if (r.status === 429 || /rate limit/i.test(msg)) { slowDown = true; throw new Error('Supabase asked to slow down; tried again next run'); }
+  if (!r.ok || j.error) throw new Error(msg || 'match-bans answered ' + r.status);
+  return j;
 }
-
-async function siegegg(id: string): Promise<Series> {
-  const r = await fetch('https://siege.gg/matches/' + id, { headers: UA });
-  if (r.status === 404) throw new Error('siege.gg has no match ' + id + '.');
-  if (!r.ok) throw new Error('siege.gg answered ' + r.status + '.');
-  const m = (await r.text()).match(/<script[^>]*id="__NUXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-  if (!m) throw new Error('The siege.gg page did not have match data.');
-  const a: any[] = JSON.parse(m[1]);
-  const wrap = new Set(['Reactive', 'ShallowReactive', 'Ref', 'ShallowRef', 'EmptyRef']);
-  const res = (i: any, d = 0): any => {
-    if (typeof i !== 'number' || d > 12) return i;
-    const v = a[i];
-    if (Array.isArray(v)) { if (typeof v[0] === 'string' && wrap.has(v[0])) return res(v[1], d + 1); return v.map((x) => res(x, d + 1)); }
-    if (v && typeof v === 'object') { const o: any = {}; for (const k in v) o[k] = res(v[k], d + 1); return o; }
-    return v;
-  };
-  const at = a.findIndex((x) => x && typeof x === 'object' && !Array.isArray(x) && 'rosters' in x && 'games' in x && String(res(x.id)) === id);
-  if (at < 0) throw new Error('The siege.gg page did not have this match.');
-  const match = res(at);
-  const names = new Map<number, string>();
-  (match.rosters || []).forEach((t: any) => names.set(t.id, t.name));
-  const kinds: Record<string, Step['type']> = { BAN: 'ban', PICK: 'pick', DECIDER: 'decider' };
-  const vi = a.findIndex((x) => x && typeof x === 'object' && !Array.isArray(x) && 'vetos' in x);
-  const veto: Step[] = (vi >= 0 ? res(a[vi].vetos) || [] : [])
-    .filter((s: any) => kinds[s.type] && s.map?.name)
-    .map((s: any) => ({ type: kinds[s.type], team: s.roster_id != null ? names.get(s.roster_id) || null : null, map: s.map.name }));
-  const games: Game[] = (match.games || []).map((g: any) => {
-    const bans = [...(g.operator_bans || [])].sort((x: any, y: any) => (x.ban_round ?? 0) - (y.ban_round ?? 0));
-    return {
-      map: g.map?.name || '',
-      teams: [...names.entries()].map(([rid, name]) => {
-        const mine = bans.filter((b: any) => b.stats_roster_id === rid && b.operator?.name);
-        const rw = g.round_wins_by_roster?.[rid] || g.round_wins_by_roster?.[String(rid)];
-        return { name, atk: mine.filter((b: any) => /att/i.test(b.operator.side)).map((b: any) => b.operator.name), def: mine.filter((b: any) => /def/i.test(b.operator.side)).map((b: any) => b.operator.name), won_atk: rw?.atk ?? null, won_def: rw?.def ?? null, score: g.win_roster_id === rid ? g.win_score ?? null : g.loss_roster_id === rid ? g.loss_score ?? null : null };
-      }),
-    };
-  });
-  const picks = veto.filter((s) => s.type !== 'ban').length;
-  return { teams: [...names.values()], format: picks ? 'Bo' + picks : '', veto, games, info: { league: String(match.competition_full_name || match.competition_name || ''), phase: '', vod: '', replay: '' } };
-}
-
-// both pages: the official one first, siege.gg for what it lacks
-async function readBoth(r6: string, gg: string) {
-  const notes: string[] = [];
-  let a: Series | null = null, b: Series | null = null;
-  if (/^\d+$/.test(r6)) { try { a = await official(r6); } catch (e) { notes.push(e instanceof Error ? e.message : String(e)); } }
-  const lacks = (s: Series | null) => !s || !s.veto.length || !s.games.length || s.games.some((g) => g.teams.every((t) => !t.atk.length && !t.def.length));
-  if (/^\d+$/.test(gg) && lacks(a)) { try { b = await siegegg(gg); } catch (e) { notes.push(e instanceof Error ? e.message : String(e)); } }
-  if (!a && !b) throw new Error(notes.join(' ') || 'Nothing could be read.');
-  const main = (a || b)!, alt = a ? b : null;
-  // the official page first; siege.gg fills a missing veto, or a map without bans
-  const games = main.games.length ? main.games.map((g) => {
-    if (g.teams.some((t) => t.atk.length || t.def.length) || !alt) return g;
-    const o = alt.games.find((x) => key(x.map) === key(g.map));
-    return o ? { ...g, teams: o.teams } : g;
-  }) : alt?.games || [];
-  return ({
-    source: [a && 'Official', b && 'siege.gg'].filter(Boolean).join(' + '),
-    teams: main.teams.length ? main.teams : alt?.teams || [],
-    format: main.format || alt?.format || '',
-    veto: main.veto.length ? main.veto : alt?.veto || [],
-    games,
-    info: { league: main.info.league || alt?.info.league || '', phase: main.info.phase || alt?.info.phase || '', vod: main.info.vod || alt?.info.vod || '', replay: main.info.replay || alt?.info.replay || '' },
-    notes,
-  });
-}
-
-// ---- end of the page reader
-const readSeries = (r6: string, gg: string) => readBoth(r6, gg);
 
 async function fillSources(log: string[]) {
   const since = new Date(Date.now() - 864e5).toISOString(), week = new Date(Date.now() - 7 * 864e5).toISOString(), recent = new Date(Date.now() - 45 * 864e5).toISOString().slice(0, 10);
@@ -257,9 +148,10 @@ async function fillSources(log: string[]) {
       }
     }
   };
-  const worker = async () => { while (list.length && Date.now() - start < TIME_BUDGET) { const g = list.shift()!; done++; try { await one(g); } catch (e) { log.push(g[0] + ': ' + (e instanceof Error ? e.message : String(e))); } } };
+  slowDown = false;
+  const worker = async () => { while (list.length && !slowDown && Date.now() - start < TIME_BUDGET) { const g = list.shift()!; done++; try { await one(g); } catch (e) { log.push(g[0] + ': ' + (e instanceof Error ? e.message : String(e))); } } };
   await Promise.all(Array.from({ length: AT_ONCE }, worker));
-  log.push('Series read: ' + done + (list.length ? ', ' + list.length + ' left for the next run' : ''));
+  log.push('Series read: ' + done + (list.length ? ', ' + list.length + ' left for the next run' : '') + (slowDown ? ' (Supabase asked to slow down)' : ''));
 }
 
 // a game whose saved rounds go from 1 to the last with a winner each, and make a finished game, gets that score
