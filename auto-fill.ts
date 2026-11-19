@@ -47,6 +47,20 @@ function namer(teams: any[]) {
   };
 }
 
+// starting side, overtime side, score after 6 rounds, rounds won per side and the score, for empty boxes only
+function facts(x: any, t1: any, t2: any) {
+  const up: Record<string, unknown> = {}, S = (v: string) => v === 'attack' ? 'Attack' : v === 'defense' ? 'Defense' : '';
+  if (!String(x.start_side || '').trim() && S(t1.start)) up.start_side = S(t1.start);
+  if (!String(x.ot_start || '').trim() && S(t1.ot_start)) up.ot_start = S(t1.ot_start);
+  if (!String(x.split_score || '').trim() && t1.split != null && t2.split != null && t1.split + t2.split === 6) up.split_score = t1.split + '-' + t2.split;
+  if (!parseScore(x.round_score) && t1.score != null && t2.score != null) { up.round_score = t1.score + '-' + t2.score; up.total_rounds = t1.score + t2.score; up.result = t1.score > t2.score ? 'W' : t1.score < t2.score ? 'L' : 'D'; }
+  const sc = parseScore((up.round_score as string) || x.round_score);
+  if (['t1_atk', 't1_def', 't2_atk', 't2_def'].every((k) => x[k] == null) && [t1.won_atk, t1.won_def, t2.won_atk, t2.won_def].every((v) => v != null)) {
+    const v = { t1_atk: t1.won_atk, t1_def: t1.won_def, t1_ot_atk: t1.won_ot_atk || 0, t1_ot_def: t1.won_ot_def || 0, t2_atk: t2.won_atk, t2_def: t2.won_def, t2_ot_atk: t2.won_ot_atk || 0, t2_ot_def: t2.won_ot_def || 0 };
+    if (!sc || (v.t1_atk + v.t1_def + v.t1_ot_atk + v.t1_ot_def === sc.a && v.t2_atk + v.t2_def + v.t2_ot_atk + v.t2_ot_def === sc.b)) Object.assign(up, v);
+  }
+  return up;
+}
 async function readSeries(r6: string, gg: string) {
   const r = await fetch(URL + '/functions/v1/match-bans', { method: 'POST', headers: { Authorization: 'Bearer ' + KEY, apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ r6, gg }) });
   const j = await r.json().catch(() => ({}));
@@ -94,6 +108,22 @@ async function fillSources(log: string[]) {
         }
       }
       if (gi >= 0 && x.map_number !== gi + 1) up.map_number = gi + 1;
+      // everything else the page knows about this map, only where it is empty
+      if (g && (g.teams || []).length >= 2) {
+        const [a, b] = g.teams, s1 = same(a.name, x.team) || same(b.name, x.opponent), s2 = same(b.name, x.team) || same(a.name, x.opponent);
+        if (s1 !== s2) Object.assign(up, facts(x, s1 ? a : b, s1 ? b : a));
+      }
+      const info = d.info || {};
+      if (!String(x.league || '').trim() && info.league) up.league = info.league;
+      if (!String(x.vod_link || '').trim() && /^https?:\/\//.test(info.vod || '')) up.vod_link = info.vod;
+      if (!String(x.replay_link || '').trim() && /^https:\/\//.test(info.replay || '')) up.replay_link = info.replay;
+      const pk = (d.veto || []).find((s: any) => s.type !== 'ban' && mapKey(s.map) === mapKey(x.map));
+      if (pk && !String(x.picked_by || '').trim()) { const who = pk.type === 'decider' ? 'Decider' : same(pk.team, x.team) ? x.team : same(pk.team, x.opponent) ? x.opponent : ''; if (who) up.picked_by = who; }
+      // the phase is part of how a game's rounds are found, so it is only filled on a game with no rounds
+      if (!String(x.phase || '').trim() && info.phase && !x.replay_match_id) {
+        const rr = await db.from('scout_rounds').select('id').eq('owner_team_id', owner).eq('match_id', matchId(x)).limit(1);
+        if (!rr.error && !rr.data.length) await db.from('scout_matches').update({ phase: info.phase }).eq('id', x.id);
+      }
       await db.from('scout_matches').update(up).eq('id', x.id);
     }
     // the map veto: a new one, or the order added to one already saved

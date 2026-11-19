@@ -12,9 +12,10 @@ const cors = (o: string | null) => ({
 const UA = { 'User-Agent': 'Mozilla/5.0 (compatible; LivAnalytics/1.0)' };
 
 type Step = { type: 'ban' | 'pick' | 'decider'; team: string | null; map: string };
-type Side = { name: string; atk: string[]; def: string[]; players?: Record<string, unknown>[] };
+type Side = { name: string; atk: string[]; def: string[]; players?: Record<string, unknown>[]; won_atk?: number | null; won_def?: number | null; won_ot_atk?: number | null; won_ot_def?: number | null; start?: string; ot_start?: string; split?: number | null; score?: number | null };
 type Game = { map: string; teams: Side[] };
-type Series = { teams: string[]; format: string; veto: Step[]; games: Game[] };
+type Info = { league: string; phase: string; vod: string; replay: string };
+type Series = { teams: string[]; format: string; veto: Step[]; games: Game[]; info: Info };
 const key = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
 
 async function official(id: string): Promise<Series> {
@@ -33,13 +34,17 @@ async function official(id: string): Promise<Series> {
     map: g?.map?.name || '',
     teams: (g.teams || []).map((t: any) => {
       const bans = byRound(t.operatorBans || []);
+      const rs = [...(g.rounds || [])].sort((a: any, b: any) => (a.index ?? 0) - (b.index ?? 0)), reg = rs.filter((x: any) => !x.isOvertime), ot = rs.filter((x: any) => x.isOvertime);
+      const won = (l: any[], side: string) => l.filter((x: any) => x.winnerId === t.id && x[side] === t.id).length;
+      const sideOf = (x: any) => !x ? '' : x.attackerId === t.id ? 'attack' : x.defenderId === t.id ? 'defense' : '';
+      const sides = rs.length ? { won_atk: won(reg, 'attackerId'), won_def: won(reg, 'defenderId'), won_ot_atk: won(ot, 'attackerId'), won_ot_def: won(ot, 'defenderId'), start: sideOf(rs[0]), ot_start: sideOf(ot[0]), split: rs.length >= 6 ? rs.slice(0, 6).filter((x: any) => x.winnerId === t.id).length : null } : {};
       const c = (s: any, k: string) => (s?.[k] && typeof s[k] === 'object' ? s[k].count : null) ?? null;
       const players = [...(t.players || [])].sort((x: any, y: any) => (x.positionIndex ?? 0) - (y.positionIndex ?? 0)).map((p: any) => ({
         name: p.name || '', kills: c(p.stats, 'kills'), deaths: c(p.stats, 'deaths'), headshots: c(p.stats, 'headshots'),
         opening_kills: c(p.stats, 'openingKills'), opening_deaths: c(p.stats, 'openingDeaths'),
         kost: typeof p.stats?.kost === 'number' ? Math.round(p.stats.kost * 100) : null, plants: c(p.stats, 'diffuserPlanted'), clutches: c(p.stats, 'clutch'),
       })).filter((p: any) => p.name);
-      return { name: names.get(t.id) || '', atk: bans.filter((b) => b.isAttacker).map((b) => b.name).filter(Boolean), def: bans.filter((b) => b.isAttacker === false).map((b) => b.name).filter(Boolean), players };
+      return { name: names.get(t.id) || '', atk: bans.filter((b) => b.isAttacker).map((b) => b.name).filter(Boolean), def: bans.filter((b) => b.isAttacker === false).map((b) => b.name).filter(Boolean), players, score: t.score ?? null, ...sides };
     }),
   }));
   const kinds: Record<number, Step['type']> = { 1: 'pick', 2: 'ban', 3: 'decider' };
@@ -47,7 +52,11 @@ async function official(id: string): Promise<Series> {
     .filter((s: any) => kinds[s.selectionType] && s.mapName)
     .map((s: any) => ({ type: kinds[s.selectionType], team: s.choosingTeam || null, map: s.mapName }));
   const n = match.matchFormatNumberOfGames;
-  return { teams: (match.teams || []).map((t: any) => names.get(t.id) || ''), format: n ? 'Bo' + n : '', veto, games };
+  // league: the championship and the event, without saying a word twice (BLAST R6 Major + Osaka Major = BLAST R6 Major Osaka)
+  const ch = String(data.championship?.name || ''), co = String(data.competition?.name || ''), seen = new Set(ch.toLowerCase().split(/\s+/));
+  const league = [ch, co.split(/\s+/).filter((w) => !seen.has(w.toLowerCase())).join(' ')].filter(Boolean).join(' ').trim();
+  const info = { league, phase: String(data.phase?.name || ''), vod: String(match.youtubeLink || ''), replay: String(match.replayLink || '') };
+  return { teams: (match.teams || []).map((t: any) => names.get(t.id) || ''), format: n ? 'Bo' + n : '', veto, games, info };
 }
 
 async function siegegg(id: string): Promise<Series> {
@@ -81,12 +90,13 @@ async function siegegg(id: string): Promise<Series> {
       map: g.map?.name || '',
       teams: [...names.entries()].map(([rid, name]) => {
         const mine = bans.filter((b: any) => b.stats_roster_id === rid && b.operator?.name);
-        return { name, atk: mine.filter((b: any) => /att/i.test(b.operator.side)).map((b: any) => b.operator.name), def: mine.filter((b: any) => /def/i.test(b.operator.side)).map((b: any) => b.operator.name) };
+        const rw = g.round_wins_by_roster?.[rid] || g.round_wins_by_roster?.[String(rid)];
+        return { name, atk: mine.filter((b: any) => /att/i.test(b.operator.side)).map((b: any) => b.operator.name), def: mine.filter((b: any) => /def/i.test(b.operator.side)).map((b: any) => b.operator.name), won_atk: rw?.atk ?? null, won_def: rw?.def ?? null, score: g.win_roster_id === rid ? g.win_score ?? null : g.loss_roster_id === rid ? g.loss_score ?? null : null };
       }),
     };
   });
   const picks = veto.filter((s) => s.type !== 'ban').length;
-  return { teams: [...names.values()], format: picks ? 'Bo' + picks : '', veto, games };
+  return { teams: [...names.values()], format: picks ? 'Bo' + picks : '', veto, games, info: { league: String(match.competition_full_name || match.competition_name || ''), phase: '', vod: '', replay: '' } };
 }
 
 Deno.serve(async (req) => {
@@ -116,6 +126,7 @@ Deno.serve(async (req) => {
       format: main.format || alt?.format || '',
       veto: main.veto.length ? main.veto : alt?.veto || [],
       games,
+      info: { league: main.info.league || alt?.info.league || '', phase: main.info.phase || alt?.info.phase || '', vod: main.info.vod || alt?.info.vod || '', replay: main.info.replay || alt?.info.replay || '' },
       notes,
     });
   } catch (e) {
