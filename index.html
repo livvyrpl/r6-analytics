@@ -3749,7 +3749,7 @@ function vedInit(r,rows,veto,st0){
   const L=[...rows].sort((a,b)=>(a.map_number||99)-(b.map_number||99)),who=x=>/decider/i.test(x.picked_by||'')?null:twinSame(x.picked_by,r.opponent)?r.opponent:twinSame(x.picked_by,r.team)?r.team:null;
   const T=[r.team,r.opponent],ban=i=>({type:'ban',team:T[i%2],map:''});
   if(L.length<=1)steps=[...[0,1,2,3,4,5,6,7].map(ban),{type:'decider',team:null,map:L[0]?mapCanon(L[0].map):''}];
-  else{const picks=L.slice(0,-1).map((x,i)=>({type:'pick',team:who(x)||T[i%2],map:mapCanon(x.map)}));steps=[ban(0),ban(1),...picks,...[0,1,2,3,4,5,6,7].slice(0,Math.max(0,8-2-picks.length)).map(i=>ban(i)),{type:'decider',team:null,map:mapCanon(L[L.length-1].map)}]}}
+  else{const picks=L.slice(0,-1).map((x,i)=>({type:'pick',team:who(x)||T[i%2],map:mapCanon(x.map)}));steps=picks.length===2?[ban(0),ban(1),ban(2),ban(3),...picks,ban(4),ban(5),{type:'decider',team:null,map:mapCanon(L[L.length-1].map)}]:[ban(0),ban(1),...picks,...[0,1,2,3,4,5,6,7].slice(0,Math.max(0,8-2-picks.length)).map(i=>ban(i)),{type:'decider',team:null,map:mapCanon(L[L.length-1].map)}]}}
  sco.ved={k,steps,format:veto?.format||(rows.length>=4?'Bo5':rows.length>=2?'Bo3':'Bo1'),id:veto?.id||null,dirty:false};return sco.ved;
 }
 function vedHtml(r,rows,veto,st0){
