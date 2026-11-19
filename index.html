@@ -175,6 +175,8 @@ body.vodon{padding-right:calc(var(--vodw,min(44vw,760px)) + 24px)}body.vodon #to
 .mvsd .who{display:flex;align-items:center;gap:8px;min-width:0;flex:0 1 200px}.mvsd .who b{font-weight:700;font-size:15px}
 .mvsd .bx{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:78px;padding:6px 10px;border-radius:10px;background:linear-gradient(180deg,rgba(var(--rc),.32),rgba(var(--rc),.12));border:1px solid rgba(var(--rc),.6);box-shadow:0 0 12px -5px rgba(var(--rc),.9)}
 .mvsd .bx b{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}.mvsd .bx small{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;opacity:.85}
+.mvsb{border-collapse:collapse;width:100%}.mvsb th{font-size:11.5px;font-weight:600;padding:4px 5px;text-align:center;white-space:nowrap;color:var(--mu)}.mvsb th:first-child{text-align:left}.mvsb td{padding:3px 5px;text-align:center;font-variant-numeric:tabular-nums}.mvsb td:first-child{text-align:left;font-weight:600}
+.mvsb input.fi{height:32px;padding:0 6px}.mvsb .mvnum{width:54px!important}.mvsb .mvpl{width:150px;min-width:120px}.mvsb tbody tr+tr td{border-top:1px solid var(--bd)}
 .mvk{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:16px}
 .mvk>div{border:1px solid rgba(var(--pk-rgb),.38);border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:2px;min-width:0;background:linear-gradient(150deg,rgba(var(--pk-rgb),.13),rgba(6,5,9,.6) 70%);box-shadow:0 0 16px -8px rgba(var(--pk-rgb),.75),inset 0 0 12px -8px rgba(var(--pk-rgb),.6)}
 .mvk b{font-size:12.5px;font-weight:600;letter-spacing:.02em}.mvk span{font-size:14px;opacity:.82;overflow-wrap:anywhere}
@@ -522,7 +524,7 @@ const mb=readBlocks();if(mb.err)return say(qt,mb.err);const s=curScrim(),gen=$('
 }
 // AUTOSAVE: changes save themselves a moment after you stop typing, and straight away when you leave the page. The Save buttons still work.
 const say=(qt,m)=>qt?{err:m}:toast(m);
-const AUTO={smatch:f=>saveMatch(f,1),scrim:f=>saveScrim(f,1),snotes:()=>scrimNotesSave({},1),sopp:f=>saveSo(f,1),tset:f=>saveTeamSet(f,1),srate:f=>saveRate(f,1),sched:f=>saveSch(f,1),strat:f=>saveStrat(f,1),goal:f=>saveGoal(f,1),plr:()=>plSave({},1),scn:()=>scnSave({},1),rd:()=>rdSave({},1)};
+const AUTO={sbrd:f=>sbSave(f,1),smatch:f=>saveMatch(f,1),scrim:f=>saveScrim(f,1),snotes:()=>scrimNotesSave({},1),sopp:f=>saveSo(f,1),tset:f=>saveTeamSet(f,1),srate:f=>saveRate(f,1),sched:f=>saveSch(f,1),strat:f=>saveStrat(f,1),goal:f=>saveGoal(f,1),plr:()=>plSave({},1),scn:()=>scnSave({},1),rd:()=>rdSave({},1)};
 // actions that change a form without typing in it
 const AUTO_AFTER=new Set(['pladd','plrm','plmerge','fmaprm','tsw']);
 function autoSt(f,t,bad){let s=f.querySelector('.autost');if(!s){s=document.createElement('p');s.className='autost';s.setAttribute('aria-live','polite');f.append(s)}s.textContent=t;s.classList.toggle('bad',!!bad)}
@@ -2421,7 +2423,7 @@ async function openSc(page,kind,oppId){
  const s=sco,tid=s.tid,q=t=>sb.from(t).select('*').eq('owner_team_id',tid),[t,m,v,r,c,x,st]=await Promise.all([q('scout_teams'),allRows(()=>q('scout_matches').order('id')),allRows(()=>q('scout_vetoes').order('id')),allRows(()=>q('scout_rounds').order('id')),sb.from('scrims').select('*').eq('team_id',tid),sb.from('scrim_map_results').select('*').eq('team_id',tid),q('scout_settings')]);
  if(sco!==s)return;
  const bad=t.error||m.error||v.error||r.error;
- if(!bad&&canEditS())setTimeout(()=>{if(sco===s){scoreRepair(s);seriesIdFill(s).then(()=>banAuto(s))}},0);Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
+ if(!bad&&canEditS())setTimeout(()=>{if(sco===s){scoreRepair(s);seriesIdFill(s).then(()=>banAuto(s))}},0);Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});sbLoad(s);
  if(!an||an.tid!==tid)an={tid,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,rc:{},rex:{},rpick:{},rp:null,rerr:'',rteams:null,rroster:[],page:'over'};
  {const cl=tdrRows(tid,c.data||[],'scrim_date'),ok=new Set(cl.map(y=>y.id));an.list=cl;an.res=teamDR(tid)?(x.data||[]).filter(y=>ok.has(y.scrim_id)):x.data||[]}s.st=(st.data||[])[0]||null;
  sb.from('scout_events').select('*').eq('owner_team_id',tid).then(r=>{if(sco!==s)return;s.events=r.error?[]:r.data||[];if(view==='sc'&&s.events.length)render()});
@@ -3233,7 +3235,8 @@ async function sJoinGames(idA,idB,o={}){
   const keepM=later==='other'?mr.filter(r=>!both.includes(r.round_number)):mr,keepO=later==='other'?or:or.filter(r=>!both.includes(r.round_number));
   const body=r=>{const o=fo(r),u={match_id:newMid,round_date:main.match_date,map:main.map,team:main.team,opponent:main.opponent,side:o.side,result:o.result,opponent_operators:o.opponent_operators||''};[1,2,3,4,5].forEach(i=>u['operator_'+i]=o['operator_'+i]||'');return u};
   for(const r of [...keepO,...(newMid!==matchId(main)?keepM:[])])chk(await sb.from('scout_rounds').update(body(r)).eq('id',r.id));
-  chk(await sb.from('scout_matches').delete().eq('id',other.id));
+  {const ob=await sb.from('scout_scoreboard').select('id,side').eq('scout_match_id',other.id);if(!ob.error&&ob.data.length){const mb=await sb.from('scout_scoreboard').select('id').eq('scout_match_id',main.id);if(!mb.error&&!mb.data.length){const sw=o.swap!=null?o.swap:!sameName(other.team,main.team)&&sameName(other.team,main.opponent);for(const x of ob.data)await sb.from('scout_scoreboard').update({scout_match_id:main.id,side:sw?3-x.side:x.side}).eq('id',x.id)}}}
+  chk(await sb.from('scout_matches').delete().eq('id',other.id));if(sco)sbLoad(sco);
   // score and result from the joined rounds
   const all=[...keepM,...keepO].map(fo),w=all.filter(r=>normRes(r.result)==='W').length,l=all.filter(r=>normRes(r.result)==='L').length,nums=new Set(all.map(r=>r.round_number)),top=Math.max(0,...nums),whole=top===nums.size;
   const up={phase};if(!main.replay_match_id&&other.replay_match_id)up.replay_match_id=other.replay_match_id;
@@ -3408,7 +3411,7 @@ function gapRows(team){
    maps:rows.every(x=>parseScore(x.round_score)&&normRes(x.result)),
    veto:vetoed.has(r.match_date+'|'+pairOf(r)),
    bans:rows.every(x=>(x.our_atk_ban||x.our_def_ban)&&(x.opp_atk_ban||x.opp_def_ban)),
-   board:rows.every(x=>x.replay_match_id),
+   board:rows.every(hasBoard),
    log:rows.every(x=>rs(x).length>0),
    ops:rows.every(x=>rs(x).some(y=>y.operator_1)),
    vod:rows.every(x=>x.vod_link),
@@ -3669,7 +3672,7 @@ function matchB(r){
  ${sec('Bans',`<div class="mvb"><div><b style="font-weight:600">${T1}</b>${ban('our_atk_ban','Attack ban')}${ban('our_def_ban','Defense ban')}</div><div><b style="font-weight:600">${T2}</b>${ban('opp_atk_ban','Attack ban')}${ban('opp_def_ban','Defense ban')}</div></div>`)}
  ${sec('Rounds won on each side',`<div style="overflow-x:auto"><table class="mvst"><thead><tr><th scope="col"></th><th scope="col">Attack</th><th scope="col">Defense</th><th scope="col">OT attack</th><th scope="col">OT defense</th></tr></thead><tbody><tr><th scope="row">${T1}</th>${num('t1_atk',T1+' attack')}${num('t1_def',T1+' defense')}${num('t1_ot_atk',T1+' overtime attack')}${num('t1_ot_def',T1+' overtime defense')}</tr><tr><th scope="row">${T2}</th>${num('t2_atk',T2+' attack')}${num('t2_def',T2+' defense')}${num('t2_ot_atk',T2+' overtime attack')}${num('t2_ot_def',T2+' overtime defense')}</tr></tbody></table></div>`,'Optional. They have to add up to the final score.')}
  ${sec('Links',`<div class="mvg">${inp('vod_link','VOD link','text','inputmode="url" placeholder="https://www.youtube.com/watch?v=…"')}${inp('r6esports_id','Official match ID')}${inp('siegegg_id','siege.gg match ID')}</div>`)}
- <div class="row wrap" style="justify-content:space-between"><span class="row wrap" style="gap:8px"><button type="button" class="no" data-a="smdel">Delete game</button><button type="button" class="no" data-a="sermg">Merge with another series</button></span><button type="button" class="go" data-a="smview">Done editing</button></div></form>${rdView(r,c1,c2,true)}`;
+ <div class="row wrap" style="justify-content:space-between"><span class="row wrap" style="gap:8px"><button type="button" class="no" data-a="smdel">Delete game</button><button type="button" class="no" data-a="sermg">Merge with another series</button></span><button type="button" class="go" data-a="smview">Done editing</button></div></form>${sbEdit(r,twinOf(r.team)||{name:r.team},twinOf(r.opponent)||{name:r.opponent},c1,c2)}${rdView(r,c1,c2,true)}`;
 }
 const mvRGB=h=>{const m=/^#?([0-9a-f]{6})$/i.exec(h||'');if(!m)return null;const n=parseInt(m[1],16);return[n>>16&255,n>>8&255,n&255]};
 const mvLive=h=>{const c=mvRGB(h);if(!c)return false;const mx=Math.max(...c)/255,mn=Math.min(...c)/255,l=(mx+mn)/2,s=mx===mn?0:(mx-mn)/(1-Math.abs(2*l-1));return s>.25&&l>.18&&l<.9};
@@ -3720,7 +3723,7 @@ function mvSeries(r,c1,c2,edit){
   vet=`<section class="cd mvc" style="gap:10px"><div class="row wrap" style="justify-content:space-between;gap:6px"><h2 style="font-size:15px;font-weight:600">Map veto</h2>${veto.format?`<span class="mu" style="font-size:12.5px">${esc(veto.format)}</span>`:''}</div><div class="mvtl">${st.map(step).join('')}</div></section>`}
  // what is missing, map by map
  const y='<span class="mvy" aria-label="Saved">✓</span>',no='<span class="mvx">Missing</span>';
- const cols=[['Score',x=>!!(parseScore(x.round_score)&&normRes(x.result))],['Op bans',x=>!!((x.our_atk_ban||x.our_def_ban)&&(x.opp_atk_ban||x.opp_def_ban))],['Scoreboard',x=>!!x.replay_match_id],['Round log',x=>gameRounds(x).length>0],['Operators',x=>gameRounds(x).some(z=>z.operator_1)],['VOD',x=>!!x.vod_link]];
+ const cols=[['Score',x=>!!(parseScore(x.round_score)&&normRes(x.result))],['Op bans',x=>!!((x.our_atk_ban||x.our_def_ban)&&(x.opp_atk_ban||x.opp_def_ban))],['Scoreboard',hasBoard],['Round log',x=>gameRounds(x).length>0],['Operators',x=>gameRounds(x).some(z=>z.operator_1)],['VOD',x=>!!x.vod_link]];
  const src=rows.some(x=>x.r6esports_id||x.siegegg_id)&&!rows.some(x=>x.gg_missing),gaps=L.reduce((n,m)=>n+cols.filter(c=>!c[1](m.x)).length,0)+(veto?0:1)+(src?0:1);
  const wr=seriesWrong(rows),miss=`<section class="cd mvc" style="gap:10px"><div class="row wrap" style="justify-content:space-between;gap:6px"><h2 style="font-size:15px;font-weight:600">${gaps||wr.length?'Missing or incorrect in this series':'Nothing missing or incorrect in this series'}</h2><span class="row wrap" style="gap:12px;font-size:12.5px;align-items:center">${banNeed(rows)&&canEditS()?`<button class="no" style="height:28px;padding:0 10px;font-size:12px" data-a="banpull" data-id="${r.id}">Fill in from official / siege.gg</button>`:''}<span>Map veto ${veto?y:no}</span><span>Official source ${src?y:no}</span></span></div><div style="overflow-x:auto"><table class="tbl mvmiss"><thead><tr><th scope="col">Map</th>${cols.map(c=>`<th scope="col">${c[0]}</th>`).join('')}</tr></thead><tbody>${L.map((m,i)=>`<tr${m.x.id===r.id?' style="background:rgba(var(--pk-rgb),.08)"':''}><td><button class="u" style="padding:0;font-weight:600" data-a="mvgo" data-id="${m.x.id}">${i+1}. ${esc(mapCanon(m.x.map)||m.x.map)}</button></td>${cols.map(c=>`<td>${c[1](m.x)?y:no}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${wr.length?`<div class="over" style="font-size:12.5px;display:flex;flex-direction:column;gap:3px">${wr.map(x=>`<span>⚠ ${esc(x.w)}</span>`).join('')}</div>`:''}</section>`;
  return `<div class="mvsr">${head}${vet}${gaps||wr.length?miss:''}<h2 class="serif" style="font-size:20px;margin-top:4px">Map ${L.findIndex(m=>m.x.id===r.id)+1}: ${esc(mapCanon(r.map)||r.map)}</h2></div>`;
@@ -3746,7 +3749,7 @@ function matchView(r,only){
  const sideRow=(x,c,k)=>{const rc=mvRGB(c).join(','),bx=(l,v)=>`<span class="bx" style="--rc:${rc}"><b>${v??0}</b><small>${l}</small></span>`;return `<div><span class="who">${mvLogo(x,c).replace('class="mvlg','class="mvlgs')}<b style="color:${c};text-shadow:0 0 12px ${c}66">${esc(x.name)}</b></span>${bx('Attack',r[k+'_atk'])}${bx('Defense',r[k+'_def'])}${ot?bx('OT attack',r[k+'_ot_atk'])+bx('OT defense',r[k+'_ot_def']):''}</div>`};
  const sides=hasSides?`<section class="cd mvc" style="gap:8px;margin-bottom:16px"><h2 style="font-size:15px;font-weight:600">Rounds won on each side</h2><div class="mvsd">${sideRow(T1,c1,'t1')}${sideRow(T2,c2,'t2')}</div></section>`:'';
  const chk=`<p style="font-size:12.5px;margin:0 0 12px">${checkTag(r)}${r.check_status==='mismatch'||oppIssues([{r,res,score:r.round_score,foe:r.opponent,map:r.map,date:r.match_date}]).length?' <button class="no" style="height:26px;font-size:12px;margin-left:6px" data-a="smok">Mark as reviewed</button>':''}</p>`;
- return `<div class="row wrap" style="justify-content:flex-end;gap:8px;margin-bottom:12px">${canEditS()?'<button class="go" data-a="smedit">Edit</button>':''}<button class="no" data-a="smback">${sco.fromPrep?'Back to Anti-Strat':'Back'}</button></div>${mvSeries(r,c1,c2)}${hero}<div id="wrtop">${wrongTop(r)}</div>${fixB(r)}${chk}${facts?`<div class="mvk">${facts}</div>`:''}${bans}${sides}${rdView(r,c1,c2)}`;
+ return `<div class="row wrap" style="justify-content:flex-end;gap:8px;margin-bottom:12px">${canEditS()?'<button class="go" data-a="smedit">Edit</button>':''}<button class="no" data-a="smback">${sco.fromPrep?'Back to Anti-Strat':'Back'}</button></div>${mvSeries(r,c1,c2)}${hero}<div id="wrtop">${wrongTop(r)}</div>${fixB(r)}${chk}${facts?`<div class="mvk">${facts}</div>`:''}${bans}${sides}${sbView(r,T1,T2,c1,c2)}${rdView(r,c1,c2)}`;
 }
 function rdView(g,c1='#e07cc0',c2='#9b6bff',edit=false){
  const rs=gameRounds(g),addB=edit?'<button class="go" style="height:32px" data-a="rdadd">Add a round</button>':'';
@@ -3789,6 +3792,46 @@ const dupBtn=(rows,st='')=>{const d=seriesDups(rows);return d?`<button class="no
 // every map of a series gets the series' official and siege.gg match id when only some of them have it
 // SERIES DETAILS FROM SOURCES (match-bans Edge Function): op bans, the map veto in order and the map order,
 // from the official match page first and siege.gg second
+// SCOREBOARDS: one row per player per map, typed in on the edit page or read from the official match page
+function sbLoad(s){s.sbP=allRows(()=>sb.from('scout_scoreboard').select('*').eq('owner_team_id',s.tid).order('id')).then(b=>{if(sco!==s)return;s.sb=b.error?null:b.data;if(view==='sc'&&s.page==='match'&&!sdirty&&!autoPending()&&!$('#dlg')?.open)render()});return s.sbP}
+const sbFor=x=>{const s=sco;if(!x||!Array.isArray(s?.sb))return[];if(!s._sbi||s._sbi.a!==s.sb){const m=new Map();s.sb.forEach(r=>{(m.get(r.scout_match_id)||m.set(r.scout_match_id,[]).get(r.scout_match_id)).push(r)});s._sbi={a:s.sb,m}}return(s._sbi.m.get(x.id)||[]).slice().sort((a,b)=>a.side-b.side||a.slot-b.slot)};
+// a map counts as having a scoreboard with a replay, typed or read rows, or when marked No data
+const hasBoard=x=>!!x.replay_match_id||!!x.board_none||sbFor(x).length>0;
+const SB_F=[['kills','K'],['deaths','D'],['assists','A'],['headshots','HS'],['opening_kills','Entry K'],['opening_deaths','Entry D'],['kost','KOST %'],['plants','Plants'],['clutches','Clutches']];
+function sbView(g,T1,T2,c1,c2){
+ const rows=sbFor(g);if(!rows.length)return '';
+ const has=k=>rows.some(x=>x[k]!=null),cols=[['kills','K'],['deaths','D'],['pm','+/-'],['assists','A'],['entry','Entry'],['kost','KOST'],['hs','HS%'],['plants','Plants'],['clutches','Clutches']].filter(([k])=>k==='pm'?has('kills')&&has('deaths'):k==='entry'?has('opening_kills'):k==='hs'?has('headshots')&&has('kills'):has(k));
+ const val=(x,k)=>k==='pm'?(x.kills!=null&&x.deaths!=null?((x.kills-x.deaths>0?'+':'')+(x.kills-x.deaths)):'—'):k==='entry'?(x.opening_kills!=null?(x.opening_kills-(x.opening_deaths||0)>0?'+':'')+(x.opening_kills-(x.opening_deaths||0)):'—'):k==='kost'?(x.kost!=null?Math.round(x.kost)+'%':'—'):k==='hs'?(x.kills?Math.round((x.headshots||0)/x.kills*100)+'%':'—'):(x[k]??'—');
+ const tbl=(side,T,c)=>{const l=rows.filter(x=>x.side===side);if(!l.length)return '';return `<div style="overflow-x:auto"><table class="mvsb"><thead><tr><th scope="col"><span style="display:inline-flex;align-items:center;gap:6px;color:${c};font-size:13px;font-weight:700">${mvLogo(T,c).replace('class="mvlg','class="mvlgs')}${esc(T.name)}</span></th>${cols.map(x=>`<th scope="col">${x[1]}</th>`).join('')}</tr></thead><tbody>${l.map(x=>`<tr><td>${esc(x.player||'—')}</td>${cols.map(([k])=>{const v=val(x,k);return `<td${k==='pm'||k==='entry'?` style="color:${/^\+/.test(v)?'#34c46a':/^-/.test(v)?'#ff8a8a':'inherit'}"`:''}>${esc(String(v))}</td>`}).join('')}</tr>`).join('')}</tbody></table></div>`};
+ return `<section class="cd mvc" style="gap:12px;margin-bottom:16px"><div class="row wrap" style="justify-content:space-between"><h2 style="font-size:15px;font-weight:600">Scoreboard</h2>${rows.every(x=>x.source==='official')?'<span class="mu" style="font-size:12px">From the official match page</span>':''}</div>${tbl(1,T1,c1)}${tbl(2,T2,c2)}</section>`;
+}
+function sbEdit(g,T1,T2,c1,c2){
+ const head=(right='')=>`<div class="row wrap" style="justify-content:space-between;gap:8px"><div style="min-width:0"><h2 style="font-size:15px;font-weight:600">Scoreboard</h2><p class="mu" style="font-size:12.5px">${right}</p></div>`;
+ if(!Array.isArray(sco.sb))return `<section class="cd mvc" style="gap:8px;margin-bottom:16px">${head(sco.sb===undefined?'Loading…':'The scoreboard needs a database update. Paste stage40.sql into the Supabase SQL Editor and run it.')}</div></section>`;
+ const vod=/^https?:\/\//i.test(g.vod_link||'')?`<a class="vod" href="${esc(g.vod_link)}" target="_blank" rel="noopener noreferrer">▶ Watch VOD beside this</a>`:'';
+ const none=!!g.board_none,noneB='board_none' in g?`<button type="button" class="no" style="height:32px" data-a="sbnone" data-v="${none?'':'1'}">${none?'Undo No data':'No data'}</button>`:'';
+ if(none)return `<section class="cd mvc" id="sbsec" style="gap:10px;margin-bottom:16px">${head('Marked as No data, so this map is not flagged for a missing scoreboard.')}${noneB}</div></section>`;
+ const have=sbFor(g);
+ const tbl=(side,T,c)=>`<div style="overflow-x:auto"><table class="mvsb"><thead><tr><th scope="col"><span style="color:${c};font-size:13px;font-weight:700">${esc(T.name)}</span></th>${SB_F.map(x=>`<th scope="col">${x[1]}</th>`).join('')}</tr></thead><tbody>${[1,2,3,4,5].map(slot=>{const h=have.find(x=>x.side===side&&x.slot===slot)||{};return `<tr><td><input class="fi mvpl" data-sb="${side}|${slot}|player" value="${esc(h.player||'')}" placeholder="Player ${slot}" aria-label="${esc(T.name)} player ${slot}" autocomplete="off"></td>${SB_F.map(([k,l])=>`<td><input class="fi mvnum" inputmode="numeric" data-sb="${side}|${slot}|${k}" value="${esc(h[k]??'')}" aria-label="${esc(T.name)} player ${slot} ${l}"></td>`).join('')}</tr>`}).join('')}</tbody></table></div>`;
+ return `<section class="cd mvc" id="sbsec" data-auto="sbrd" data-dirty style="gap:12px;margin-bottom:16px">${head('Saves as you type. Leave a box empty if you do not know it.'+(vod?' The VOD opens beside the page, so you can watch and type at the same time.':' Add a VOD link above to watch it beside the page.'))}<span class="row wrap" style="gap:8px">${vod}${have.length?'':noneB}</span></div>${tbl(1,T1,c1)}${tbl(2,T2,c2)}</section>`;
+}
+async function sbSave(f,qt){
+ const g=sco.m.find(x=>x.id===sco.matchId);if(!g||!Array.isArray(sco.sb))return qt?{}:undefined;
+ const rows=new Map();f.querySelectorAll('[data-sb]').forEach(i=>{const[side,slot,k]=i.dataset.sb.split('|'),key=side+'|'+slot,o=rows.get(key)||{side:+side,slot:+slot};o[k]=i.value.trim();rows.set(key,o)});
+ const NUM=SB_F.map(x=>x[0]),ups=[],dels=[],have=sbFor(g);
+ for(const o of rows.values()){const h=have.find(x=>x.side===o.side&&x.slot===o.slot);if(!o.player&&NUM.every(k=>!o[k])){if(h)dels.push(h.id);continue}
+  const row={owner_team_id:sco.tid,scout_match_id:g.id,side:o.side,slot:o.slot,player:o.player||'',source:'manual',updated_at:new Date().toISOString()};
+  for(const k of NUM){const v=o[k];if(!v){row[k]=null;continue}if(!/^\d+(\.\d+)?$/.test(v))return say(qt,k==='kost'?'KOST is a percent, like 67':'Scoreboard numbers must be whole numbers');row[k]=k==='kost'?Math.min(100,+v):Math.round(+v)}
+  if(h&&['player',...NUM].every(k=>String(h[k]??'')===String(row[k]??'')))continue;ups.push(row)}
+ if(ups.length){const u=await sb.from('scout_scoreboard').upsert(ups,{onConflict:'scout_match_id,side,slot'}).select();if(u.error)return say(qt,scErr(u.error));sco.sb=[...sco.sb.filter(x=>!u.data.some(y=>y.id===x.id||(y.scout_match_id===x.scout_match_id&&y.side===x.side&&y.slot===x.slot))),...u.data]}
+ if(dels.length){const d=await sb.from('scout_scoreboard').delete().in('id',dels);if(d.error)return say(qt,scErr(d.error));sco.sb=sco.sb.filter(x=>!dels.includes(x.id))}
+ return qt?{}:toast('Scoreboard saved');
+}
+async function sbNone(v){
+ const g=sco.m.find(x=>x.id===sco.matchId);if(!g)return;await autoFlush();
+ const u=await sb.from('scout_matches').update({board_none:!!v}).eq('id',g.id).select().single();if(u.error)return toast(/board_none/.test(u.error.message)?'Paste stage40.sql into the Supabase SQL Editor and run it first.':scErr(u.error));
+ Object.assign(g,u.data);render();toast(v?'Marked as No data. This map is no longer flagged for a scoreboard.':'The scoreboard can be filled in again.');
+}
 const banCall=async(r6,gg)=>{
  let r;try{r=await sb.functions.invoke('match-bans',{body:{r6,gg}})}catch(e){throw new Error('The match reader could not be reached. Try again.')}
  if(r.error){const st=r.error.context?.status;let m='';try{m=(await r.error.context?.json?.())?.error||''}catch{}if(m)throw new Error(m);if(st===404)throw new Error('The match reader is not set up yet. Create the match-bans Edge Function in Supabase.');throw new Error('No answer from the match reader. Try again.')}
@@ -3798,7 +3841,7 @@ const srcIds=rows=>{const one=c=>{const v=[...new Set(rows.map(x=>String(x[c]||'
 const srcKey=rows=>{const i=srcIds(rows);return i.r6?'o'+i.r6:i.gg?'g'+i.gg:''};
 // what a series can still get from its sources
 const banGap=rows=>rows.some(x=>!((x.our_atk_ban||x.our_def_ban)&&(x.opp_atk_ban||x.opp_def_ban)));
-const banNeed=rows=>{if(!srcKey(rows))return false;const v=mvSeriesRows(rows[0]).veto;return banGap(rows)||!v||('steps' in v&&!(v.steps||[]).length)||rows.some(x=>'map_number' in x&&x.map_number==null)};
+const banNeed=rows=>{if(!srcKey(rows))return false;const v=mvSeriesRows(rows[0]).veto;return banGap(rows)||(Array.isArray(sco.sb)&&rows.some(x=>!hasBoard(x)))||!v||('steps' in v&&!(v.steps||[]).length)||rows.some(x=>'map_number' in x&&x.map_number==null)};
 // fills a series from its sources: empty op ban boxes, the map order, and the map veto (a new one, or the order of one already saved)
 async function banPull(rows){
  const ids=srcIds(rows);if(ids.r6===null)return 'This series has two different official match IDs. Fix that first.';if(!ids.r6&&!ids.gg)return ids.gg===null?'This series has two different siege.gg match IDs. Fix that first.':'This series has no official or siege.gg match ID.';
@@ -3808,6 +3851,9 @@ async function banPull(rows){
  for(const x of rows){const gi=games.findIndex(g=>mapCanon(g.map)===mapCanon(x.map)),g=games[gi],up={};
   if(g&&(g.teams||[]).length>=2){const [a,b]=g.teams,s1=side(a.name,x)===1||side(b.name,x)===2,s2=side(b.name,x)===1||side(a.name,x)===2;
    if(s1!==s2){const t1=s1?a:b,t2=s1?b:a,set=(k,l)=>{if((l||[]).length&&!String(x[k]||'').trim())up[k]=l.join(', ')};set('our_atk_ban',t1.atk);set('our_def_ban',t1.def);set('opp_atk_ban',t2.atk);set('opp_def_ban',t2.def)}}
+  if(g&&Array.isArray(sco.sb)&&!hasBoard(x)&&(g.teams||[]).length>=2){const [a,b]=g.teams,s1=side(a.name,x)===1||side(b.name,x)===2,s2=side(b.name,x)===1||side(a.name,x)===2;
+   if(s1!==s2){const ins=[];[[s1?a:b,1],[s1?b:a,2]].forEach(([tm,sd])=>(tm.players||[]).slice(0,6).forEach((p,i)=>ins.push({owner_team_id:sco.tid,scout_match_id:x.id,side:sd,slot:i+1,player:p.name||'',kills:p.kills??null,deaths:p.deaths??null,headshots:p.headshots??null,opening_kills:p.opening_kills??null,opening_deaths:p.opening_deaths??null,kost:p.kost??null,plants:p.plants??null,clutches:p.clutches??null,source:'official'})));
+    if(ins.length){const u=await sb.from('scout_scoreboard').insert(ins).select();if(!u.error){sco.sb=[...sco.sb,...u.data];n++}}}}
   if(gi>=0&&'map_number' in x&&x.map_number!==gi+1)up.map_number=gi+1;
   if(!Object.keys(up).length)continue;
   const u=await sb.from('scout_matches').update(up).eq('id',x.id).select().single();if(!u.error){const o=scAll('m').find(y=>y.id===x.id);if(o)Object.assign(o,u.data);n++}}
@@ -3833,6 +3879,7 @@ async function banPullAll(){
 const banTried=new Set();let banOff=false;
 async function banAuto(s){
  if(!s||banOff||s.banBusy||!canEditS()||!Array.isArray(s.m))return;
+ if(s.sbP)await s.sbP;if(sco!==s)return;
  const g=new Map();s.m.forEach(r=>{const k=mgKey(r);(g.get(k)||g.set(k,[]).get(k)).push(r)});
  const l=[...g.values()].filter(rows=>banNeed(rows)&&!banTried.has(srcKey(rows)));if(!l.length)return;
  s.banBusy=true;const job=actStart('Reading series from official and siege.gg pages');let n=0;
@@ -4335,7 +4382,7 @@ const A={
  sjoin:d=>sJoinGames(d.id,d.b),twinjoin:()=>twinJoinAll(false),smatch:d=>{sco.deckBack=false;sco.fromPrep=null;sco.mBack={page:sco.page,kind:sco.kind,tab:sco.tab,oppId:sco.oppId};sco.page='match';sco.matchId=d.id;sco.mvRd=null;render();window.scrollTo?.(0,0)},
  prepgame:d=>{const r=prep.round;if(!sco||sco.tid!==prep.tid)sco=scoNew({tid:prep.tid,league:'',q:'',f:{}});Object.assign(sco,{matchId:d.id,mBack:null,deckBack:false,fromPrep:r});openSc('match');window.scrollTo?.(0,0)},
  mvrd:d=>{const n=+d.n,on=sco.mvRd!==n;sco.mvRd=on?n:null;document.querySelectorAll('.mvr button').forEach(x=>x.setAttribute('aria-pressed',String(on&&+x.dataset.n===n)));document.querySelectorAll('.mvrt tr.mvsel').forEach(x=>x.classList.remove('mvsel'));const row=on&&document.getElementById('mvr-'+n);if(row){row.classList.add('mvsel');row.scrollIntoView({block:'nearest',behavior:'smooth'})}},
- mvgo:async d=>{if(d.id===sco.matchId)return;if(sco.meditId){await autoFlush();sco.meditId=d.id}sco.matchId=d.id;sco.mvRd=null;const y=window.scrollY;render();window.scrollTo?.(0,y)},sermg:()=>serMergeOpen(),sermgdo:d=>serMergeDo(String(d.f).split(','),String(d.t).split(',')),
+ mvgo:async d=>{if(d.id===sco.matchId)return;if(sco.meditId){await autoFlush();sco.meditId=d.id}sco.matchId=d.id;sco.mvRd=null;const y=window.scrollY;render();window.scrollTo?.(0,y)},sermg:()=>serMergeOpen(),sbnone:d=>sbNone(d.v),sermgdo:d=>serMergeDo(String(d.f).split(','),String(d.t).split(',')),
  smedit:()=>{sco.meditId=sco.matchId;render();window.scrollTo?.(0,0)},smview:async()=>{await autoFlush();sco.meditId=null;sdirty=false;render();window.scrollTo?.(0,0)},
  smback:()=>{sco.meditId=null;if(sco.fromPrep&&prep){const r=sco.fromPrep;sco.fromPrep=null;view='prep';prep.round=r;render();window.scrollTo?.(0,0);return}Object.assign(sco,sco.mBack||{page:'home'});render();if(sco.deckBack&&sco.page==='opp')dkOpen();sco.deckBack=false},
  fixuse:d=>fixSave(d.id||sco.matchId,{round_score:d.s,result:d.r,total_rounds:+d.n,...NO_SIDES},'Used '+d.s+' from '+d.w),

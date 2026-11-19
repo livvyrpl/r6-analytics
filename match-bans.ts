@@ -12,7 +12,7 @@ const cors = (o: string | null) => ({
 const UA = { 'User-Agent': 'Mozilla/5.0 (compatible; LivAnalytics/1.0)' };
 
 type Step = { type: 'ban' | 'pick' | 'decider'; team: string | null; map: string };
-type Side = { name: string; atk: string[]; def: string[] };
+type Side = { name: string; atk: string[]; def: string[]; players?: Record<string, unknown>[] };
 type Game = { map: string; teams: Side[] };
 type Series = { teams: string[]; format: string; veto: Step[]; games: Game[] };
 const key = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
@@ -33,7 +33,13 @@ async function official(id: string): Promise<Series> {
     map: g?.map?.name || '',
     teams: (g.teams || []).map((t: any) => {
       const bans = byRound(t.operatorBans || []);
-      return { name: names.get(t.id) || '', atk: bans.filter((b) => b.isAttacker).map((b) => b.name).filter(Boolean), def: bans.filter((b) => b.isAttacker === false).map((b) => b.name).filter(Boolean) };
+      const c = (s: any, k: string) => (s?.[k] && typeof s[k] === 'object' ? s[k].count : null) ?? null;
+      const players = [...(t.players || [])].sort((x: any, y: any) => (x.positionIndex ?? 0) - (y.positionIndex ?? 0)).map((p: any) => ({
+        name: p.name || '', kills: c(p.stats, 'kills'), deaths: c(p.stats, 'deaths'), headshots: c(p.stats, 'headshots'),
+        opening_kills: c(p.stats, 'openingKills'), opening_deaths: c(p.stats, 'openingDeaths'),
+        kost: typeof p.stats?.kost === 'number' ? Math.round(p.stats.kost * 100) : null, plants: c(p.stats, 'diffuserPlanted'), clutches: c(p.stats, 'clutch'),
+      })).filter((p: any) => p.name);
+      return { name: names.get(t.id) || '', atk: bans.filter((b) => b.isAttacker).map((b) => b.name).filter(Boolean), def: bans.filter((b) => b.isAttacker === false).map((b) => b.name).filter(Boolean), players };
     }),
   }));
   const kinds: Record<number, Step['type']> = { 1: 'pick', 2: 'ban', 3: 'decider' };
