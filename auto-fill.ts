@@ -146,7 +146,11 @@ async function siegegg(id: string): Promise<Series> {
       teams: [...names.entries()].map(([rid, name]) => {
         const mine = bans.filter((b: any) => b.stats_roster_id === rid && b.operator?.name);
         const rw = g.round_wins_by_roster?.[rid] || g.round_wins_by_roster?.[String(rid)];
-        return { name, atk: mine.filter((b: any) => /att/i.test(b.operator.side)).map((b: any) => b.operator.name), def: mine.filter((b: any) => /def/i.test(b.operator.side)).map((b: any) => b.operator.name), won_atk: rw?.atk ?? null, won_def: rw?.def ?? null, score: g.win_roster_id === rid ? g.win_score ?? null : g.loss_roster_id === rid ? g.loss_score ?? null : null };
+        // the round list says who attacked and whether the defenders won; overtime is round 13 and on
+        const rl: any[] = Array.isArray(g.rounds) ? g.rounds : [], won = (x: any) => (x.def_win ? x.def_roster_id : x.atk_roster_id) === rid;
+        const sideOf = (x: any) => !x ? '' : x.atk_roster_id === rid ? 'attack' : x.def_roster_id === rid ? 'defense' : '';
+        const sides = rl.length ? { start: sideOf(rl[0]), ot_start: sideOf(rl[12]), split: rl.length >= 6 ? rl.slice(0, 6).filter(won).length : null } : {};
+        return { name, atk: mine.filter((b: any) => /att/i.test(b.operator.side)).map((b: any) => b.operator.name), def: mine.filter((b: any) => /def/i.test(b.operator.side)).map((b: any) => b.operator.name), won_atk: rw?.atk ?? null, won_def: rw?.def ?? null, score: g.win_roster_id === rid ? g.win_score ?? null : g.loss_roster_id === rid ? g.loss_score ?? null : null, ...sides };
       }),
     };
   });

@@ -3880,10 +3880,15 @@ const srcIds=rows=>{const one=c=>{const v=[...new Set(rows.map(x=>String(x[c]||'
 const srcKey=rows=>{const i=srcIds(rows);return i.r6?'o'+i.r6:i.gg?'g'+i.gg:''};
 // what a series can still get from its sources
 const banGap=rows=>rows.some(x=>!((x.our_atk_ban||x.our_def_ban)&&(x.opp_atk_ban||x.opp_def_ban)));
-const banNeed=rows=>{if(!srcKey(rows))return false;const v=mvSeriesRows(rows[0]).veto;return banGap(rows)||rows.some(x=>!x.start_side||!x.split_score||x.t1_atk==null||!x.league||!x.picked_by||!parseScore(x.round_score))||(Array.isArray(sco.sb)&&rows.some(x=>!hasBoard(x)))||!v||('steps' in v&&!(v.steps||[]).length)||rows.some(x=>'map_number' in x&&x.map_number==null)};
+const banNeed=rows=>{if(!srcKey(rows))return false;const v=mvSeriesRows(rows[0]).veto;return banGap(rows)||rows.some(x=>!x.start_side||!x.split_score||x.t1_atk==null||!x.league||!x.picked_by||!parseScore(x.round_score))||(Array.isArray(sco.sb)&&!!srcIds(rows).r6&&rows.some(x=>!hasBoard(x)))||!v||('steps' in v&&!(v.steps||[]).length)||rows.some(x=>'map_number' in x&&x.map_number==null)};
 // fills a series from its sources: empty op ban boxes, the map order, and the map veto (a new one, or the order of one already saved)
 async function banPull(rows){
- const ids=srcIds(rows);if(ids.r6===null)return 'This series has two different official match IDs. Fix that first.';if(!ids.r6&&!ids.gg)return ids.gg===null?'This series has two different siege.gg match IDs. Fix that first.':'This series has no official or siege.gg match ID.';
+ const ids=srcIds(rows);
+ if(ids.r6===null){const have=[...new Set(rows.map(x=>String(x.r6esports_id||'').trim()).filter(Boolean))],f=await srcLook(rows[0]);
+  if(!f||!have.includes(f))return 'This series has two different official match IDs ('+have.join(', ')+') and the official calendar does not say which is right. Fix it on the edit page.';
+  const u=await sb.from('scout_matches').update({r6esports_id:f}).in('id',rows.filter(x=>String(x.r6esports_id||'').trim()!==f).map(x=>x.id)).select();if(u.error)return scErr(u.error);
+  u.data.forEach(x=>{const o=scAll('m').find(y=>y.id===x.id);if(o)Object.assign(o,x)});sco._srv=(sco._srv||0)+1;
+  const n=await banPull(rows);return typeof n==='number'?{n:n+1,note:'it had two official match IDs; '+f+' is the one with these teams on '+fmtD(rows[0].match_date)+', so every map uses it now'}:n}if(!ids.r6&&!ids.gg)return ids.gg===null?'This series has two different siege.gg match IDs. Fix that first.':'This series has no official or siege.gg match ID.';
  let d;try{d=await banCall(ids.r6||'',ids.gg||'')}catch(e){
   if(ids.r6&&/does not exist/i.test(e.message)&&!rows._refound){const f=await srcLook(rows[0]);
    if(f&&f!==ids.r6){const u=await sb.from('scout_matches').update({r6esports_id:f}).in('id',rows.filter(x=>String(x.r6esports_id||'')===ids.r6).map(x=>x.id)).select();
@@ -3939,9 +3944,9 @@ async function srcFind(rows){
  const n=await banPull(rows);return 1+(typeof n==='number'?n:0);
 }
 async function banPullAll(){
- const team=sco.gapTeam?sco.teams.find(t=>t.id===sco.gapTeam):null,l=gapRows(team).filter(x=>!x.resolved&&(srcKey(x.rows)?banNeed(x.rows):findable(x.rows)));if(!l.length)return toast('Nothing left to read from official or siege.gg pages.');
+ const team=sco.gapTeam?sco.teams.find(t=>t.id===sco.gapTeam):null,l=gapRows(team).filter(x=>!x.resolved&&(srcIds(x.rows).r6===null||(srcKey(x.rows)?banNeed(x.rows):findable(x.rows))));if(!l.length)return toast('Nothing left to read from official or siege.gg pages.');
  const s=sco,job=actStart('Reading series from official and siege.gg pages');let n=0,got=0,same=0,lost=0;const errs=[],notes=[];
- for(const [i,x] of l.entries()){if(sco!==s)break;actSet(job,{detail:(i+1)+' of '+l.length,pct:Math.round(i/l.length*100)});const has=!!srcKey(x.rows);banTried.add(has?srcKey(x.rows):'f'+mgKey(x.rows[0]));
+ for(const [i,x] of l.entries()){if(sco!==s)break;actSet(job,{detail:(i+1)+' of '+l.length,pct:Math.round(i/l.length*100)});const has=!!srcKey(x.rows)||srcIds(x.rows).r6===null;banTried.add(has?srcKey(x.rows):'f'+mgKey(x.rows[0]));
   let r=has?await banPull(x.rows):await srcFind(x.rows);if(r&&typeof r==='object'){notes.push(x.who+': '+r.note);r=r.n}
   if(typeof r==='string'){errs.push(x.who+': '+r);if(/not set up|could not be reached/.test(r))break}else if(r){n+=r;got++}else if(has)same++;else lost++}
  const say='Read '+l.length+' series'+': '+got+' series'+' got details ('+plural(n,'detail')+')'+(same?', '+same+' had nothing new':'')+(lost?', '+lost+' not on the official calendar':'')+(errs.length?', '+errs.length+' could not be read':'')+'.';
