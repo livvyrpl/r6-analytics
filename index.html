@@ -2402,7 +2402,7 @@ async function openSc(page,kind,oppId){
  const s=sco,tid=s.tid,q=t=>sb.from(t).select('*').eq('owner_team_id',tid),[t,m,v,r,c,x,st]=await Promise.all([q('scout_teams'),allRows(()=>q('scout_matches').order('id')),allRows(()=>q('scout_vetoes').order('id')),allRows(()=>q('scout_rounds').order('id')),sb.from('scrims').select('*').eq('team_id',tid),sb.from('scrim_map_results').select('*').eq('team_id',tid),q('scout_settings')]);
  if(sco!==s)return;
  const bad=t.error||m.error||v.error||r.error;
- if(!bad&&canEditS())setTimeout(()=>{if(sco===s)scoreRepair(s)},0);Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
+ if(!bad&&canEditS())setTimeout(()=>{if(sco===s){scoreRepair(s);seriesIdFill(s)}},0);Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
  if(!an||an.tid!==tid)an={tid,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,rc:{},rex:{},rpick:{},rp:null,rerr:'',rteams:null,rroster:[],page:'over'};
  {const cl=tdrRows(tid,c.data||[],'scrim_date'),ok=new Set(cl.map(y=>y.id));an.list=cl;an.res=teamDR(tid)?(x.data||[]).filter(y=>ok.has(y.scrim_id)):x.data||[]}s.st=(st.data||[])[0]||null;
  sb.from('scout_events').select('*').eq('owner_team_id',tid).then(r=>{if(sco!==s)return;s.events=r.error?[]:r.data||[];if(view==='sc'&&s.events.length)render()});
@@ -3364,7 +3364,7 @@ async function rdMove(old,now){
 // One line per match: what we hold for it and what we don't. team=null means every team.
 function gapRows(team){
  const k=team?scKeys(team):null,pairOf=r=>[squash(r.team),squash(r.opponent)].sort().join('|'),groups=new Map();
- sco.m.forEach(r=>{if(k&&!k.has(norm(r.team))&&!k.has(norm(r.opponent)))return;const key=r.r6esports_id||r.siegegg_id||r.match_date+'|'+pairOf(r)+'|'+norm(r.phase);(groups.get(key)||groups.set(key,[]).get(key)).push(r)});
+ sco.m.forEach(r=>{if(k&&!k.has(norm(r.team))&&!k.has(norm(r.opponent)))return;const key=mgKey(r);(groups.get(key)||groups.set(key,[]).get(key)).push(r)});
  const vetoed=new Set(sco.v.map(v=>v.veto_date+'|'+pairOf(v))),rnd=new Map();sco.r.forEach(x=>{const m=norm(x.match_id);(rnd.get(m)||rnd.set(m,[]).get(m)).push(x)});
  return[...groups.values()].map(rows=>{
   const r=rows[0],rs=x=>rnd.get(norm(matchId(x)))||[],same=!k||k.has(norm(r.team)),has={
@@ -3518,7 +3518,7 @@ function gapB(){
  const src=x=>{const r=x.r,tag=(t,u,bad)=>u?`<a class="${bad?'over':''}" style="font-size:11px;font-weight:700;text-decoration:none;${bad?'':'color:var(--pk)'}" href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(t)}">${t[0]}</a>`:'';return `<span class="row" style="gap:6px">${tag('Official page',/^\d+$/.test(r.r6esports_id||'')?'https://www.ubisoft.com/en-us/esports/rainbow-six/siege/match/'+r.r6esports_id:'')}${tag('Siege.gg',/^\d+$/.test(r.siegegg_id||'')?'https://siege.gg/matches/'+r.siegegg_id:'',x.rows.some(y=>y.gg_missing))}${tag('Liquipedia',/^https:/.test(r.source_link||'')?r.source_link:'')}${x.rows.some(y=>y.gg_missing)?`<button class="no" style="height:22px;padding:0 8px;font-size:11.5px" data-a="lpggclear" data-g="${esc(r.siegegg_id)}">Remove dead siege.gg link</button>`:''}</span>`};
  return `<div class="row wrap" style="margin-bottom:8px"><div style="flex:1 1 200px;min-width:0"><h1 class="serif" style="font-size:24px;overflow-wrap:anywhere">${gapIco}Missing data</h1><p class="mu">${team?esc(team.name):'All teams'}. Click + to fill a gap.</p></div><button class="no" data-a="gapback">Back</button></div>
  ${twinsB()}${ytB()}${wrongB(team)}<div class="row wrap" style="gap:6px;margin-bottom:8px" role="group" aria-label="Filter gaps">${chip('','All gaps',open.length)}${GAP_COLS.map(c=>chip(c[0],c[1],miss(c[0]))).join('')}${done.length?`<button class="ch" data-a="gapf" data-k="resolved" aria-pressed="${F==='resolved'}">Resolved <b style="font-weight:700;margin-left:3px">${done.length}</b></button>`:''}</div>
- ${show.length?`<section class="cd" style="padding:8px 10px"><div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">${team?'Opponent':'Match'}</th><th scope="col">Event</th>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<th scope="col" style="text-align:center">${c[1]}</th>`).join('')}<th scope="col">Source</th><th scope="col"><span class="sr">Resolve</span></th></tr></thead><tbody>${show.map(x=>`<tr><td>${esc(x.date)}</td><td><button class="no" style="border:0;height:auto;padding:0;font-weight:600;background:none;text-align:left;white-space:normal" data-a="smatch" data-id="${x.r.id}">${esc(x.who)}</button>${(()=>{const y=gapMate(x,all);return y?`<button class="no" style="display:block;margin-top:3px;height:22px;padding:0 8px;font-size:11.5px" data-a="gapjoin" data-f="${esc(x.rows.map(g=>g.id).join(','))}" data-t="${esc(y.rows.map(g=>g.id).join(','))}" title="Same teams within a day as ${esc(y.date+' '+(y.event||y.who))}">Join with ${esc(y.event||y.date)}</button>`:''})()}</td><td class="mu" style="max-width:150px;overflow:hidden;text-overflow:ellipsis" title="${esc(x.event)}">${esc(x.event)}</td>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<td style="text-align:center">${cell(x,c[0])}</td>`).join('')}<td>${x.has.src?src(x):x.r.r6esports_id||x.r.siegegg_id?src(x):cell(x,'src')}</td><td><button class="no" style="height:22px;padding:0 8px;font-size:11.5px;white-space:nowrap" data-a="gapres" data-ids="${esc(x.rows.map(g=>g.id).join(','))}" data-v="${x.resolved?'':'1'}" title="${x.resolved?'Show this game in Missing data again':'The missing information is not available: stop showing this game here'}">${x.resolved?'Undo':'Mark resolved'}</button></td></tr>`).join('')}</tbody></table></div>${l.length>200?'<p class="mu">Showing the first 200.</p>':''}</section>`:`<div class="cd"><p>Nothing missing${F?' here':''}.</p></div>`}${F==='resolved'?'':done.length?`<p class="mu" style="margin-top:8px;font-size:12px">${plural(done.length,'game')} marked resolved ${done.length>1?'are':'is'} hidden. See them under Resolved.</p>`:''}`;
+ ${show.length?`<section class="cd" style="padding:8px 10px"><div style="overflow-x:auto"><table class="tbl"><thead><tr><th scope="col">Date</th><th scope="col">${team?'Opponent':'Match'}</th><th scope="col">Event</th>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<th scope="col" style="text-align:center">${c[1]}</th>`).join('')}<th scope="col">Source</th><th scope="col"><span class="sr">Resolve</span></th></tr></thead><tbody>${show.map(x=>`<tr><td>${esc(x.date)}</td><td><button class="no" style="border:0;height:auto;padding:0;font-weight:600;background:none;text-align:left;white-space:normal" data-a="smatch" data-id="${x.r.id}">${esc(x.who)}</button>${(()=>{const y=gapMate(x,all);return y?`<button class="no" style="display:block;margin-top:3px;height:22px;padding:0 8px;font-size:11.5px" data-a="gapjoin" data-f="${esc(x.rows.map(g=>g.id).join(','))}" data-t="${esc(y.rows.map(g=>g.id).join(','))}" title="Same teams within a day as ${esc(y.date+' '+(y.event||y.who))}">Join with ${esc(y.event||y.date)}</button>`:''})()}${dupBtn(x.rows,'display:block;margin-top:3px;height:22px;padding:0 8px;font-size:11.5px')}</td><td class="mu" style="max-width:150px;overflow:hidden;text-overflow:ellipsis" title="${esc(x.event)}">${esc(x.event)}</td>${GAP_COLS.filter(c=>c[0]!=='src').map(c=>`<td style="text-align:center">${cell(x,c[0])}</td>`).join('')}<td>${x.has.src?src(x):x.r.r6esports_id||x.r.siegegg_id?src(x):cell(x,'src')}</td><td><button class="no" style="height:22px;padding:0 8px;font-size:11.5px;white-space:nowrap" data-a="gapres" data-ids="${esc(x.rows.map(g=>g.id).join(','))}" data-v="${x.resolved?'':'1'}" title="${x.resolved?'Show this game in Missing data again':'The missing information is not available: stop showing this game here'}">${x.resolved?'Undo':'Mark resolved'}</button></td></tr>`).join('')}</tbody></table></div>${l.length>200?'<p class="mu">Showing the first 200.</p>':''}</section>`:`<div class="cd"><p>Nothing missing${F?' here':''}.</p></div>`}${F==='resolved'?'':done.length?`<p class="mu" style="margin-top:8px;font-size:12px">${plural(done.length,'game')} marked resolved ${done.length>1?'are':'is'} hidden. See them under Resolved.</p>`:''}`;
 }
 const hubRows=()=>sco.m.map(r=>({r,foe:r.opponent,map:r.map,date:r.match_date,res:normRes(r.result),score:r.round_score}));
 // Another game with the same two teams, on the same map, on the same day: often one game split in two by a restart
@@ -3663,7 +3663,7 @@ function mvSeries(r,c1,c2,edit){
  const sm=(x,c)=>mvLogo(x,c).replace('class="mvlg','class="mvlgs');
  const tiles=L.map((m,i)=>{const[a,b]=(m.score||'').split('-');return `<button type="button" data-a="mvgo" data-id="${m.x.id}" style="--rc:${m.res==='W'?k1:m.res==='L'?k2:k0}" aria-current="${m.x.id===r.id}" aria-label="Map ${i+1}, ${esc(m.x.map)}${m.score?', '+m.score:''}">${thumb(m.x.map)}<span class="mvtop"><small>Map ${i+1}</small><b>${esc(mapCanon(m.x.map)||m.x.map)}</b></span><span class="mvsc">${sm(T1,c1)}${m.score?`<span class="${+a<+b?'lo':''}">${a}</span><i>–</i><span class="${+b<+a?'lo':''}">${b}</span>`:'<span style="opacity:.6;font-weight:600;font-size:12.5px">No score</span>'}${sm(T2,c2)}</span></button>`}).join('');
  const meta=[fmtD(r.match_date),r.league,r.phase,veto?.format].filter(Boolean).map(esc).join(' · ');
- const head=`<section class="cd mvc" style="gap:14px"><div class="mvm" style="text-align:center;color:var(--mu)">${meta}</div><div class="mvsh">${tm(T1,c1)}<div class="mvss"><span class="${w1<w2?'lo':''}">${w1}</span><i>–</i><span class="${w2<w1?'lo':''}">${w2}</span><small>Series · ${plural(rows.length,'map')}</small></div>${tm(T2,c2)}</div><div class="mvmt">${tiles}</div></section>`;
+ const head=`<section class="cd mvc" style="gap:14px"><div class="mvm" style="text-align:center;color:var(--mu)">${meta}</div><div class="mvsh">${tm(T1,c1)}<div class="mvss"><span class="${w1<w2?'lo':''}">${w1}</span><i>–</i><span class="${w2<w1?'lo':''}">${w2}</span><small>Series · ${plural(rows.length,'map')}</small></div>${tm(T2,c2)}</div><div class="mvmt">${tiles}</div>${seriesDups(rows)?`<div class="row wrap" style="gap:8px;justify-content:center"><span class="over">${esc(seriesDups(rows).maps.join(', '))} ${seriesDups(rows).maps.length>1?'are':'is'} saved more than once in this series.</span>${dupBtn(rows,'height:30px')}</div>`:''}</section>`;
  if(edit)return `<div class="mvsr">${head}</div>`;
  // map veto
  const chip=(n,cls='',rc='')=>{const p=mapPath(n);return `<span class="mvv ${cls}"${rc?` style="--rc:${rc}"`:''}>${p?`<img src="${UBI}${p}?imwidth=160" alt="" loading="lazy">`:'<span class="ph0" style="display:inline-block;background:var(--bd)"></span>'}<span>${esc(mapCanon(n)||n)}</span></span>`};
@@ -3717,7 +3717,36 @@ function rdView(g,c1='#e07cc0',c2='#9b6bff',edit=false){
 }
 // MERGE WITH ANOTHER SERIES: every series between the same two teams (any of their names), closest date first.
 // Picking one joins this map (or its whole series) into it, map by map, through gapJoin.
-const mgKey=r=>r.r6esports_id||r.siegegg_id||r.match_date+'|'+[squash(r.team),squash(r.opponent)].sort().join('|')+'|'+norm(r.phase);
+// SERIES, for the whole site: maps of one series are the same two teams (any of their names) on the same day and phase,
+// where a map with no phase joins the only phase played that day, plus any maps sharing an official or siege.gg match id.
+function seriesMap(){
+ const s=sco;if(s._sr&&s._sr.m===s.m&&s._sr.n===s.m.length&&s._sr.v===s._srv)return s._sr.k;
+ const par=new Map(),find=x=>{while(par.get(x)!==x){par.set(x,par.get(par.get(x)));x=par.get(x)}return x},uni=(a,b)=>{a=find(a);b=find(b);if(a!==b)par.set(a,b)};
+ const seen=new Map(),add=(k,id)=>{if(seen.has(k))uni(seen.get(k),id);else seen.set(k,id)},nmc=new Map(),nm=n=>{const q=norm(n);if(nmc.has(q))return nmc.get(q);const x=twinOf(n),v=x?'t'+x.id:squash(n);nmc.set(q,v);return v},pairOf=r=>[nm(r.team),nm(r.opponent)].sort().join('|');
+ s.m.forEach(r=>par.set(r.id,r.id));
+ const day=new Map();s.m.forEach(r=>{const k=r.match_date+'|'+pairOf(r);(day.get(k)||day.set(k,[]).get(k)).push(r)});
+ day.forEach((rows,k)=>{const ph=[...new Set(rows.map(r=>norm(r.phase)).filter(Boolean))];rows.forEach(r=>add('d|'+k+'|'+(norm(r.phase)||(ph.length===1?ph[0]:'')),r.id))});
+ s.m.forEach(r=>{if(r.r6esports_id)add('o|'+r.r6esports_id,r.id);if(r.siegegg_id)add('g|'+r.siegegg_id,r.id)});
+ const k=new Map();s.m.forEach(r=>k.set(r.id,find(r.id)));s._sr={m:s.m,n:s.m.length,v:s._srv,k};return k;
+}
+const mgKey=r=>seriesMap().get(r.id)||r.id;
+// a map saved more than once in a series: the copy to keep is the one with an official source, then the non-replay one
+function seriesDups(rows){
+ const by=new Map();rows.forEach(r=>{const k=mapCanon(r.map);(by.get(k)||by.set(k,[]).get(k)).push(r)});
+ const rank=r=>(r.r6esports_id||r.siegegg_id?4:0)+(r.source_name&&r.source_name!=='Replay'?2:0)+(r.source_link?1:0);
+ const keep=[],from=[],maps=[];by.forEach((l,k)=>{const s=[...l].sort((a,b)=>rank(b)-rank(a));keep.push(s[0]);if(s.length>1){from.push(...s.slice(1));maps.push(k)}});
+ return from.length?{from:from.map(r=>r.id),to:keep.map(r=>r.id),maps}:null;
+}
+const dupBtn=(rows,st='')=>{const d=seriesDups(rows);return d?`<button class="no" style="${st}" data-a="gapjoin" data-f="${d.from.join(',')}" data-t="${d.to.join(',')}" title="${esc(d.maps.join(', '))} saved more than once">Join duplicate maps (${esc(d.maps.join(', '))})</button>`:''};
+// every map of a series gets the series' official and siege.gg match id when only some of them have it
+async function seriesIdFill(s,quiet){
+ if(!s||s.idFillBusy||!canEditS())return;s.idFillBusy=true;let n=0;
+ try{const g=new Map();s.m.forEach(r=>{const k=mgKey(r);(g.get(k)||g.set(k,[]).get(k)).push(r)});
+  const todo=new Map();g.forEach(rows=>['r6esports_id','siegegg_id','league','phase'].forEach(c=>{const v=[...new Set(rows.map(r=>String(r[c]||'').trim()).filter(Boolean))];if(v.length!==1)return;const twice=new Set(rows.map(r=>mapCanon(r.map)).filter((m,i,l)=>l.indexOf(m)!==i));const ids=rows.filter(r=>!String(r[c]||'').trim()&&!(c==='phase'&&twice.has(mapCanon(r.map)))).map(r=>r.id);if(!ids.length)return;const key=c+'|'+v[0];todo.set(key,[...(todo.get(key)||[]),...ids])}));
+  for(const [key,ids] of todo){const[c,v]=[key.slice(0,key.indexOf('|')),key.slice(key.indexOf('|')+1)];for(let i=0;i<ids.length;i+=100){const u=await sb.from('scout_matches').update({[c]:v}).in('id',ids.slice(i,i+100)).select();if(u.error||sco!==s)return;u.data.forEach(x=>{const o=scAll('m').find(y=>y.id===x.id);if(o){Object.assign(o,x);n++}})}}
+ }finally{s.idFillBusy=false}
+ if(n){s._srv=(s._srv||0)+1;if(view==='sc'&&!sdirty&&!autoPending()&&!$('#dlg')?.open)render();if(!quiet)toast('Filled in the series details (match id, league, phase) on '+plural(n,'map')+'.')}
+}
 function serMergeOpen(){
  const r=sco.m.find(x=>x.id===sco.matchId);if(!r)return;const d=$('#dlg'),mine=mgKey(r);
  const pair=x=>twinSame(x.team,r.team)&&twinSame(x.opponent,r.opponent)||twinSame(x.team,r.opponent)&&twinSame(x.opponent,r.team);
@@ -3758,7 +3787,7 @@ async function saveMatch(form,qt){
  const r=await sb.from('scout_matches').update(row).eq('id',id).select().single();
  btn.disabled=false;
  if(r.error)return say(qt,r.error.code==='23505'||/duplicate key/i.test(r.error.message)?'That date, teams, map and phase already exist as another game.':scErr(r.error));
- const old={...sco.m.find(x=>x.id===id)};Object.assign(sco.m.find(x=>x.id===id),r.data);await rdMove(old,r.data);if(qt){rdPaint(sco.m.find(x=>x.id===id));if(['round_score','result','map','match_date','r6esports_id','siegegg_id'].some(k=>old[k]!==r.data[k]))recheck(r.data);return{}}sdirty=false;render();toast('Game saved');recheck(r.data);
+ const old={...sco.m.find(x=>x.id===id)};Object.assign(sco.m.find(x=>x.id===id),r.data);await rdMove(old,r.data);sco._srv=(sco._srv||0)+1;if(r.data.r6esports_id||r.data.siegegg_id)seriesIdFill(sco);if(qt){rdPaint(sco.m.find(x=>x.id===id));if(['round_score','result','map','match_date','r6esports_id','siegegg_id'].some(k=>old[k]!==r.data[k]))recheck(r.data);return{}}sdirty=false;render();toast('Game saved');recheck(r.data);
 }
 // after an edit, compare the game with the official page and siege.gg again
 async function recheck(r){
