@@ -3742,6 +3742,8 @@ function mvSeriesRows(r){
  const num=x=>x.map_number!=null?x.map_number:50+at(x);return{rows:rows.sort((a,b)=>num(a)-num(b)||(idx.get(a.id)??0)-(idx.get(b.id)??0)),veto};
 }
 // MAP VETO EDITOR on the series edit page: one line per step (ban, pick or decider, which team, which map), saved to the series' veto
+// maps a veto can name: the built-in ones plus the others that have been in competitive play
+const VETO_MAPS=['Bank','Border','Chalet','Clubhouse','Coastline','Consulate','Emerald Plains','Fortress','Kafe Dostoyevsky','Kanal','Lair','Nighthaven Labs','Oregon','Outback','Skyscraper','Stadium Bravo','Theme Park','Villa'];
 function vedInit(r,rows,veto,st0){
  const k=mgKey(r);if(sco.ved?.k===k)return sco.ved;
  let steps=st0.length?st0.map(s=>({...s})):[];
@@ -3753,7 +3755,7 @@ function vedInit(r,rows,veto,st0){
  sco.ved={k,steps,format:veto?.format||(rows.length>=4?'Bo5':rows.length>=2?'Bo3':'Bo1'),id:veto?.id||null,dirty:false};return sco.ved;
 }
 function vedHtml(r,rows,veto,st0){
- const e=vedInit(r,rows,veto,st0),maps=[...new Set([...MAP_POOL.map(m=>m[0]),...e.steps.map(s=>s.map).filter(Boolean)])];
+ const e=vedInit(r,rows,veto,st0),maps=[...new Set([...MAP_POOL.map(m=>m[0]),...VETO_MAPS,...sco.m.map(x=>mapCanon(x.map)).filter(Boolean),...e.steps.map(s=>s.map).filter(Boolean)])].sort((a,b)=>a.localeCompare(b));
  const W={type:'flex:0 0 110px',team:'flex:1 1 0',map:'flex:1.4 1 0',format:'width:84px'},sel=(i,k,opts,v)=>`<select class="fi" data-c="ved" data-i="${i}" data-k="${k}" style="height:34px;min-width:0;${W[k]}">${opts.map(o=>`<option value="${esc(o[0])}"${o[0]===(v??'')?' selected':''}>${esc(o[1])}</option>`).join('')}</select>`;
  const line=(s,i)=>`<div class="row" style="gap:6px;align-items:center"><span class="mu" style="width:20px;text-align:right;flex:none">${i+1}</span>${sel(i,'type',[['ban','Ban'],['pick','Pick'],['decider','Decider']],s.type)}${s.type==='decider'?'<span class="mu" style="flex:1 1 0;min-width:0;text-indent:12px">Left over</span>':sel(i,'team',[[r.team,r.team],[r.opponent,r.opponent]],twinSame(s.team,r.opponent)?r.opponent:r.team)}${sel(i,'map',[['','Pick a map'],...maps.map(m=>[m,m])],s.map)}<button class="no" style="height:34px;width:34px;padding:0;flex:none" data-a="vedx" data-i="${i}" aria-label="Remove step ${i+1}">×</button></div>`;
  return `<section class="cd" id="vedsec" style="gap:10px"><div class="row wrap" style="justify-content:space-between;gap:8px"><h2 style="font-size:15px;font-weight:600">Map veto</h2><span class="row" style="gap:6px"><span class="mu" style="font-size:12.5px">Format</span>${sel(-1,'format',[['Bo1','Bo1'],['Bo2','Bo2'],['Bo3','Bo3'],['Bo5','Bo5']],e.format)}</span></div>
