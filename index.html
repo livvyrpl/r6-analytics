@@ -3120,7 +3120,7 @@ function lpB(){
  <div class="row" style="justify-content:flex-end"><button class="no" data-a="lpevents">Back</button><button class="go" data-a="lpgo" ${l.tOn.size?'':'disabled'}>Pull</button></div></section>`;
 }
 const lpTitle=l=>l.allRun?'Pull everything · all teams':l.team?'Pull everything · '+(sco.teams.find(t=>t.id===l.team)?.name||'team'):l.only?'Check matches':'Pull from Liquipedia';
-const lpSummary=l=>{const c=l.sum,bits=[c.matches?c.matches+' games added':'',c.vetoes?c.vetoes+' vetoes added':'',c.teams?plural(c.teams,'team')+' added':'',c.filled?plural(c.filled,'saved game')+' got links and IDs':'',c.checked?plural(c.checked,'game')+' checked':'',c.flagged?c.flagged+' differ':'',c.replays?plural(c.replays,'replay link')+' saved':''].filter(Boolean);return bits.join(' · ')||'Nothing new'};
+const lpSummary=l=>{const c=l.sum,bits=[c.matches?c.matches+' games added':'',c.vetoes?c.vetoes+' vetoes added':'',c.teams?plural(c.teams,'team')+' added':'',c.filled?plural(c.filled,'saved game')+' got links and IDs':'',c.pg&&!c.filled?'links: '+c.pg+' games on the page, '+(c.near||0)+' saved games on those days, '+(c.matched||0)+' matched (nothing was missing)':'',c.checked?plural(c.checked,'game')+' checked':'',c.flagged?c.flagged+' differ':'',c.replays?plural(c.replays,'replay link')+' saved':''].filter(Boolean);return bits.join(' · ')||'Nothing new'};
 const lpDraw=()=>{const l=sco?.lp;if(l?.running){if(!l.act)l.act=actStart(lpTitle(l),()=>{l.stop=true;lpDraw()});actSet(l.act,{detail:l.stop?'Stopping…':l.prog?.label||'',pct:l.prog?.n?Math.round(l.prog.i/l.prog.n*100):null})}if(view==='sc')render()};
 async function lpResolve(url){
  const l=sco.lp;l.url=url;l.err='';l.busy=true;lpDraw();
@@ -3146,7 +3146,7 @@ async function lpRun(){
  l.prog={i:0,n:chunks.length+pages.length+(l.rosters?teams.length:0),label:'Adding teams…'};lpDraw();
  const step=(label,fn,what)=>lpStep(l,label,fn,what);
  for(const c of chunks)await step('Adding teams…',async()=>{const r=await lpCall({action:'teams',names:c,league:leagueOf});l.sum.teams+=r.added.length;r.errors.forEach(x=>l.fails.push(x))},'Teams '+c.join(', '));
- for(const p of pages)await step('Reading '+p,async()=>{const r=await lpCall({action:'pull',page:p,teams,from});l.sum.matches+=r.matches;l.sum.vetoes+=r.vetoes;l.sum.skipped+=r.skipped;l.sum.filled=(l.sum.filled||0)+(r.filled||0);if(r.ver==null&&!lpOld.told){lpOld.told=true;toast('The Liquipedia pull function in Supabase is an old copy, so games already saved do not get their links filled in. Replace its code with the newest file and deploy it.')}},p);
+ for(const p of pages)await step('Reading '+p,async()=>{const r=await lpCall({action:'pull',page:p,teams,from});l.sum.matches+=r.matches;l.sum.vetoes+=r.vetoes;l.sum.skipped+=r.skipped;l.sum.filled=(l.sum.filled||0)+(r.filled||0);l.sum.pg=(l.sum.pg||0)+(r.page_games||0);l.sum.near=(l.sum.near||0)+(r.near||0);l.sum.matched=(l.sum.matched||0)+(r.matched||0);if(!(r.ver>=3)&&!lpOld.told){lpOld.told=true;toast('The Liquipedia pull function in Supabase is an old copy, so games already saved do not get their links filled in. Replace its code with the newest file and deploy it.')}},p);
  if(l.rosters)for(const t of teams)await step('Getting roster: '+t,()=>lpCall({action:'roster',name:t}),'Roster '+t);
  if(!l.stop)await lpChecks(l);
  await lpReload(l);
@@ -4117,7 +4117,7 @@ async function lpTeamWork(l,t,from,rosters,tag=''){
  for(const x of roots)await lpStep(l,tag+'Listing '+x,async()=>{(await lpCall({action:'resolve',url:'https://liquipedia.net/rainbowsix/'+encodeURI(x.replace(/ /g,'_'))})).pages.forEach(p=>{if(!skip.test(p.title))pages.add(p.title)})},x);
  l.sum.events+=pages.size;l.prog.n+=pages.size;lpDraw();
  const before=l.sum.matches+l.sum.skipped;
- for(const p of pages)await lpStep(l,tag+'Reading '+p,async()=>{const r=await lpCall({action:'pull',page:p,teams:[name,...aliases],canon:name,from:from||undefined});l.sum.matches+=r.matches;l.sum.vetoes+=r.vetoes;l.sum.skipped+=r.skipped;l.sum.filled=(l.sum.filled||0)+(r.filled||0);if(r.ver==null&&!lpOld.told){lpOld.told=true;toast('The Liquipedia pull function in Supabase is an old copy, so games already saved do not get their links filled in. Replace its code with the newest file and deploy it.')}},p);
+ for(const p of pages)await lpStep(l,tag+'Reading '+p,async()=>{const r=await lpCall({action:'pull',page:p,teams:[name,...aliases],canon:name,from:from||undefined});l.sum.matches+=r.matches;l.sum.vetoes+=r.vetoes;l.sum.skipped+=r.skipped;l.sum.filled=(l.sum.filled||0)+(r.filled||0);l.sum.pg=(l.sum.pg||0)+(r.page_games||0);l.sum.near=(l.sum.near||0)+(r.near||0);l.sum.matched=(l.sum.matched||0)+(r.matched||0);if(!(r.ver>=3)&&!lpOld.told){lpOld.told=true;toast('The Liquipedia pull function in Supabase is an old copy, so games already saved do not get their links filled in. Replace its code with the newest file and deploy it.')}},p);
  if(rosters&&!(t.players||[]).length){l.prog.n++;await lpStep(l,tag+'Getting roster, about 30 seconds',()=>lpCall({action:'roster',name}),t.name+' roster')}
  if(!l.stop&&l.sum.matches+l.sum.skipped===before)l.fails.push(`No games in this date range were found for ${t.name} on Liquipedia.`);
 }
