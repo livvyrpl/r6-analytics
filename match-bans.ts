@@ -99,6 +99,32 @@ async function siegegg(id: string): Promise<Series> {
   return { teams: [...names.values()], format: picks ? 'Bo' + picks : '', veto, games, info: { league: String(match.competition_full_name || match.competition_name || ''), phase: '', vod: '', replay: '' } };
 }
 
+// both pages: the official one first, siege.gg for what it lacks
+async function readBoth(r6: string, gg: string) {
+  const notes: string[] = [];
+  let a: Series | null = null, b: Series | null = null;
+  if (/^\d+$/.test(r6)) { try { a = await official(r6); } catch (e) { notes.push(e instanceof Error ? e.message : String(e)); } }
+  const lacks = (s: Series | null) => !s || !s.veto.length || !s.games.length || s.games.some((g) => g.teams.every((t) => !t.atk.length && !t.def.length));
+  if (/^\d+$/.test(gg) && lacks(a)) { try { b = await siegegg(gg); } catch (e) { notes.push(e instanceof Error ? e.message : String(e)); } }
+  if (!a && !b) throw new Error(notes.join(' ') || 'Nothing could be read.');
+  const main = (a || b)!, alt = a ? b : null;
+  // the official page first; siege.gg fills a missing veto, or a map without bans
+  const games = main.games.length ? main.games.map((g) => {
+    if (g.teams.some((t) => t.atk.length || t.def.length) || !alt) return g;
+    const o = alt.games.find((x) => key(x.map) === key(g.map));
+    return o ? { ...g, teams: o.teams } : g;
+  }) : alt?.games || [];
+  return ({
+    source: [a && 'Official', b && 'siege.gg'].filter(Boolean).join(' + '),
+    teams: main.teams.length ? main.teams : alt?.teams || [],
+    format: main.format || alt?.format || '',
+    veto: main.veto.length ? main.veto : alt?.veto || [],
+    games,
+    info: { league: main.info.league || alt?.info.league || '', phase: main.info.phase || alt?.info.phase || '', vod: main.info.vod || alt?.info.vod || '', replay: main.info.replay || alt?.info.replay || '' },
+    notes,
+  });
+}
+
 Deno.serve(async (req) => {
   const h = cors(req.headers.get('origin'));
   const out = (body: unknown) => new Response(JSON.stringify(body), { headers: { ...h, 'Content-Type': 'application/json' } });
@@ -107,28 +133,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const r6 = String(body.r6 || '').trim(), gg = String(body.gg || '').trim();
     if (!/^\d+$/.test(r6) && !/^\d+$/.test(gg)) return out({ error: 'No official or siege.gg match ID.' });
-    const notes: string[] = [];
-    let a: Series | null = null, b: Series | null = null;
-    if (/^\d+$/.test(r6)) { try { a = await official(r6); } catch (e) { notes.push(e instanceof Error ? e.message : String(e)); } }
-    const lacks = (s: Series | null) => !s || !s.veto.length || !s.games.length || s.games.some((g) => g.teams.every((t) => !t.atk.length && !t.def.length));
-    if (/^\d+$/.test(gg) && lacks(a)) { try { b = await siegegg(gg); } catch (e) { notes.push(e instanceof Error ? e.message : String(e)); } }
-    if (!a && !b) return out({ error: notes.join(' ') || 'Nothing could be read.' });
-    const main = (a || b)!, alt = a ? b : null;
-    // the official page first; siege.gg fills a missing veto, or a map without bans
-    const games = main.games.length ? main.games.map((g) => {
-      if (g.teams.some((t) => t.atk.length || t.def.length) || !alt) return g;
-      const o = alt.games.find((x) => key(x.map) === key(g.map));
-      return o ? { ...g, teams: o.teams } : g;
-    }) : alt?.games || [];
-    return out({
-      source: [a && 'Official', b && 'siege.gg'].filter(Boolean).join(' + '),
-      teams: main.teams.length ? main.teams : alt?.teams || [],
-      format: main.format || alt?.format || '',
-      veto: main.veto.length ? main.veto : alt?.veto || [],
-      games,
-      info: { league: main.info.league || alt?.info.league || '', phase: main.info.phase || alt?.info.phase || '', vod: main.info.vod || alt?.info.vod || '', replay: main.info.replay || alt?.info.replay || '' },
-      notes,
-    });
+    return out(await readBoth(r6, gg));
   } catch (e) {
     return out({ error: 'Could not read the match: ' + (e instanceof Error ? e.message : String(e)) });
   }
