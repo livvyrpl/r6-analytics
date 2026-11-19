@@ -793,7 +793,7 @@ async function loadPlayer(){
   uid?sb.from('journal_goals').select('*').eq('team_id',tid).eq('user_id',uid):none,
   uid?sb.from('journal_notes').select('*').eq('team_id',tid).eq('user_id',uid):none,
   sb.from('schedule_entries').select('*').eq('team_id',tid),
-  uid?statRows(tid):none,
+  uid?statRows(tid,[uid]):none,
   uid&&canPick()?sb.from('scrim_player_notes').select('scrim_id,notes').eq('team_id',tid).eq('user_id',uid):none,
   uid?sb.from('team_roster').select('id,name,linked_user_id').eq('team_id',tid):none,
   uid?sb.from('scrim_vod_notes').select('*').eq('team_id',tid):none]);
@@ -886,7 +886,7 @@ async function openRoster(){
  view='roster';ros={tid:cur.id,rows:null,err:'',off:[],late:[]};render();
  if(!canPick())return;
  const s=ros,tid=s.tid,t=today(),ids=[...new Set(allMem.filter(m=>m.team_id===tid&&m.roles.includes('player')).map(m=>m.user_id))],none={data:[]};
- const[p,g,r,e,lk]=await Promise.all([ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none,sb.from('journal_goals').select('*').eq('team_id',tid),statRows(tid),sb.from('schedule_entries').select('*').eq('team_id',tid).then(q=>tdrQ(tid,q,'entry_date')),sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid)]);
+ const[p,g,r,e,lk]=await Promise.all([ids.length?sb.from('profiles').select('id,email,display_name').in('id',ids):none,sb.from('journal_goals').select('*').eq('team_id',tid),statRows(tid,ids),sb.from('schedule_entries').select('*').eq('team_id',tid).then(q=>tdrQ(tid,q,'entry_date')),sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid)]);
  if(ros!==s)return;
  const bad=[g,r,e].find(x=>x.error);if(bad){s.err=pErr(bad.error);s.rows=[];if(view==='roster')render();return}
  const nm=Object.fromEntries((p.data||[]).map(x=>[x.id,x.display_name||x.email])),off=(e.data||[]).filter(x=>x.kind==='off_day'&&schLocal(x).d>=t).sort((a,b)=>schKey(a).localeCompare(schKey(b)));
@@ -2410,7 +2410,13 @@ async function allRows(q){
  const out=[...first.data];
  for(let i=1000;;i+=6000){const rs=await Promise.all([0,1,2,3,4,5].map(k=>q().range(i+k*1000,i+k*1000+999)));for(const r of rs){if(r.error)return r;out.push(...r.data);if(r.data.length<1000)return{data:out}}}
 }
-const statRows=async tid=>{const r=await allRows(()=>sb.from('player_round_stats').select('*').eq('owner_team_id',tid).order('id'));return r.error?r:{data:tdrRows(tid,r.data,'match_date').map(x=>({...x,died:x.deaths>0}))}};
+const statRows=async(tid,uids)=>{
+ uids=[...new Set((uids||[]).filter(Boolean))];if(!uids.length)return{data:[]};
+ const lk=await sb.from('team_roster').select('name,linked_user_id').eq('team_id',tid).in('linked_user_id',uids);if(lk.error)return lk;
+ const q=v=>'"'+String(v).replace(/\\/g,'\\\\').replace(/"/g,'\\"')+'"';
+ const names=[...new Set((lk.data||[]).map(x=>String(x.name||'').trim().toLowerCase()).filter(Boolean))],parts=['user_id.in.('+uids.join(',')+')',...(names.length?['player_key.in.('+names.map(q).join(',')+')']:[])];
+ const r=await allRows(()=>sb.from('player_round_stats').select('*').eq('owner_team_id',tid).or(parts.join(',')).order('id'));
+ return r.error?r:{data:tdrRows(tid,r.data,'match_date').map(x=>({...x,died:x.deaths>0}))}};
 const scErr=e=>/schema cache|does not exist/i.test(e.message)?'The scouting database tables are not set up yet. Paste stage8.sql into the Supabase SQL Editor and run it.':e.code==='PGRST116'||/row-level security/i.test(e.message)?'You do not have permission to make that change.':e.message;
 async function openSc(page,kind,oppId){
  view='sc';
