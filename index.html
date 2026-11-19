@@ -159,6 +159,16 @@ body.vodon{padding-right:calc(var(--vodw,min(44vw,760px)) + 24px)}body.vodon #to
 .mvv.ban{opacity:.8}.mvv.ban span{text-decoration:line-through;text-decoration-color:rgba(255,138,138,.9)}.mvv.pick{border-color:rgba(var(--rc),.75);box-shadow:0 0 10px -4px rgba(var(--rc),.9)}
 .mvvl{display:flex;flex-direction:column;gap:8px}.mvvl>div{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.mvvl>div>b{font-size:12.5px;font-weight:600;min-width:150px}
 .mvmiss td,.mvmiss th{text-align:center}.mvmiss th:first-child,.mvmiss td:first-child{text-align:left}.mvy{color:#34c46a;font-weight:700}.mvx{color:#ff8a8a;font-weight:600;font-size:12px}
+.mvtl{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.mvtl>div{position:relative;border-radius:11px;overflow:hidden;min-height:118px;display:flex;flex-direction:column;justify-content:space-between;padding:8px 10px;border:1px solid rgba(var(--rc),.6);box-shadow:0 0 14px -6px rgba(var(--rc),.8);color:#fff}
+.mvtl>div>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.5}
+.mvtl>div::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,8,14,.7),rgba(8,8,14,.15) 50%,rgba(8,8,14,.85))}
+.mvtl>div>span{position:relative;z-index:1;display:flex;align-items:center;gap:6px;min-width:0}
+.mvtl .n{width:20px;height:20px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:rgba(var(--rc),.9);color:#fff;flex:none}
+.mvtl .k{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgb(var(--rc))}
+.mvtl b{font-size:14px;font-weight:600;overflow-wrap:anywhere}.mvtl small{font-size:11.5px;opacity:.85;overflow-wrap:anywhere}
+.mvtl .ban>img{filter:grayscale(1);opacity:.3}.mvtl .ban b{text-decoration:line-through;text-decoration-color:rgba(255,138,138,.95);text-decoration-thickness:2px}
+.mvtl .mvlgs{width:20px;height:20px}
 .mvk{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:16px}
 .mvk>div{border:1px solid rgba(var(--pk-rgb),.38);border-radius:10px;padding:8px 12px;display:flex;flex-direction:column;gap:2px;min-width:0;background:linear-gradient(150deg,rgba(var(--pk-rgb),.13),rgba(6,5,9,.6) 70%);box-shadow:0 0 16px -8px rgba(var(--pk-rgb),.75),inset 0 0 12px -8px rgba(var(--pk-rgb),.6)}
 .mvk b{font-size:12.5px;font-weight:600;letter-spacing:.02em}.mvk span{font-size:14px;opacity:.82;overflow-wrap:anywhere}
@@ -3368,6 +3378,9 @@ function seriesWrong(rows){
  const out=[],one=(c,l)=>{const v=[...new Set(rows.map(x=>String(x[c]||'').trim()).filter(Boolean))];if(v.length>1)out.push({id:rows[0].id,w:'Two different '+l+' in one series: '+v.join(', ')})};
  one('r6esports_id','official matches');one('siegegg_id','siege.gg matches');one('source_link','source pages');
  const lg=[...new Set(rows.map(x=>String(x.league||'').trim()).filter(Boolean))];if(lg.length>1)out.push({id:rows[0].id,w:'Two different leagues in one series: '+lg.join(', ')});
+ // every game needs at least one source: an official match, a siege.gg match or a source page such as Liquipedia
+ const hasSrc=x=>!!(String(x.r6esports_id||'').trim()||String(x.siegegg_id||'').trim()||/^https?:\/\//i.test(x.source_link||''));
+ if(!rows.some(hasSrc))out.push({id:rows[0].id,w:'No source: no official match, siege.gg match or source link on any map'});else rows.filter(x=>!hasSrc(x)).forEach(x=>out.push({id:x.id,w:(mapCanon(x.map)||x.map)+': no source'}));
  const d=seriesDups(rows);if(d)out.push({id:rows.find(x=>d.from.includes(x.id))?.id||rows[0].id,w:d.maps.join(', ')+' saved more than once'});
  rows.forEach(x=>{const m=mapCanon(x.map)||x.map;gameWrong(x).forEach(w=>out.push({id:x.id,w:m+': '+w}));if(x.check_status==='mismatch')out.push({id:x.id,w:m+': '+(x.check_notes||'does not match another source')})});
  return out;
@@ -3678,10 +3691,17 @@ function mvSeries(r,c1,c2,edit){
  if(edit)return `<div class="mvsr">${head}</div>`;
  // map veto
  const chip=(n,cls='',rc='')=>{const p=mapPath(n);return `<span class="mvv ${cls}"${rc?` style="--rc:${rc}"`:''}>${p?`<img src="${UBI}${p}?imwidth=160" alt="" loading="lazy">`:'<span class="ph0" style="display:inline-block;background:var(--bd)"></span>'}<span>${esc(mapCanon(n)||n)}</span></span>`};
+ // map veto as a timeline. Only who banned and picked what is saved, so the order is the usual one:
+ // without picks (Bo1) the bans alternate; with picks, one ban each, the picks, then the other bans in turn, then the decider
  let vet='';
- if(veto){const s1=twinSame(veto.team,r.team)||!twinSame(veto.team,r.opponent),ka=s1?k1:k2,kb=s1?k2:k1,bans=p=>[1,2,3,4].map(i=>veto[p+'_ban_'+i]).filter(Boolean);
-  const line=(l,items)=>items.length?`<div><b>${l}</b>${items.join('')}</div>`:'';
-  vet=`<section class="cd mvc" style="gap:10px"><h2 style="font-size:15px;font-weight:600">Map veto</h2><div class="mvvl">${line(esc(veto.team)+' banned',bans('t1').map(n=>chip(n,'ban')))}${line(esc(veto.opponent)+' banned',bans('t2').map(n=>chip(n,'ban')))}${line(esc(veto.team)+' picked',[veto.t1_pick,veto.t1_pick_2].filter(Boolean).map(n=>chip(n,'pick',ka)))}${line(esc(veto.opponent)+' picked',[veto.t2_pick,veto.t2_pick_2].filter(Boolean).map(n=>chip(n,'pick',kb)))}${line('Decider',veto.decider?[chip(veto.decider,'pick',(mvRGB('#e07cc0')||[]).join(','))]:[])}</div></section>`}
+ if(veto){const s1=twinSame(veto.team,r.team)||!twinSame(veto.team,r.opponent),A={name:veto.team,k:s1?k1:k2,lg:s1?T1:T2,c:s1?c1:c2},B={name:veto.opponent,k:s1?k2:k1,lg:s1?T2:T1,c:s1?c2:c1};
+  const bans=p=>[1,2,3,4].map(i=>veto[p+'_ban_'+i]).filter(Boolean),ba=bans('t1'),bb=bans('t2'),picks=[[A,veto.t1_pick],[B,veto.t2_pick],[A,veto.t1_pick_2],[B,veto.t2_pick_2]].filter(x=>x[1]);
+  const st=[],alt=(xa,xb,from)=>{for(let i=from;i<Math.max(xa.length,xb.length);i++){if(xa[i])st.push({w:A,m:xa[i],k:'ban'});if(xb[i])st.push({w:B,m:xb[i],k:'ban'})}};
+  if(picks.length){if(ba[0])st.push({w:A,m:ba[0],k:'ban'});if(bb[0])st.push({w:B,m:bb[0],k:'ban'});picks.forEach(x=>st.push({w:x[0],m:x[1],k:'pick'}));alt(ba,bb,1)}else alt(ba,bb,0);
+  if(veto.decider)st.push({w:null,m:veto.decider,k:'decider'});
+  const sm=(x,c)=>mvLogo(x,c).replace('class="mvlg','class="mvlgs'),dk=mvRGB('#e07cc0').join(',');
+  const step=(s,i)=>{const p=mapPath(s.m),rc=s.k==='ban'?'255,138,138':s.w?s.w.k:dk;return `<div class="${s.k}" style="--rc:${rc}">${p?`<img src="${UBI}${p}?imwidth=320" alt="" loading="lazy">`:''}<span><span class="n">${i+1}</span><span class="k">${s.k==='ban'?'Ban':s.k==='pick'?'Pick':'Decider'}</span></span><span style="flex-direction:column;align-items:flex-start;gap:3px"><b>${esc(mapCanon(s.m)||s.m)}</b><small style="display:flex;align-items:center;gap:5px">${s.w?sm(s.w.lg,s.w.c)+esc(s.w.name):'Left over'}</small></span></div>`};
+  vet=`<section class="cd mvc" style="gap:10px"><div class="row wrap" style="justify-content:space-between;gap:6px"><h2 style="font-size:15px;font-weight:600">Map veto</h2>${veto.format?`<span class="mu" style="font-size:12.5px">${esc(veto.format)}</span>`:''}</div><div class="mvtl">${st.map(step).join('')}</div></section>`}
  // what is missing, map by map
  const y='<span class="mvy" aria-label="Saved">✓</span>',no='<span class="mvx">Missing</span>';
  const cols=[['Score',x=>!!(parseScore(x.round_score)&&normRes(x.result))],['Op bans',x=>!!((x.our_atk_ban||x.our_def_ban)&&(x.opp_atk_ban||x.opp_def_ban))],['Scoreboard',x=>!!x.replay_match_id],['Round log',x=>gameRounds(x).length>0],['Operators',x=>gameRounds(x).some(z=>z.operator_1)],['VOD',x=>!!x.vod_link]];
@@ -3753,7 +3773,7 @@ const dupBtn=(rows,st='')=>{const d=seriesDups(rows);return d?`<button class="no
 async function seriesIdFill(s,quiet){
  if(!s||s.idFillBusy||!canEditS())return;s.idFillBusy=true;let n=0;
  try{const g=new Map();s.m.forEach(r=>{const k=mgKey(r);(g.get(k)||g.set(k,[]).get(k)).push(r)});
-  const todo=new Map();g.forEach(rows=>['r6esports_id','siegegg_id','league','phase'].forEach(c=>{const v=[...new Set(rows.map(r=>String(r[c]||'').trim()).filter(Boolean))];if(v.length!==1)return;const twice=new Set(rows.map(r=>mapCanon(r.map)).filter((m,i,l)=>l.indexOf(m)!==i));const ids=rows.filter(r=>!String(r[c]||'').trim()&&!(c==='phase'&&twice.has(mapCanon(r.map)))).map(r=>r.id);if(!ids.length)return;const key=c+'|'+v[0];todo.set(key,[...(todo.get(key)||[]),...ids])}));
+  const todo=new Map();g.forEach(rows=>['r6esports_id','siegegg_id','source_link','league','phase'].forEach(c=>{const v=[...new Set(rows.map(r=>String(r[c]||'').trim()).filter(Boolean))];if(v.length!==1)return;const twice=new Set(rows.map(r=>mapCanon(r.map)).filter((m,i,l)=>l.indexOf(m)!==i));const ids=rows.filter(r=>!String(r[c]||'').trim()&&!(c==='phase'&&twice.has(mapCanon(r.map)))).map(r=>r.id);if(!ids.length)return;const key=c+'|'+v[0];todo.set(key,[...(todo.get(key)||[]),...ids])}));
   for(const [key,ids] of todo){const[c,v]=[key.slice(0,key.indexOf('|')),key.slice(key.indexOf('|')+1)];for(let i=0;i<ids.length;i+=100){const u=await sb.from('scout_matches').update({[c]:v}).in('id',ids.slice(i,i+100)).select();if(u.error||sco!==s)return;u.data.forEach(x=>{const o=scAll('m').find(y=>y.id===x.id);if(o){Object.assign(o,x);n++}})}}
  }finally{s.idFillBusy=false}
  if(n){s._srv=(s._srv||0)+1;if(view==='sc'&&!sdirty&&!autoPending()&&!$('#dlg')?.open)render();if(!quiet)toast('Filled in the series details (match id, league, phase) on '+plural(n,'map')+'.')}
