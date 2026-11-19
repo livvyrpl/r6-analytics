@@ -1,5 +1,5 @@
 // Supabase Edge Function: auto-fill
-// Runs on its own every 15 minutes (see stage41.sql), so nobody has to open the site for these to happen:
+// Runs on its own every 5 minutes (see stage42.sql), so nobody has to open the site for these to happen:
 //  1. games with an official or siege.gg match ID get their empty op bans, map order, scoreboard and map veto
 //     from those pages (through the match-bans function);
 //  2. games whose saved rounds are complete get the score and result those rounds add up to.
@@ -10,7 +10,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 const URL = Deno.env.get('SUPABASE_URL')!;
 const KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const db = createClient(URL, KEY, { auth: { persistSession: false } });
-const SERIES_PER_RUN = 25;
+// each run reads 6 series at a time and keeps going for about 2 minutes (Supabase stops a function at 150 seconds)
+const AT_ONCE = 6, TIME_BUDGET = 115000;
 // Supabase hands back at most 1,000 rows at a time, so long lists are read page by page
 async function every(make: () => any, max = 50000) {
   const out: any[] = [];
@@ -73,14 +74,14 @@ async function fillSources(log: string[]) {
   // games with an id not checked lately: every day for the last 45 days of games, every week for older ones
   const q = await db.from('scout_matches').select('*').or('r6esports_id.neq.,siegegg_id.neq.')
     .or(`src_checked_at.is.null,and(src_checked_at.lt.${since},match_date.gte.${recent}),src_checked_at.lt.${week}`)
-    .order('match_date', { ascending: false }).limit(400);
+    .order('match_date', { ascending: false }).limit(1000);
   if (q.error) { log.push('Could not list games: ' + q.error.message); return; }
   const groups = new Map<string, any[]>();
   for (const r of q.data) { const k = r.owner_team_id + '|' + (r.r6esports_id ? 'o' + r.r6esports_id : 'g' + r.siegegg_id); (groups.get(k) || groups.set(k, []).get(k)!).push(r); }
   const teamsByOwner = new Map<string, any[]>();
   let done = 0;
-  for (const [k, part] of groups) {
-    if (done >= SERIES_PER_RUN) break; done++;
+  const start = Date.now(), list = [...groups];
+  const one = async ([k, part]: [string, any[]]) => {
     const owner = part[0].owner_team_id;
     // every map of the series, also the ones checked lately
     const all = await db.from('scout_matches').select('*').eq('owner_team_id', owner).eq(part[0].r6esports_id ? 'r6esports_id' : 'siegegg_id', part[0].r6esports_id || part[0].siegegg_id);
@@ -89,7 +90,7 @@ async function fillSources(log: string[]) {
     const same = namer(teamsByOwner.get(owner)!);
     let d: any;
     try { d = await readSeries(rows[0].r6esports_id || '', rows[0].siegegg_id || ''); }
-    catch (e) { log.push(k + ': ' + (e instanceof Error ? e.message : String(e))); await db.from('scout_matches').update({ src_checked_at: new Date().toISOString() }).in('id', rows.map((x: any) => x.id)); continue; }
+    catch (e) { log.push(k + ': ' + (e instanceof Error ? e.message : String(e))); await db.from('scout_matches').update({ src_checked_at: new Date().toISOString() }).in('id', rows.map((x: any) => x.id)); return; }
     const games: any[] = d.games || [];
     const sbHave = await db.from('scout_scoreboard').select('scout_match_id').in('scout_match_id', rows.map((x: any) => x.id));
     const hasSb = new Set((sbHave.data || []).map((x: any) => x.scout_match_id));
@@ -141,8 +142,10 @@ async function fillSources(log: string[]) {
         if (!ins.error) log.push(r.team + ' vs ' + r.opponent + ': map veto');
       }
     }
-  }
-  log.push('Series read: ' + done);
+  };
+  const worker = async () => { while (list.length && Date.now() - start < TIME_BUDGET) { const g = list.shift()!; done++; try { await one(g); } catch (e) { log.push(g[0] + ': ' + (e instanceof Error ? e.message : String(e))); } } };
+  await Promise.all(Array.from({ length: AT_ONCE }, worker));
+  log.push('Series read: ' + done + (list.length ? ', ' + list.length + ' left for the next run' : ''));
 }
 
 // a game whose saved rounds go from 1 to the last with a winner each, and make a finished game, gets that score
@@ -179,8 +182,9 @@ async function fixScores(log: string[]) {
 }
 
 Deno.serve(async () => {
-  const log: string[] = [];
+  const log: string[] = [], began = Date.now();
   try { await fillSources(log); } catch (e) { log.push('Sources: ' + (e instanceof Error ? e.message : String(e))); }
+  if (Date.now() - began > 125000) { log.push('Scores: checked on the next run'); return new Response(JSON.stringify({ ok: true, log }), { headers: { 'Content-Type': 'application/json' } }); }
   try { await fixScores(log); } catch (e) { log.push('Scores: ' + (e instanceof Error ? e.message : String(e))); }
   return new Response(JSON.stringify({ ok: true, log }), { headers: { 'Content-Type': 'application/json' } });
 });
