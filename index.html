@@ -3146,7 +3146,7 @@ async function lpRun(){
  l.prog={i:0,n:chunks.length+pages.length+(l.rosters?teams.length:0),label:'Adding teams…'};lpDraw();
  const step=(label,fn,what)=>lpStep(l,label,fn,what);
  for(const c of chunks)await step('Adding teams…',async()=>{const r=await lpCall({action:'teams',names:c,league:leagueOf});l.sum.teams+=r.added.length;r.errors.forEach(x=>l.fails.push(x))},'Teams '+c.join(', '));
- for(const p of pages)await step('Reading '+p,async()=>{const r=await lpCall({action:'pull',page:p,teams,from});l.sum.matches+=r.matches;l.sum.vetoes+=r.vetoes;l.sum.skipped+=r.skipped;l.sum.filled=(l.sum.filled||0)+(r.filled||0)},p);
+ for(const p of pages)await step('Reading '+p,async()=>{const r=await lpCall({action:'pull',page:p,teams,from});l.sum.matches+=r.matches;l.sum.vetoes+=r.vetoes;l.sum.skipped+=r.skipped;l.sum.filled=(l.sum.filled||0)+(r.filled||0);if(r.ver==null&&!lpOld.told){lpOld.told=true;toast('The Liquipedia pull function in Supabase is an old copy, so games already saved do not get their links filled in. Replace its code with the newest file and deploy it.')}},p);
  if(l.rosters)for(const t of teams)await step('Getting roster: '+t,()=>lpCall({action:'roster',name:t}),'Roster '+t);
  if(!l.stop)await lpChecks(l);
  await lpReload(l);
@@ -4117,10 +4117,11 @@ async function lpTeamWork(l,t,from,rosters,tag=''){
  for(const x of roots)await lpStep(l,tag+'Listing '+x,async()=>{(await lpCall({action:'resolve',url:'https://liquipedia.net/rainbowsix/'+encodeURI(x.replace(/ /g,'_'))})).pages.forEach(p=>{if(!skip.test(p.title))pages.add(p.title)})},x);
  l.sum.events+=pages.size;l.prog.n+=pages.size;lpDraw();
  const before=l.sum.matches+l.sum.skipped;
- for(const p of pages)await lpStep(l,tag+'Reading '+p,async()=>{const r=await lpCall({action:'pull',page:p,teams:[name,...aliases],canon:name,from:from||undefined});l.sum.matches+=r.matches;l.sum.vetoes+=r.vetoes;l.sum.skipped+=r.skipped;l.sum.filled=(l.sum.filled||0)+(r.filled||0)},p);
+ for(const p of pages)await lpStep(l,tag+'Reading '+p,async()=>{const r=await lpCall({action:'pull',page:p,teams:[name,...aliases],canon:name,from:from||undefined});l.sum.matches+=r.matches;l.sum.vetoes+=r.vetoes;l.sum.skipped+=r.skipped;l.sum.filled=(l.sum.filled||0)+(r.filled||0);if(r.ver==null&&!lpOld.told){lpOld.told=true;toast('The Liquipedia pull function in Supabase is an old copy, so games already saved do not get their links filled in. Replace its code with the newest file and deploy it.')}},p);
  if(rosters&&!(t.players||[]).length){l.prog.n++;await lpStep(l,tag+'Getting roster, about 30 seconds',()=>lpCall({action:'roster',name}),t.name+' roster')}
  if(!l.stop&&l.sum.matches+l.sum.skipped===before)l.fails.push(`No games in this date range were found for ${t.name} on Liquipedia.`);
 }
+const lpOld={told:false};
 const lpNewSum=()=>({events:0,teams:0,matches:0,vetoes:0,skipped:0,filled:0,replays:0,checked:0,ok:0,flagged:0});
 async function lpRunTeam(t){
  const l=sco.lp={team:t.id,step:'run',running:true,stop:false,fails:[],pages:[],on:new Set(),teams:[],tOn:new Set(),sum:lpNewSum(),prog:{i:0,n:3,label:'Starting…'}};lpDraw();
