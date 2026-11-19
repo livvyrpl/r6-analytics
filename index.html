@@ -3218,15 +3218,17 @@ function joinTally(main,other){
  const by=new Map();[...gameRounds(main),...gameRounds(other)].forEach(r=>{if(!r.round_number||by.has(r.round_number))return;const v=normRes(roundFor(main,r).result);if(v==='W'||v==='L')by.set(r.round_number,v)});
  const top=Math.max(0,...by.keys());if(!top||by.size!==top)return null;const w=[...by.values()].filter(v=>v==='W').length,l=top-w;return gameDone(w,l)?{score:w+'-'+l,result:w>l?'W':'L'}:null;
 }
-function scoreOpts(main,other,sw){
+const scoreRev=(a,b)=>{const p=parseScore(a),q=parseScore(b);return!!p&&!!q&&p.a===q.b&&p.b===q.a&&p.a!==p.b};
+function scoreOpts(main,other,sw,jt){
  const out=[],add=(s,res,from)=>{const p=parseScore(s);if(!p)return;const k=p.a+'-'+p.b,ex=out.find(x=>x.score===k);if(ex){ex.from+=' · '+from;return}
   const r=res||(p.a>p.b?'W':p.a<p.b?'L':'D'),win=r==='W'?main.team:r==='L'?main.opponent:'';out.push({score:k,result:r,label:(win?win+' won ':'Draw ')+Math.max(p.a,p.b)+'–'+Math.min(p.a,p.b),from})};
  add(main.round_score,normRes(main.result),'Kept copy'+(main.source_name?' ('+main.source_name+')':''));
+ if(jt)add(jt.score,jt.result,'What the saved rounds add up to');
  const p=parseScore(other.round_score);if(p){const r=normRes(other.result);add(sw?p.b+'-'+p.a:p.a+'-'+p.b,sw?(r==='W'?'L':r==='L'?'W':r):r,'Joined copy'+(other.source_name?' ('+other.source_name+')':''))}
  return out;
 }
 function scorePick(title,opts){return new Promise(res=>{const d=$('#dlg');scorePick.res=res;scorePick.opts=opts;
- d.innerHTML=`<h2 class="serif" style="font-size:22px">Which score is right?</h2><p class="mu" style="margin-bottom:12px">${esc(title)}. The two copies have different scores.</p><div style="display:flex;flex-direction:column;gap:8px">${opts.map((o,i)=>`<button class="no" style="height:auto;padding:10px 14px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left" data-a="scpk" data-i="${i}"><b style="font-weight:700;font-size:16px">${esc(o.label)}</b><span class="mu" style="font-size:12.5px">${esc(o.from)}</span></button>`).join('')}</div><div class="row" style="justify-content:flex-end;margin-top:14px"><button class="no" data-a="scpk" data-i="-1">Cancel</button></div>`;
+ d.innerHTML=`<h2 class="serif" style="font-size:22px">Which score is right?</h2><p class="mu" style="margin-bottom:12px">${esc(title)}. The copies do not agree on the score.${opts.some(o=>/saved rounds/.test(o.from))?' If you pick the opposite of what the saved rounds add up to, each round\'s win and loss is turned round too, so they match.':''}</p><div style="display:flex;flex-direction:column;gap:8px">${opts.map((o,i)=>`<button class="no" style="height:auto;padding:10px 14px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left" data-a="scpk" data-i="${i}"><b style="font-weight:700;font-size:16px">${esc(o.label)}</b><span class="mu" style="font-size:12.5px">${esc(o.from)}</span></button>`).join('')}</div><div class="row" style="justify-content:flex-end;margin-top:14px"><button class="no" data-a="scpk" data-i="-1">Cancel</button></div>`;
  if(!d.open)d.showModal();d.addEventListener('close',()=>{if(scorePick.res){const r=scorePick.res;scorePick.res=null;r(null)}},{once:true})})}
 async function sJoinGames(idA,idB,o={}){
  const s=sco,A=s.m.find(x=>x.id===idA),B=s.m.find(x=>x.id===idB);if(!A||!B)return;
@@ -3238,8 +3240,10 @@ async function sJoinGames(idA,idB,o={}){
  const both=[...new Set(mr.filter(r=>or.some(o=>o.round_number===r.round_number)).map(r=>r.round_number))];
  const nl='\n',fo=r=>o.swap!=null&&or.includes(r)?(o.swap?flipRound(r):r):roundFor(main,r);
  if(!o.quiet&&!confirm('Join these into one game?'+nl+nl+'Kept: '+main.team+' vs '+main.opponent+', '+main.map+', '+(main.round_score||'no score')+(main.phase?' ('+main.phase+')':'')+nl+'Joined into it and removed: '+(other.round_score||'no score')+(other.phase?' ('+other.phase+')':'')+(both.length?nl+nl+'Both have round'+(both.length>1?'s ':' ')+rangeList(both)+'. The copy from the '+(later==='other'?'second':'first')+' piece is kept, as a restarted match plays that round again.':'')))return false;
-if(!o.score){const jt=joinTally(main,other);if(jt)o={...o,score:jt.score,result:jt.result}}
- if(!o.quiet&&!o.score){const op=scoreOpts(main,other,o.swap!=null?o.swap:!sameName(other.team,main.team)&&sameName(other.team,main.opponent));if(op.length>1){const c=await scorePick(main.team+' vs '+main.opponent+', '+mapCanon(main.map),op);if(!c)return false;o={...o,score:c.score,result:c.result}}}
+ const jt0=joinTally(main,other);
+ if(!o.quiet&&!o.score){const op=scoreOpts(main,other,o.swap!=null?o.swap:!sameName(other.team,main.team)&&sameName(other.team,main.opponent),jt0);if(op.length>1){const c=await scorePick(main.team+' vs '+main.opponent+', '+mapCanon(main.map),op);if(!c)return false;o={...o,score:c.score,result:c.result}}}
+ if(!o.score&&jt0)o={...o,score:jt0.score,result:jt0.result};
+ if(o.score&&jt0&&scoreRev(o.score,jt0.score))o={...o,flipRounds:true};
  const tid=s.tid,others=s.m.filter(x=>x.id!==A.id&&x.id!==B.id&&joinMates(main).some(y=>y.id===x.id)),phase=/^Game \d+$/.test(main.phase||'')&&!others.some(o=>!norm(o.phase))?'':main.phase||'',newMid=matchId({...main,phase});
  const job=o.quiet?null:actStart('Joining games');
  try{
@@ -3255,6 +3259,7 @@ if(!o.score){const jt=joinTally(main,other);if(jt)o={...o,score:jt.score,result:
   for(const r of [...keepO,...(newMid!==matchId(main)?keepM:[])])chk(await sb.from('scout_rounds').update(body(r)).eq('id',r.id));
   {const ob=await sb.from('scout_scoreboard').select('id,side').eq('scout_match_id',other.id);if(!ob.error&&ob.data.length){const mb=await sb.from('scout_scoreboard').select('id').eq('scout_match_id',main.id);if(!mb.error&&!mb.data.length){const sw=o.swap!=null?o.swap:!sameName(other.team,main.team)&&sameName(other.team,main.opponent);for(const x of ob.data)await sb.from('scout_scoreboard').update({scout_match_id:main.id,side:sw?3-x.side:x.side}).eq('id',x.id)}}}
   chk(await sb.from('scout_matches').delete().eq('id',other.id));if(sco)sbLoad(sco);
+  if(o.flipRounds){const q=await sb.from('scout_rounds').select('id,result').eq('owner_team_id',tid).eq('match_id',newMid);if(!q.error)for(const x of q.data){const v=normRes(x.result);if(v==='W'||v==='L')chk(await sb.from('scout_rounds').update({result:v==='W'?'L':'W'}).eq('id',x.id))}}
   // score and result from the joined rounds
   const all=[...keepM,...keepO].map(fo),w=all.filter(r=>normRes(r.result)==='W').length,l=all.filter(r=>normRes(r.result)==='L').length,nums=new Set(all.map(r=>r.round_number)),top=Math.max(0,...nums),whole=top===nums.size;
   const up={phase};if(!main.replay_match_id&&other.replay_match_id)up.replay_match_id=other.replay_match_id;
@@ -3454,7 +3459,7 @@ async function gapJoin(fromIds,toIds){
  F.forEach(g=>{const m=T.find(y=>!used.has(y.id)&&mapCanon(y.map)===mapCanon(g.map));if(m){used.add(m.id);pairs.push({g,m,swap:!twinSame(g.team,m.team)})}else alone.push(g)});
  const k=T[0],nl='\n',sc=x=>mapCanon(x.map)+' '+(x.round_score||'no score');
  if(!confirm('Join these into one match?'+nl+nl+'Kept: '+k.team+' vs '+k.opponent+', '+fmtD(k.match_date)+([k.league,k.phase].filter(Boolean).length?' ('+[k.league,k.phase].filter(Boolean).join(' · ')+')':'')+nl+(pairs.length?nl+'Joined map by map:'+nl+pairs.map(p=>'  '+sc(p.g)+'  into  '+sc(p.m)).join(nl):'')+(alone.length?nl+nl+'Added to the match (no such map there yet):'+nl+alone.map(g=>'  '+sc(g)).join(nl):'')+nl+nl+'The kept games keep their score and links. Rounds, operators and scoreboard move onto them.'))return;
- for(const p of pairs){if(joinTally(p.m,p.g))continue;const op=scoreOpts(p.m,p.g,p.swap);if(op.length>1){const c=await scorePick(p.m.team+' vs '+p.m.opponent+', '+mapCanon(p.m.map),op);if(!c)return;p.sc=c}}
+ for(const p of pairs){const op=scoreOpts(p.m,p.g,p.swap,joinTally(p.m,p.g));if(op.length>1){const c=await scorePick(p.m.team+' vs '+p.m.opponent+', '+mapCanon(p.m.map),op);if(!c)return;p.sc=c}}
  const job=actStart('Joining into one match');let ok=0;const errs=[];
  for(const p of pairs){const r=await sJoinGames(p.m.id,p.g.id,{quiet:true,main:p.m.id,swap:p.swap,...(p.sc?{score:p.sc.score,result:p.sc.result}:{})});if(r===true)ok++;else if(r)errs.push(mapCanon(p.g.map)+': '+r)}
  for(const g of alone){const u=await sb.from('scout_matches').update({match_date:k.match_date,league:k.league||g.league||'',phase:k.phase||'',source_name:g.source_name==='Replay'?g.source_name:k.source_name||g.source_name,source_link:k.source_link||g.source_link||'',r6esports_id:k.r6esports_id||'',siegegg_id:k.siegegg_id||''}).eq('id',g.id).select().single();if(u.error)errs.push(mapCanon(g.map)+': '+scErr(u.error));else ok++}
