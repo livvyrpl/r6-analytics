@@ -117,8 +117,21 @@ async function findOfficial(date: string, a: string[], b: string[]) {
   if (!d0) throw new Error('No date to look for.');
   const yms = [...new Set([-864e5, 0, 864e5].map((x) => new Date(d0 + x).toISOString().slice(0, 7)))];
   const all = (await Promise.all(yms.map(calendar))).flat();
-  const A = a.map(nameCore).filter(Boolean), B = b.map(nameCore).filter(Boolean);
-  const is = (n: string, l: string[]) => { const c = nameCore(n); return !!c && l.some((x) => x === c || (x.length >= 3 && c.length >= 3 && (x.includes(c) || c.includes(x)))); };
+  const A = [...a.map(nameCore), ...a.map((x) => String(x || ''))].filter(Boolean), B = [...b.map(nameCore), ...b.map((x) => String(x || ''))].filter(Boolean);
+  // initials of a name: Titan Esports Club = tec, Four Angry Men = fam (every word, and without words like Esports / Gaming)
+  const inits = (s: string) => { const w = String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean); const all = w.map((x) => x[0]).join(''), core = w.filter((x) => !/^(e-?sports?|gaming|team|club|clan|gg)$/.test(x)).map((x) => x[0]).join(''); return [all, core].filter((x) => x.length >= 2); };
+  const raw = (s: string) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const is = (n: string, l: string[]) => {
+    const c = nameCore(n); if (!c) return false;
+    if (l.some((x) => x === c || (x.length >= 3 && c.length >= 3 && (x.includes(c) || c.includes(x))))) return true;
+    const mine = inits(n), r = raw(n);
+    if (l.some((x) => mine.includes(x) || inits(x).includes(r) || inits(x).includes(c))) return true;
+    // a short name whose letters come in order in the long one, from its first letter: EDG = EDward Gaming, 4AM = FOUR Angry Men
+    const num = (s: string) => s.replace(/1/g, 'one').replace(/2/g, 'two').replace(/3/g, 'three').replace(/4/g, 'four').replace(/5/g, 'five');
+    const inOrder = (short: string, long: string) => { if (short.length < 2 || short.length > 5 || long.length <= short.length || short[0] !== long[0]) return false; let i = 0; for (const ch of long) if (ch === short[i]) i++; return i === short.length; };
+    const longForm = (s: string) => num(raw(s)), shortForms = (s: string) => [raw(s), String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^(\d)/, (d) => num(d)[0])];
+    return l.some((x) => shortForms(n).some((s) => inOrder(s, longForm(x))) || shortForms(x).some((s) => inOrder(s, longForm(n))));
+  };
   const near = all.filter((m) => ((is(m.t1, A) && is(m.t2, B)) || (is(m.t1, B) && is(m.t2, A))) && Math.abs(Date.parse(m.date + 'T00:00:00Z') - d0) <= 864e5);
   const exact = near.filter((m) => m.date === String(date).slice(0, 10));
   const pick = exact.length === 1 ? exact[0] : !exact.length && near.length === 1 ? near[0] : null;

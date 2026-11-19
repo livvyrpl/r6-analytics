@@ -3923,7 +3923,7 @@ async function banPull(rows){
  return n;
 }
 // a series with no official or siege.gg ID looks for its official match by date and teams (the official calendar)
-const findMem=(()=>{let m={};try{m=JSON.parse(localStorage.getItem('liv.find')||'{}')}catch{}const now=Date.now();for(const k in m)if(now-m[k]>3*864e5)delete m[k];return{has:k=>!!m[k],add:k=>{m[k]=Date.now();try{localStorage.setItem('liv.find',JSON.stringify(m))}catch{}}}})();
+const findMem=(()=>{let m={};try{m=JSON.parse(localStorage.getItem('liv.find2')||'{}')}catch{}const now=Date.now();for(const k in m)if(now-m[k]>3*864e5)delete m[k];return{has:k=>!!m[k],add:k=>{m[k]=Date.now();try{localStorage.setItem('liv.find2',JSON.stringify(m))}catch{}}}})();
 const findable=rows=>!rows.some(x=>String(x.r6esports_id||'').trim()||String(x.siegegg_id||'').trim())&&rows.every(x=>x.match_date&&x.team&&x.opponent);
 // the official match of a game, looked up on the official calendar by date and teams; its ID or null
 async function srcLook(r){
