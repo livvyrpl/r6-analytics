@@ -232,7 +232,22 @@ async function fillSeries(owner: string, r6: string, gg: string, log: string[]) 
   const same = namer(t.data || []);
   let d: any;
   try { d = await readBoth(r6 || rows[0].r6esports_id || '', gg || rows[0].siegegg_id || ''); }
-  catch (e) { const m = e instanceof Error ? e.message : String(e); log.push(k + ': ' + m); if (/does not exist|has no match|did not have this match/i.test(m)) await db.from('scout_matches').update({ src_checked_at: new Date().toISOString() }).in('id', rows.map((x: any) => x.id)); return; }
+  catch (e) {
+    const m = e instanceof Error ? e.message : String(e); log.push(k + ': ' + m);
+    // an official ID whose page does not exist: look the match up by date and teams and use the real one
+    if (r6 && /does not exist/i.test(m) && !log.some((x) => x.startsWith('Replaced ' + r6))) {
+      const st = (n: string) => { const x = (t.data || []).find((y: any) => same(y.name, n)); return [n, ...(x ? [x.name, x.short_name, ...(x.aliases || [])] : [])].filter(Boolean); };
+      const f = await findOfficial(rows[0].match_date, st(rows[0].team), st(rows[0].opponent)).catch(() => null);
+      if (f?.id && f.id !== r6) {
+        await db.from('scout_matches').update({ r6esports_id: f.id }).eq('owner_team_id', owner).eq('r6esports_id', r6);
+        log.push('Replaced ' + r6 + ' with official match ' + f.id + ' (same teams and date)');
+        await fillSeries(owner, f.id, '', log);
+        return;
+      }
+    }
+    if (/does not exist|has no match|did not have this match/i.test(m)) await db.from('scout_matches').update({ src_checked_at: new Date().toISOString() }).in('id', rows.map((x: any) => x.id));
+    return;
+  }
   const games: any[] = d.games || [];
   const sbHave = await db.from('scout_scoreboard').select('scout_match_id').in('scout_match_id', rows.map((x: any) => x.id));
   const hasSb = new Set((sbHave.data || []).map((x: any) => x.scout_match_id));
