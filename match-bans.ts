@@ -99,6 +99,32 @@ async function siegegg(id: string): Promise<Series> {
   return { teams: [...names.values()], format: picks ? 'Bo' + picks : '', veto, games, info: { league: String(match.competition_full_name || match.competition_name || ''), phase: '', vod: '', replay: '' } };
 }
 
+// FINDING THE OFFICIAL MATCH of a game with no ID: the official calendar lists every match of a month with its date and teams.
+// The same two teams on the same day (or one day either side, when there is nothing on the day) and only one such match.
+const nameCore = (s: string) => String(s || '').toLowerCase().replace(/\b(e-?sports?|gaming|team|club|clan|gg)\b/g, '').replace(/[^a-z0-9]/g, '');
+const months = new Map<string, any[]>();
+async function calendar(ym: string) {
+  if (months.has(ym)) return months.get(ym)!;
+  const r = await fetch('https://www.ubisoft.com/en-us/esports/rainbow-six/siege/calendar/' + ym, { headers: UA });
+  if (!r.ok) throw new Error('The official calendar answered ' + r.status + '.');
+  const m = (await r.text()).match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  const list = m ? (JSON.parse(m[1])?.props?.pageProps?.pageData?.matches || []).map((x: any) => ({ id: String(x.id), date: new Date((x.timestamp || 0) * 1000).toISOString().slice(0, 10), t1: x.team1?.name || '', t2: x.team2?.name || '' })) : [];
+  months.set(ym, list);
+  return list;
+}
+async function findOfficial(date: string, a: string[], b: string[]) {
+  const d0 = Date.parse(String(date).slice(0, 10) + 'T00:00:00Z');
+  if (!d0) throw new Error('No date to look for.');
+  const yms = [...new Set([-864e5, 0, 864e5].map((x) => new Date(d0 + x).toISOString().slice(0, 7)))];
+  const all = (await Promise.all(yms.map(calendar))).flat();
+  const A = a.map(nameCore).filter(Boolean), B = b.map(nameCore).filter(Boolean);
+  const is = (n: string, l: string[]) => { const c = nameCore(n); return !!c && l.some((x) => x === c || (x.length >= 3 && c.length >= 3 && (x.includes(c) || c.includes(x)))); };
+  const near = all.filter((m) => ((is(m.t1, A) && is(m.t2, B)) || (is(m.t1, B) && is(m.t2, A))) && Math.abs(Date.parse(m.date + 'T00:00:00Z') - d0) <= 864e5);
+  const exact = near.filter((m) => m.date === String(date).slice(0, 10));
+  const pick = exact.length === 1 ? exact[0] : !exact.length && near.length === 1 ? near[0] : null;
+  return { id: pick?.id || null, match: pick, choices: near.length };
+}
+
 // both pages: the official one first, siege.gg for what it lacks
 async function readBoth(r6: string, gg: string) {
   const notes: string[] = [];
@@ -131,6 +157,8 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: h });
   try {
     const body = await req.json().catch(() => ({}));
+    // { find: { date, a: [names of one team], b: [names of the other] } } gives back the official match ID
+    if (body.find) return out(await findOfficial(String(body.find.date || ''), [].concat(body.find.a || []).map(String), [].concat(body.find.b || []).map(String)));
     const r6 = String(body.r6 || '').trim(), gg = String(body.gg || '').trim();
     if (!/^\d+$/.test(r6) && !/^\d+$/.test(gg)) return out({ error: 'No official or siege.gg match ID.' });
     return out(await readBoth(r6, gg));

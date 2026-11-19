@@ -2,6 +2,8 @@
 // The database calls this on its own every 5 minutes (see stage43.sql), so nobody has to open the site:
 //  - { owner, r6, gg }: one series. Its games get their empty op bans, map order, scoreboard, map veto and match details
 //    from its official and siege.gg pages.
+//  - { owner, find: { date, team, opponent } }: a game with no ID. Its official match is looked up on the official calendar
+//    by date and teams, and when there is exactly one, the series gets its ID and is filled.
 //  - { scores: true }: games whose saved rounds are complete get the score and result those rounds add up to.
 // One series per request keeps each run small (Supabase limits a run's processing time) and means no function calls another
 // (Supabase limits that too). It only fills empty things and never overwrites what someone typed. It uses the service role key
@@ -152,6 +154,32 @@ async function siegegg(id: string): Promise<Series> {
   return { teams: [...names.values()], format: picks ? 'Bo' + picks : '', veto, games, info: { league: String(match.competition_full_name || match.competition_name || ''), phase: '', vod: '', replay: '' } };
 }
 
+// FINDING THE OFFICIAL MATCH of a game with no ID: the official calendar lists every match of a month with its date and teams.
+// The same two teams on the same day (or one day either side, when there is nothing on the day) and only one such match.
+const nameCore = (s: string) => String(s || '').toLowerCase().replace(/\b(e-?sports?|gaming|team|club|clan|gg)\b/g, '').replace(/[^a-z0-9]/g, '');
+const months = new Map<string, any[]>();
+async function calendar(ym: string) {
+  if (months.has(ym)) return months.get(ym)!;
+  const r = await fetch('https://www.ubisoft.com/en-us/esports/rainbow-six/siege/calendar/' + ym, { headers: UA });
+  if (!r.ok) throw new Error('The official calendar answered ' + r.status + '.');
+  const m = (await r.text()).match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  const list = m ? (JSON.parse(m[1])?.props?.pageProps?.pageData?.matches || []).map((x: any) => ({ id: String(x.id), date: new Date((x.timestamp || 0) * 1000).toISOString().slice(0, 10), t1: x.team1?.name || '', t2: x.team2?.name || '' })) : [];
+  months.set(ym, list);
+  return list;
+}
+async function findOfficial(date: string, a: string[], b: string[]) {
+  const d0 = Date.parse(String(date).slice(0, 10) + 'T00:00:00Z');
+  if (!d0) throw new Error('No date to look for.');
+  const yms = [...new Set([-864e5, 0, 864e5].map((x) => new Date(d0 + x).toISOString().slice(0, 7)))];
+  const all = (await Promise.all(yms.map(calendar))).flat();
+  const A = a.map(nameCore).filter(Boolean), B = b.map(nameCore).filter(Boolean);
+  const is = (n: string, l: string[]) => { const c = nameCore(n); return !!c && l.some((x) => x === c || (x.length >= 3 && c.length >= 3 && (x.includes(c) || c.includes(x)))); };
+  const near = all.filter((m) => ((is(m.t1, A) && is(m.t2, B)) || (is(m.t1, B) && is(m.t2, A))) && Math.abs(Date.parse(m.date + 'T00:00:00Z') - d0) <= 864e5);
+  const exact = near.filter((m) => m.date === String(date).slice(0, 10));
+  const pick = exact.length === 1 ? exact[0] : !exact.length && near.length === 1 ? near[0] : null;
+  return { id: pick?.id || null, match: pick, choices: near.length };
+}
+
 // both pages: the official one first, siege.gg for what it lacks
 async function readBoth(r6: string, gg: string) {
   const notes: string[] = [];
@@ -179,6 +207,22 @@ async function readBoth(r6: string, gg: string) {
 }
 
 // ---- end of the page reader
+
+// a game with no ID: look for its official match by date and teams; when one is found, every map of that series gets the ID and is filled
+async function findSeries(owner: string, date: string, team: string, opponent: string, log: string[]) {
+  const t = await db.from('scout_teams').select('id,name,short_name,aliases').eq('owner_team_id', owner);
+  const teams = t.data || [], same = namer(teams);
+  const names = (n: string) => { const st = teams.find((x: any) => same(x.name, n)); return [n, ...(st ? [st.name, st.short_name, ...(st.aliases || [])] : [])].filter(Boolean); };
+  const f = await findOfficial(date, names(team), names(opponent));
+  const lo = new Date(day(date) - 864e5).toISOString().slice(0, 10), hi = new Date(day(date) + 864e5).toISOString().slice(0, 10);
+  const q = await db.from('scout_matches').select('id,team,opponent,match_date,r6esports_id,siegegg_id').eq('owner_team_id', owner).gte('match_date', lo).lte('match_date', hi);
+  const rows = (q.data || []).filter((x: any) => !x.r6esports_id && !x.siegegg_id && x.match_date === date && ((same(x.team, team) && same(x.opponent, opponent)) || (same(x.team, opponent) && same(x.opponent, team))));
+  await db.from('scout_matches').update({ src_find_at: new Date().toISOString() }).in('id', rows.map((x: any) => x.id));
+  if (!f.id) { log.push(team + ' vs ' + opponent + ' ' + date + ': ' + (f.choices ? f.choices + ' possible official matches, so none was picked' : 'not on the official calendar')); return; }
+  if (rows.length) await db.from('scout_matches').update({ r6esports_id: f.id }).in('id', rows.map((x: any) => x.id));
+  log.push(team + ' vs ' + opponent + ' ' + date + ': official match ' + f.id);
+  await fillSeries(owner, f.id, '', log);
+}
 
 async function fillSeries(owner: string, r6: string, gg: string, log: string[]) {
   const all = await db.from('scout_matches').select('*').eq('owner_team_id', owner).eq(r6 ? 'r6esports_id' : 'siegegg_id', r6 || gg);
@@ -280,6 +324,7 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   try {
     if (body.scores) await fixScores(log);
+    else if (body.owner && body.find) await findSeries(String(body.owner), String(body.find.date || ''), String(body.find.team || ''), String(body.find.opponent || ''), log);
     else if (body.owner && (/^\d+$/.test(String(body.r6 || '')) || /^\d+$/.test(String(body.gg || '')))) await fillSeries(String(body.owner), String(body.r6 || ''), String(body.gg || ''), log);
     else log.push('Nothing to do: send { owner, r6, gg } for a series or { scores: true }.');
   } catch (e) { log.push(e instanceof Error ? e.message : String(e)); }

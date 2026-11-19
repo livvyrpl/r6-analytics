@@ -3917,6 +3917,17 @@ async function banPull(rows){
     if(!u.error){sco.v=[...scAll('v'),u.data];n++}}}}
  return n;
 }
+// a series with no official or siege.gg ID looks for its official match by date and teams (the official calendar)
+const findMem=(()=>{let m={};try{m=JSON.parse(localStorage.getItem('liv.find')||'{}')}catch{}const now=Date.now();for(const k in m)if(now-m[k]>3*864e5)delete m[k];return{has:k=>!!m[k],add:k=>{m[k]=Date.now();try{localStorage.setItem('liv.find',JSON.stringify(m))}catch{}}}})();
+const findable=rows=>!rows.some(x=>String(x.r6esports_id||'').trim()||String(x.siegegg_id||'').trim())&&rows.every(x=>x.match_date&&x.team&&x.opponent);
+async function srcFind(rows){
+ const r=rows[0],names=n=>{const x=twinOf(n);return[n,...(x?[x.name,x.short_name,...(x.aliases||[])]:[])].filter(Boolean)};
+ let d;try{const q=await sb.functions.invoke('match-bans',{body:{find:{date:r.match_date,a:names(r.team),b:names(r.opponent)}}});if(q.error)throw q.error;d=q.data}catch(e){return /404/.test(String(e?.context?.status))?'The match reader is not set up yet.':'The match reader could not be reached.'}
+ if(!d?.id){findMem.add('f'+mgKey(r));return 0}
+ const u=await sb.from('scout_matches').update({r6esports_id:d.id}).in('id',rows.filter(x=>!x.r6esports_id).map(x=>x.id)).select();if(u.error)return 0;
+ u.data.forEach(x=>{const o=scAll('m').find(y=>y.id===x.id);if(o)Object.assign(o,x)});sco._srv=(sco._srv||0)+1;
+ const n=await banPull(rows);return 1+(typeof n==='number'?n:0);
+}
 async function banPullAll(){
  const team=sco.gapTeam?sco.teams.find(t=>t.id===sco.gapTeam):null,l=gapRows(team).filter(x=>!x.resolved&&banNeed(x.rows));if(!l.length)return toast('Nothing left to read from official or siege.gg pages.');
  const s=sco,job=actStart('Reading series from official and siege.gg pages');let n=0;const errs=[];
@@ -3930,10 +3941,10 @@ async function banAuto(s){
  if(!s||banOff||s.banBusy||!canEditS()||!Array.isArray(s.m))return;
  if(s.sbP)await s.sbP;if(sco!==s)return;
  const g=new Map();s.m.forEach(r=>{const k=mgKey(r);(g.get(k)||g.set(k,[]).get(k)).push(r)});
- const l=[...g.values()].filter(rows=>banNeed(rows)&&!banTried.has(srcKey(rows)));if(!l.length)return;
+ const fk=rows=>'f'+mgKey(rows[0]),l=[...g.values()].filter(rows=>srcKey(rows)?banNeed(rows)&&!banTried.has(srcKey(rows)):findable(rows)&&!banTried.has(fk(rows))&&!findMem.has(fk(rows)));if(!l.length)return;
  s.banBusy=true;const job=actStart('Reading series from official and siege.gg pages');let n=0;
- try{for(const [i,rows] of l.entries()){if(sco!==s)break;banTried.add(srcKey(rows));actSet(job,{detail:(i+1)+' of '+l.length,pct:Math.round(i/l.length*100)});
-  const r=await banPull(rows);if(typeof r==='number')n+=r;else if(/not set up|could not be reached/.test(r)){banOff=true;actEnd(job,'warn',r);return}}}
+ try{for(const [i,rows] of l.entries()){if(sco!==s)break;const has=!!srcKey(rows);banTried.add(has?srcKey(rows):fk(rows));actSet(job,{detail:(i+1)+' of '+l.length,pct:Math.round(i/l.length*100)});
+  const r=has?await banPull(rows):await srcFind(rows);if(typeof r==='number')n+=r;else if(/not set up|could not be reached/.test(r)){banOff=true;actEnd(job,'warn',r);return}}}
  finally{s.banBusy=false}
  actEnd(job,'ok','Filled in '+plural(n,'detail')+' (op bans, map veto, map order) from official and siege.gg pages');
  if(n){toast('Filled in op bans, map vetoes and map order from official and siege.gg pages.');if(view==='sc'&&!sdirty&&!autoPending()&&!$('#dlg')?.open)render()}
