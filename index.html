@@ -3245,8 +3245,9 @@ async function sJoinGames(idA,idB,o={}){
  const [m,r]=await Promise.all([allRows(()=>sb.from('scout_matches').select('*').eq('owner_team_id',tid).order('id')),allRows(()=>sb.from('scout_rounds').select('*').eq('owner_team_id',tid).order('id'))]);
  if(sco!==s)return;if(!m.error)s.m=m.data;if(!r.error)s.r=r.data;if(view==='sc'&&!sdirty)render();
 }
-const twinOf=n=>{const s=sco,k=norm(n),c=nameCore(n);return s.teams.find(t=>scKeys(t).has(k))||s.teams.find(t=>[...scKeys(t)].some(x=>nameCore(x)===c))||null};
-const twinSame=(x,y)=>{if(sameName(x,y))return true;const a=twinOf(x),b=twinOf(y);return!!a&&a===b};
+const twinMemo=()=>{const s=sco;if(!s._tm||s._tm.t!==s.teams||s._tm.n!==(s.teams||[]).length)s._tm={t:s.teams,n:(s.teams||[]).length,o:new Map(),s:new Map()};return s._tm};
+const twinOf=n=>{const s=sco,k=norm(n),m=twinMemo().o;if(m.has(k))return m.get(k);const c=nameCore(n),v=(s.teams||[]).find(t=>scKeys(t).has(k))||(s.teams||[]).find(t=>[...scKeys(t)].some(x=>nameCore(x)===c))||null;m.set(k,v);return v};
+const twinSame=(x,y)=>{const m=twinMemo().s,k=norm(x)+'|'+norm(y);if(m.has(k))return m.get(k);let v=sameName(x,y);if(!v){const a=twinOf(x),b=twinOf(y);v=!!a&&a===b}m.set(k,v);return v};
 function replayTwins(){
  const s=sco;if(s._tw&&s._tw.m===s.m&&s._tw.n===s.m.length)return s._tw.l;
  const idx=new Map();s.m.forEach(x=>{if(!x.source_name||x.source_name==='Replay'||x.replay_match_id)return;const k=x.match_date+'|'+mapCanon(x.map);(idx.get(k)||idx.set(k,[]).get(k)).push(x)});
@@ -3680,12 +3681,13 @@ function mvColors(n1,n2){
 const mvLogo=(x,c)=>logoOk(x.logo_url)?`<img class="mvlg" src="${esc(x.logo_url)}" alt="">`:`<span class="mvlg mvin" style="color:${c}" aria-hidden="true">${esc(String(x.name||'?').slice(0,2).toUpperCase())}</span>`;
 // GAME PAGE, read-only: score, teams and map up top, then the details, bans, sides and rounds. Edit opens the form.
 // SERIES: every map of the same series (same official match, or same day, teams and phase), its map veto, and what is missing
+const mvPk=n=>{const x=twinOf(n);return x?'t'+x.id:squash(n)},mvPair=(a,b)=>[mvPk(a),mvPk(b)].sort().join('|');
+function vetoIdx(){const s=sco;if(s._vi&&s._vi.v===s.v&&s._vi.n===s.v.length&&s._vi.t===s.teams)return s._vi.m;const m=new Map();s.v.forEach(v=>{const k=mvPair(v.team,v.opponent);(m.get(k)||m.set(k,[]).get(k)).push(v)});s._vi={v:s.v,n:s.v.length,t:s.teams,m};return m}
 function mvSeriesRows(r){
- const k=mgKey(r),rows=sco.m.filter(x=>mgKey(x)===k);if(!rows.includes(r))rows.push(r);
- const pair=v=>twinSame(v.team,r.team)&&twinSame(v.opponent,r.opponent)||twinSame(v.team,r.opponent)&&twinSame(v.opponent,r.team);
- const day=s=>Date.parse(s+'T00:00:00Z')||0,vs=sco.v.filter(v=>pair(v)&&Math.abs(day(v.veto_date)-day(r.match_date))<=864e5);
+ seriesMap();const k=mgKey(r),rows=[...(sco._sr.g.get(k)||[])];if(!rows.includes(r))rows.push(r);
+ const day=s=>Date.parse(s+'T00:00:00Z')||0,vs=(vetoIdx().get(mvPair(r.team,r.opponent))||[]).filter(v=>Math.abs(day(v.veto_date)-day(r.match_date))<=864e5);
  const veto=vs.sort((a,b)=>(+(norm(b.phase)===norm(r.phase))-+(norm(a.phase)===norm(r.phase)))||Math.abs(day(a.veto_date)-day(r.match_date))-Math.abs(day(b.veto_date)-day(r.match_date)))[0]||null;
- const ord=veto?[veto.t1_pick,veto.t2_pick,veto.t1_pick_2,veto.t2_pick_2,veto.decider].map(mapCanon).filter(Boolean):[],at=x=>{const i=ord.indexOf(mapCanon(x.map));return i<0?99:i},idx=new Map(sco.m.map((x,i)=>[x.id,i]));
+ const ord=veto?[veto.t1_pick,veto.t2_pick,veto.t1_pick_2,veto.t2_pick_2,veto.decider].map(mapCanon).filter(Boolean):[],at=x=>{const i=ord.indexOf(mapCanon(x.map));return i<0?99:i},idx=sco._sr.idx;
  const num=x=>x.map_number!=null?x.map_number:50+at(x);return{rows:rows.sort((a,b)=>num(a)-num(b)||(idx.get(a.id)??0)-(idx.get(b.id)??0)),veto};
 }
 function mvSeries(r,c1,c2,edit){
@@ -3771,7 +3773,7 @@ function seriesMap(){
  const day=new Map();s.m.forEach(r=>{const k=r.match_date+'|'+pairOf(r);(day.get(k)||day.set(k,[]).get(k)).push(r)});
  day.forEach((rows,k)=>{const ph=[...new Set(rows.map(r=>norm(r.phase)).filter(Boolean))];rows.forEach(r=>add('d|'+k+'|'+(norm(r.phase)||(ph.length===1?ph[0]:'')),r.id))});
  s.m.forEach(r=>{if(r.r6esports_id)add('o|'+r.r6esports_id,r.id);if(r.siegegg_id)add('g|'+r.siegegg_id,r.id)});
- const k=new Map();s.m.forEach(r=>k.set(r.id,find(r.id)));s._sr={m:s.m,n:s.m.length,v:s._srv,k};return k;
+ const k=new Map(),g=new Map(),idx=new Map();s.m.forEach((r,i)=>{const x=find(r.id);k.set(r.id,x);idx.set(r.id,i);(g.get(x)||g.set(x,[]).get(x)).push(r)});s._sr={m:s.m,n:s.m.length,v:s._srv,k,g,idx};return k;
 }
 const mgKey=r=>seriesMap().get(r.id)||r.id;
 // a map saved more than once in a series: the copy to keep is the one with an official source, then the non-replay one
