@@ -2420,7 +2420,7 @@ async function openSc(page,kind,oppId){
  const s=sco,tid=s.tid,q=t=>sb.from(t).select('*').eq('owner_team_id',tid),[t,m,v,r,c,x,st]=await Promise.all([q('scout_teams'),allRows(()=>q('scout_matches').order('id')),allRows(()=>q('scout_vetoes').order('id')),allRows(()=>q('scout_rounds').order('id')),sb.from('scrims').select('*').eq('team_id',tid),sb.from('scrim_map_results').select('*').eq('team_id',tid),q('scout_settings')]);
  if(sco!==s)return;
  const bad=t.error||m.error||v.error||r.error;
- if(!bad&&canEditS())setTimeout(()=>{if(sco===s){scoreRepair(s);seriesIdFill(s)}},0);Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
+ if(!bad&&canEditS())setTimeout(()=>{if(sco===s){scoreRepair(s);seriesIdFill(s).then(()=>banAuto(s))}},0);Object.assign(s,{err:bad?scErr(bad):'',loaded:true,teams:(t.data||[]).sort((a,b)=>a.name.localeCompare(b.name)),m:m.data||[],v:v.data||[],r:r.data||[]});
  if(!an||an.tid!==tid)an={tid,list:null,res:[],err:'',mode:'our',from:'',to:'',map:'',recs:[],skipped:0,rc:{},rex:{},rpick:{},rp:null,rerr:'',rteams:null,rroster:[],page:'over'};
  {const cl=tdrRows(tid,c.data||[],'scrim_date'),ok=new Set(cl.map(y=>y.id));an.list=cl;an.res=teamDR(tid)?(x.data||[]).filter(y=>ok.has(y.scrim_id)):x.data||[]}s.st=(st.data||[])[0]||null;
  sb.from('scout_events').select('*').eq('owner_team_id',tid).then(r=>{if(sco!==s)return;s.events=r.error?[]:r.data||[];if(view==='sc'&&s.events.length)render()});
@@ -3805,6 +3805,20 @@ async function banPullAll(){
  for(const [i,x] of l.entries()){if(sco!==s)break;actSet(job,{detail:(i+1)+' of '+l.length,pct:Math.round(i/l.length*100)});const r=await banPull(x.rows);if(typeof r==='string'){errs.push(x.who+': '+r);if(/not set up|could not be reached/.test(r))break}else n+=r}
  actEnd(job,errs.length?'warn':'ok','Filled in op bans on '+plural(n,'map')+(errs.length?'. Not done: '+errs.slice(0,3).join('; '):''));toast('Filled in op bans on '+plural(n,'map')+'.'+(errs.length?' '+errs[0]:''));if(view==='sc'&&!sdirty)render();
 }
+// on its own: every series with an official match ID and missing op bans reads them from the official page,
+// once per match ID while the site is open; stops if the ban reader is not set up
+const banTried=new Set();let banOff=false;
+async function banAuto(s){
+ if(!s||banOff||s.banBusy||!canEditS()||!Array.isArray(s.m))return;
+ const g=new Map();s.m.forEach(r=>{const k=mgKey(r);(g.get(k)||g.set(k,[]).get(k)).push(r)});
+ const l=[...g.values()].filter(rows=>banNeed(rows)&&!banTried.has(String(rows.find(x=>x.r6esports_id).r6esports_id)));if(!l.length)return;
+ s.banBusy=true;const job=actStart('Reading op bans from official match pages');let n=0;
+ try{for(const [i,rows] of l.entries()){if(sco!==s)break;const id=String(rows.find(x=>x.r6esports_id).r6esports_id);banTried.add(id);actSet(job,{detail:(i+1)+' of '+l.length,pct:Math.round(i/l.length*100)});
+  const r=await banPull(rows);if(typeof r==='number')n+=r;else if(/not set up|could not be reached/.test(r)){banOff=true;actEnd(job,'warn',r);return}}}
+ finally{s.banBusy=false}
+ actEnd(job,'ok','Filled in op bans on '+plural(n,'map')+' from official match pages');
+ if(n){toast('Filled in op bans on '+plural(n,'map')+' from official match pages.');if(view==='sc'&&!sdirty&&!autoPending()&&!$('#dlg')?.open)render()}
+}
 async function seriesIdFill(s,quiet){
  if(!s||s.idFillBusy||!canEditS())return;s.idFillBusy=true;let n=0;
  try{const g=new Map();s.m.forEach(r=>{const k=mgKey(r);(g.get(k)||g.set(k,[]).get(k)).push(r)});
@@ -3853,7 +3867,7 @@ async function saveMatch(form,qt){
  const r=await sb.from('scout_matches').update(row).eq('id',id).select().single();
  btn.disabled=false;
  if(r.error)return say(qt,r.error.code==='23505'||/duplicate key/i.test(r.error.message)?'That date, teams, map and phase already exist as another game.':scErr(r.error));
- const old={...sco.m.find(x=>x.id===id)};Object.assign(sco.m.find(x=>x.id===id),r.data);await rdMove(old,r.data);sco._srv=(sco._srv||0)+1;if(r.data.r6esports_id||r.data.siegegg_id)seriesIdFill(sco).then(()=>{const sr=mvSeriesRows(sco.m.find(x=>x.id===id)||r.data).rows;if(r.data.r6esports_id&&banNeed(sr))banPull(sr).then(n=>{if(typeof n==='number'&&n){toast('Filled in op bans on '+plural(n,'map')+' from the official page.');if(view==='sc'&&!autoPending())render()}})});if(qt){rdPaint(sco.m.find(x=>x.id===id));if(['round_score','result','map','match_date','r6esports_id','siegegg_id'].some(k=>old[k]!==r.data[k]))recheck(r.data);return{}}sdirty=false;render();toast('Game saved');recheck(r.data);
+ const old={...sco.m.find(x=>x.id===id)};Object.assign(sco.m.find(x=>x.id===id),r.data);await rdMove(old,r.data);sco._srv=(sco._srv||0)+1;if(r.data.r6esports_id||r.data.siegegg_id)seriesIdFill(sco).then(()=>{const sr=mvSeriesRows(sco.m.find(x=>x.id===id)||r.data).rows;if(r.data.r6esports_id&&banNeed(sr)){banTried.delete(String(r.data.r6esports_id));banAuto(sco)}});if(qt){rdPaint(sco.m.find(x=>x.id===id));if(['round_score','result','map','match_date','r6esports_id','siegegg_id'].some(k=>old[k]!==r.data[k]))recheck(r.data);return{}}sdirty=false;render();toast('Game saved');recheck(r.data);
 }
 // after an edit, compare the game with the official page and siege.gg again
 async function recheck(r){
@@ -3877,7 +3891,7 @@ async function lpReload(l){
  if(!a.error)sco.teams=a.data.sort((x,y)=>x.name.localeCompare(y.name));if(!b.error)sco.m=b.data;if(!c.error)sco.v=c.data;
  await refreshTeams();
  l.running=false;l.step='done';if(l.act)actEnd(l.act,l.fails.some(f=>!LP_DEAD.test(f))?'warn':'ok',l.stop?'Stopped. Anything already saved stays. '+lpSummary(l):lpSummary(l));l.act=null;lpDraw();
- if(!l.stop&&!l.only)twinJoinAll(true);
+ if(!l.stop&&!l.only)Promise.resolve(twinJoinAll(true)).then(()=>seriesIdFill(sco,true)).then(()=>banAuto(sco));
  if(!l.stop&&l.sum.checked&&view==='sc')ccOpen(l.team||null);
 }
 // one opponent: every event they played in the last 12 months
