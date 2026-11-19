@@ -3120,7 +3120,7 @@ function lpB(){
  <div class="row" style="justify-content:flex-end"><button class="no" data-a="lpevents">Back</button><button class="go" data-a="lpgo" ${l.tOn.size?'':'disabled'}>Pull</button></div></section>`;
 }
 const lpTitle=l=>l.allRun?'Pull everything · all teams':l.team?'Pull everything · '+(sco.teams.find(t=>t.id===l.team)?.name||'team'):l.only?'Check matches':'Pull from Liquipedia';
-const lpSummary=l=>{const c=l.sum,bits=[c.matches?c.matches+' games added':'',c.vetoes?c.vetoes+' vetoes added':'',c.teams?plural(c.teams,'team')+' added':'',c.checked?plural(c.checked,'game')+' checked':'',c.flagged?c.flagged+' differ':'',c.replays?plural(c.replays,'replay link')+' saved':''].filter(Boolean);return bits.join(' · ')||'Nothing new'};
+const lpSummary=l=>{const c=l.sum,bits=[c.matches?c.matches+' games added':'',c.vetoes?c.vetoes+' vetoes added':'',c.teams?plural(c.teams,'team')+' added':'',c.filled?plural(c.filled,'saved game')+' got links and IDs':'',c.checked?plural(c.checked,'game')+' checked':'',c.flagged?c.flagged+' differ':'',c.replays?plural(c.replays,'replay link')+' saved':''].filter(Boolean);return bits.join(' · ')||'Nothing new'};
 const lpDraw=()=>{const l=sco?.lp;if(l?.running){if(!l.act)l.act=actStart(lpTitle(l),()=>{l.stop=true;lpDraw()});actSet(l.act,{detail:l.stop?'Stopping…':l.prog?.label||'',pct:l.prog?.n?Math.round(l.prog.i/l.prog.n*100):null})}if(view==='sc')render()};
 async function lpResolve(url){
  const l=sco.lp;l.url=url;l.err='';l.busy=true;lpDraw();
