@@ -3454,7 +3454,7 @@ function gapRows(team){
    log:rows.every(x=>rs(x).length>0),
    ops:rows.every(x=>rs(x).some(y=>y.operator_1)),
    vod:rows.every(x=>x.vod_link),
-   src:(r.r6esports_id||r.siegegg_id)&&!rows.some(x=>x.gg_missing)};
+   src:(r.r6esports_id||r.siegegg_id||rows.some(x=>/^https?:\/\//i.test(x.source_link||'')))&&!rows.some(x=>x.gg_missing)};
   const bad=seriesWrong(rows);has.bad=!bad.length;
   return{r,rows,has,bad,resolved:rows.every(x=>x.gaps_resolved),date:r.match_date,who:k?(same?r.opponent:r.team):r.team+' vs '+r.opponent,event:[r.league,r.phase].filter(Boolean).join(' · ')};
  }).sort((a,b)=>b.date.localeCompare(a.date)||a.who.localeCompare(b.who));
