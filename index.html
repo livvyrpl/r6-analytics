@@ -2185,7 +2185,7 @@ function bpListV(H0){
 // ---- SITE NAMES: for each map, up to 4 bomb sites with a default name and the other names (other languages, spellings) that mean the same site.
 // Rounds are shown with the default name everywhere: names are swapped when rounds load, so stats group under one site.
 let snIxOf,snIx=new Map();
-const snKey=s=>norm(s).replace(/\s+/g,' ');
+const snKey=s=>[...new Set(String(s??'').split(/\s*[,/&]\s*/).map(x=>norm(x).replace(/\s+/g,' ')).filter(Boolean))].sort().join(' / ');
 function siteIx(){
  const s=siteSet?.site_names||null;if(snIxOf===s)return snIx;snIxOf=s;snIx=new Map();
  if(s&&typeof s==='object')for(const [m,l] of Object.entries(s)){const mm=new Map();(Array.isArray(l)?l:[]).forEach(e=>{const n=String(e?.name||'').trim();if(!n)return;[n,...(Array.isArray(e.also)?e.also:[])].forEach(a=>{const k=snKey(String(a||''));if(k)mm.set(k,n)})});if(mm.size)snIx.set(squash(mapCanon(m)),mm)}
@@ -2193,18 +2193,18 @@ function siteIx(){
 }
 // one name, or a few joined with , / & (each part is swapped on its own)
 const siteCanon=(map,v)=>{const t=String(v??'').trim();if(!t)return v;const mm=siteIx().get(squash(mapCanon(map)));if(!mm)return v;const one=mm.get(snKey(t));if(one!=null)return one;
- if(!/[,/&]/.test(t))return v;const parts=t.split(/(\s*[,/&]\s*)/);let hit=false;const out=parts.map((p,i)=>{if(i%2)return p;const x=mm.get(snKey(p));if(x!=null){hit=true;return x}return p}).join('');return hit?out:v};
+ if(!/[,/&]/.test(t))return v;const got=[...new Set(t.split(/\s*[,/&]\s*/).filter(p=>p.trim()).map(p=>mm.get(snKey(p))))];return got.length===1&&got[0]!=null?got[0]:v};
 const fixSites=rows=>{if(!siteIx().size)return rows;for(const x of rows||[])if(x&&x.site&&'round_number' in x&&'map' in x){const c=siteCanon(x.map,x.site);if(c!==x.site)x.site=c}return rows};
 const siteDefaults=map=>((siteSet?.site_names||{})[mapCanon(map)]||[]).map(e=>String(e?.name||'').trim()).filter(Boolean);
 const snMaps=()=>[...new Set([...MAP_POOL.map(m=>m[0]),...VETO_MAPS,...Object.keys(siteSet?.site_names||{})])].sort((a,b)=>a.localeCompare(b));
 function snDraft(m){
  adm.sn=adm.sn||{};if(adm.sn[m])return adm.sn[m];
- const l=((siteSet?.site_names||{})[m]||[]).map(e=>({name:String(e?.name||''),also:(Array.isArray(e?.also)?e.also:[]).join(', ')}));
+ const l=((siteSet?.site_names||{})[m]||[]).map(e=>({name:String(e?.name||''),also:(Array.isArray(e?.also)?e.also:[]).join('; ')}));
  while(l.length<4)l.push({name:'',also:''});return adm.sn[m]=l.slice(0,4);
 }
-const snSplit=s=>[...new Set(String(s||'').split(/[,\n;]+/).map(x=>x.trim()).filter(Boolean))];
+const snSplit=s=>[...new Set(String(s||'').split(/[\n;]+/).map(x=>x.trim()).filter(Boolean))];
 function siteNamesCard(){
- const head='<p class="mu" style="margin-bottom:10px;max-width:860px">For each map, give every bomb site one default name, and list the other names it shows up as (other languages, short forms, spellings). Wherever a round has one of the other names, the site shows the default name instead, so stats for the same site are grouped together. Separate the other names with commas.</p>';
+ const head='<p class="mu" style="margin-bottom:10px;max-width:860px">For each map, give every bomb site one default name, and list the other names it shows up as (other languages, short forms, spellings). Wherever a round has one of the other names, the site shows the default name instead, so stats for the same site are grouped together. A site is both of its rooms, like B Church, B Arsenal Room; the order of the rooms does not matter. In the boxes below, separate other names with ;</p>';
  if(!owner())return head+'<div class="cd"><p>Only the site owner can change site names.</p></div>';
  if(!siteSet)return setupMsg('stage22.sql');
  if(!('site_names' in siteSet))return head+'<div class="cd"><p>This needs a database update. Paste stage48.sql into the Supabase SQL Editor and run it.</p></div>';
@@ -2221,7 +2221,7 @@ function siteNamesCard(){
   const loose=[],defs=d.map(x=>x.name.trim()).filter(Boolean),k=squash(m);
   const looseH='';
   return `<details class="cd" style="gap:10px" ${adm.snOpen===m?'open':''} data-snm="${esc(m)}"><summary style="cursor:pointer;font-weight:600">${esc(m)} <span class="mu" style="font-weight:400;font-size:12.5px">· ${nSet?plural(nSet,'site')+' named'+(nAlso?', '+plural(nAlso,'other name'):''):'not set'}${loose.length?' · <span style="color:#ff8a8a">'+loose.length+' not grouped</span>':''}</span></summary>
-  <div style="display:flex;flex-direction:column;gap:8px">${d.map((x,i)=>`<div class="row wrap" style="gap:6px 8px;align-items:flex-end"><div style="flex:1 1 200px;min-width:0"><label for="sn-${k}-${i}-n" style="font-size:12px">Site ${i+1}, default name</label><input id="sn-${k}-${i}-n" class="fi" maxlength="80" data-sn="${esc(m)}" data-i="${i}" data-f="name" value="${esc(x.name)}" placeholder="Like 2F Executive Lounge / CEO Office"></div><div style="flex:2 1 280px;min-width:0"><label for="sn-${k}-${i}-a" style="font-size:12px">Other names</label><input id="sn-${k}-${i}-a" class="fi" maxlength="1000" data-sn="${esc(m)}" data-i="${i}" data-f="also" value="${esc(x.also)}" placeholder="Separated by commas"></div></div>`).join('')}</div>
+  <div style="display:flex;flex-direction:column;gap:8px">${d.map((x,i)=>`<div class="row wrap" style="gap:6px 8px;align-items:flex-end"><div style="flex:1 1 200px;min-width:0"><label for="sn-${k}-${i}-n" style="font-size:12px">Site ${i+1}, default name</label><input id="sn-${k}-${i}-n" class="fi" maxlength="80" data-sn="${esc(m)}" data-i="${i}" data-f="name" value="${esc(x.name)}" placeholder="Like B Church, B Arsenal Room"></div><div style="flex:2 1 280px;min-width:0"><label for="sn-${k}-${i}-a" style="font-size:12px">Other names</label><input id="sn-${k}-${i}-a" class="fi" maxlength="1000" data-sn="${esc(m)}" data-i="${i}" data-f="also" value="${esc(x.also)}" placeholder="Separated by ;"></div></div>`).join('')}</div>
   ${looseH}<div class="row" style="gap:8px"><button class="go" data-a="snsave" data-m="${esc(m)}">Save ${esc(m)}</button></div></details>`}).join('')}</div>`;
 }
 async function snSave(m,b){
@@ -2241,7 +2241,7 @@ async function snScan(){
  adm.snSeen={busy:true};render();
  const r=await allRowsRaw(()=>{let q=sb.from('scout_rounds').select('map,site,match_id,round_number,team,opponent,round_date,owner_team_id');if(cur?.id)q=q.eq('owner_team_id',cur.id);return q.order('id')});
  if(r.error){adm.snSeen={err:'Could not read rounds: '+r.error.message};return view==='bprints'&&render()}
- const by=new Map();for(const x of r.data){const m=mapCanon(x.map||'');if(!m)continue;for(const p of String(x.site||'').split(/\s*[,/&]\s*/)){const n=p.trim();if(!n)continue;if(siteCanon(m,n)!==n||siteDefaults(m).some(y=>snKey(y)===snKey(n)))continue;const mm=by.get(m)||by.set(m,new Map()).get(m),k=snKey(n),e=mm.get(k)||{n,c:0,rs:[]};e.c++;if(e.rs.length<40)e.rs.push(x);mm.set(k,e)}}
+ const by=new Map();for(const x of r.data){const m=mapCanon(x.map||'');if(!m)continue;for(const p of [String(x.site||'')]){const n=p.trim();if(!n)continue;if(siteCanon(m,n)!==n||siteDefaults(m).some(y=>snKey(y)===snKey(n)))continue;const mm=by.get(m)||by.set(m,new Map()).get(m),k=snKey(n),e=mm.get(k)||{n,c:0,rs:[]};e.c++;if(e.rs.length<40)e.rs.push(x);mm.set(k,e)}}
  const maps=new Map();for(const [m,mm] of by){const key=snMaps().find(x=>squash(x)===squash(m))||m;maps.set(key,[...mm.values()].sort((a,b)=>b.c-a.c).map(e=>[e.n,e.c,e.rs]))}
  adm.snSeen={maps};if(view==='bprints')render();
 }
