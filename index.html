@@ -2208,12 +2208,18 @@ function siteNamesCard(){
  if(!owner())return head+'<div class="cd"><p>Only the site owner can change site names.</p></div>';
  if(!siteSet)return setupMsg('stage22.sql');
  if(!('site_names' in siteSet))return head+'<div class="cd"><p>This needs a database update. Paste stage48.sql into the Supabase SQL Editor and run it.</p></div>';
- const seen=adm.snSeen;
- const scan=`<div class="row wrap" style="gap:8px 12px;margin-bottom:10px;max-width:860px"><button class="no" data-a="snscan" ${seen?.busy?'disabled':''}>${seen?.busy?'Looking…':seen?'Look again':'Find site names in scouting data'}</button><span class="mu" style="font-size:12.5px">${seen?.busy?'':seen?.err?esc(seen.err):seen?'Names not grouped yet are listed under each map. Pick a site next to a name to add it.':'Lists the site names saved on rounds that are not grouped under a default name yet.'}</span></div>`;
+ const seen=adm.snSeen;if(!seen)setTimeout(()=>{if(view==='bprints'&&adm.dpTab==='sites'&&!adm.snSeen)snScan()},0);
+ // the inbox: every site name on rounds that has no default site yet, by map; picking a site saves it right away
+ const inbox=seen?.maps?[...seen.maps].filter(([,l])=>l.length).sort((a,b)=>a[0].localeCompare(b[0])):[],nLoose=inbox.reduce((a,[,l])=>a+l.length,0);
+ const pickH=(m,n)=>{const defs=siteDefaults(m);return `<select class="fi" style="height:30px;width:auto;max-width:100%;font-size:12.5px;padding:0 8px" data-snpick="${esc(m)}" data-v="${esc(n)}" aria-label="Which ${esc(m)} site is ${esc(n)}"><option value="">Pick its site…</option>${defs.map((x,i)=>`<option value="${i}">${esc(x)}</option>`).join('')}${defs.length<4?`<option value="new">Make "${esc(n)}" a default site</option>`:''}</select>`};
+ const scan=`<section class="cd" style="gap:10px;margin-bottom:14px;max-width:860px;${nLoose?'border-color:rgba(255,138,138,.6)':''}"><div class="row wrap" style="gap:6px 12px;justify-content:space-between"><h2 style="font-size:16px;font-weight:600">Not grouped yet${seen?.maps?` <span style="color:${nLoose?'#ff8a8a':'#34c46a'}">${nLoose}</span>`:''}</h2><button class="no" style="height:30px" data-a="snscan" ${seen?.busy?'disabled':''}>${seen?.busy?'Looking…':'Look again'}</button></div>
+ ${seen?.busy?'<p class="mu">Looking through the site names on rounds…</p>':seen?.err?`<p class="over">${esc(seen.err)}</p>`:!seen?.maps?'':!nLoose?'<p class="mu">Every site name on your rounds belongs to a default site.</p>':`<p class="mu" style="font-size:12.5px">Site names on rounds that do not belong to a default site yet. Pick the site each one is. It saves right away, and rounds with that name show the default name from then on. If a map has no default sites yet, make the first names you see the defaults.</p>
+ <div style="display:flex;flex-direction:column;gap:12px">${inbox.map(([m,l])=>`<div style="display:flex;flex-direction:column;gap:6px"><b style="font-weight:600">${esc(m)} <span class="mu" style="font-weight:400;font-size:12.5px">· ${l.length} not grouped${siteDefaults(m).length?' · sites: '+esc(siteDefaults(m).join(', ')):' · no default sites yet'}</span></b>${l.slice(0,60).map(([n,c])=>`<div class="row wrap" style="gap:6px 10px;padding:6px 10px;border:1px solid var(--bd);border-radius:10px;justify-content:space-between"><span style="overflow-wrap:anywhere">${esc(n)} <span class="mu" style="font-size:12px">${plural(c,'round')}</span></span>${pickH(m,n)}</div>`).join('')}${l.length>60?`<p class="mu" style="font-size:12px">And ${l.length-60} more. They show up as you group these.</p>`:''}</div>`).join('')}</div>`}</section>
+ <h2 style="font-size:16px;font-weight:600;margin-bottom:6px">Default sites by map</h2>`;
  return head+scan+`<div style="display:flex;flex-direction:column;gap:8px;max-width:860px">${snMaps().map(m=>{
   const d=snDraft(m),saved=(siteSet.site_names||{})[m]||[],nSet=saved.filter(e=>e?.name).length,nAlso=saved.reduce((a,e)=>a+(Array.isArray(e?.also)?e.also.length:0),0);
-  const loose=seen?.maps?.get(m)||[],defs=d.map(x=>x.name.trim()).filter(Boolean),k=squash(m);
-  const looseH=loose.length?`<div style="display:flex;flex-direction:column;gap:6px"><b style="font-weight:600;font-size:13px">Not grouped yet</b><div class="row wrap" style="gap:6px">${loose.slice(0,40).map(([n,c])=>`<span class="row" style="gap:6px;border:1px solid var(--bd);border-radius:999px;padding:2px 4px 2px 10px;font-size:12.5px"><span>${esc(n)} <span class="mu">${c}</span></span>${defs.length?`<select class="fi" style="height:26px;width:auto;font-size:12px;padding:0 6px" data-snadd="${esc(m)}" data-v="${esc(n)}" aria-label="Group ${esc(n)} under"><option value="">Group under…</option>${d.map((x,i)=>x.name.trim()?`<option value="${i}">${esc(x.name)}</option>`:'').join('')}</select>`:''}</span>`).join('')}</div>${defs.length?'':'<p class="mu" style="font-size:12px">Give the sites their default names first, then group these under them.</p>'}</div>`:'';
+  const loose=[],defs=d.map(x=>x.name.trim()).filter(Boolean),k=squash(m);
+  const looseH='';
   return `<details class="cd" style="gap:10px" ${adm.snOpen===m?'open':''} data-snm="${esc(m)}"><summary style="cursor:pointer;font-weight:600">${esc(m)} <span class="mu" style="font-weight:400;font-size:12.5px">· ${nSet?plural(nSet,'site')+' named'+(nAlso?', '+plural(nAlso,'other name'):''):'not set'}${loose.length?' · <span style="color:#ff8a8a">'+loose.length+' not grouped</span>':''}</span></summary>
   <div style="display:flex;flex-direction:column;gap:8px">${d.map((x,i)=>`<div class="row wrap" style="gap:6px 8px;align-items:flex-end"><div style="flex:1 1 200px;min-width:0"><label for="sn-${k}-${i}-n" style="font-size:12px">Site ${i+1}, default name</label><input id="sn-${k}-${i}-n" class="fi" maxlength="80" data-sn="${esc(m)}" data-i="${i}" data-f="name" value="${esc(x.name)}" placeholder="Like 2F Executive Lounge / CEO Office"></div><div style="flex:2 1 280px;min-width:0"><label for="sn-${k}-${i}-a" style="font-size:12px">Other names</label><input id="sn-${k}-${i}-a" class="fi" maxlength="1000" data-sn="${esc(m)}" data-i="${i}" data-f="also" value="${esc(x.also)}" placeholder="Separated by commas"></div></div>`).join('')}</div>
   ${looseH}<div class="row" style="gap:8px"><button class="go" data-a="snsave" data-m="${esc(m)}">Save ${esc(m)}</button></div></details>`}).join('')}</div>`;
@@ -2240,8 +2246,20 @@ async function snScan(){
  adm.snSeen={maps};if(view==='bprints')render();
 }
 document.addEventListener('input',e=>{const t=e.target;if(!t.dataset||t.dataset.sn==null)return;const d=snDraft(t.dataset.sn);d[+t.dataset.i][t.dataset.f]=t.value;adm.snOpen=t.dataset.sn});
-document.addEventListener('change',e=>{const t=e.target;if(!t.dataset||t.dataset.snadd==null||t.value==='')return;const m=t.dataset.snadd,d=snDraft(m),x=d[+t.value];x.also=[...snSplit(x.also),t.dataset.v].join(', ');adm.snOpen=m;
- if(adm.snSeen?.maps)adm.snSeen.maps.set(m,(adm.snSeen.maps.get(m)||[]).filter(([n])=>n!==t.dataset.v));render();toast('Added. Click Save '+m+' to keep it.')});
+// a name from the inbox goes under a default site (or becomes one); saved right away
+async function snAssign(m,n,how,sel){
+ const list=((siteSet?.site_names||{})[m]||[]).map(e=>({name:String(e?.name||''),also:[...(Array.isArray(e?.also)?e.also:[])]})).filter(e=>e.name);
+ if(how==='new'){if(list.length>=4)return toast(m+' already has 4 default sites.');list.push({name:n,also:[]})}
+ else{const e=list[+how];if(!e)return;if(!e.also.some(a=>snKey(a)===snKey(n)))e.also.push(n)}
+ if(sel)sel.disabled=true;
+ const r=await sb.from('site_settings').update({site_names:{...(siteSet.site_names||{}),[m]:list},updated_at:new Date().toISOString()}).eq('id',true).select().single();
+ if(r.error){if(sel)sel.disabled=false;return toast(/site_names/.test(r.error.message)?'Paste stage48.sql into the Supabase SQL Editor and run it first.':r.error.message)}
+ siteSet=r.data;if(adm.sn)delete adm.sn[m];
+ if(sco)fixSites(scAll('r'));if(prep?.r)fixSites(prep.r);
+ if(adm.snSeen?.maps)adm.snSeen.maps.set(m,(adm.snSeen.maps.get(m)||[]).filter(([x])=>siteCanon(m,x)===x&&!siteDefaults(m).some(y=>snKey(y)===snKey(x))));
+ render();toast(how==='new'?'"'+n+'" is now a default site on '+m+'.':'"'+n+'" now shows as '+list[+how].name+'.');
+}
+document.addEventListener('change',e=>{const t=e.target;if(!t.dataset||t.dataset.snpick==null||t.value==='')return;snAssign(t.dataset.snpick,t.dataset.v,t.value,t)});
 const bpName=f=>f.name.replace(/\.[a-z0-9]+$/i,'').replace(/[_-]+/g,' ').trim().slice(0,60)||'Floor';
 async function bpPdfPages(file){
  await loadScript(PDFJS+'pdf.min.js');pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS+'pdf.worker.min.js';
