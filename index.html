@@ -3562,11 +3562,13 @@ async function ytRead(){
  if(sco===s&&view==='sc'&&!sdirty)render();if(list.length)ytOpen();
 }
 // The review screen: one video at a time, with every match it could be
+const ytOpenQ=q=>q&&!q.pick&&q.cands.length>0;
+const ytStep=(y,from,dir)=>{for(let i=from;i>=0&&i<y.list.length;i+=dir)if(ytOpenQ(y.list[i]))return i;return dir>0?y.list.length:-1};
 function ytOpen(){const d=$('#dlg');d.className='ccw';ytDraw();if(d.open)return;d.showModal();d.addEventListener('close',()=>{d.className='';if(view==='sc'&&!sdirty)render()},{once:true})}
 function ytDraw(){
  const d=$('#dlg'),y=sco.yt;if(!y?.list)return;const n=y.list.length,end=y.i>=n,q=y.list[y.i];
  const head=`<div class="row" style="justify-content:space-between;margin-bottom:6px"><h2 class="serif" style="font-size:22px">Match VODs${y.title?' · '+esc(y.title):''}</h2><button class="no" style="height:28px" data-a="ytclose">Close</button></div>`;
- if(end){d.innerHTML=head+`<p style="font-weight:600">Done. Linked ${plural(y.linked,'video')}.</p><p class="mu">${plural(n-y.linked,'video')} skipped. Run Match VODs again any time: videos already linked are left out.</p><div class="row" style="gap:8px;margin-top:10px">${n?'<button class="no" data-a="ytnav" data-d="-1">Back</button>':''}<button class="go" data-a="ytclose">Close</button></div>`;return}
+ if(end){d.innerHTML=head+`<p style="font-weight:600">Done. Linked ${plural(y.linked,'video')}.</p><p class="mu">${plural(y.list.filter(ytOpenQ).length,'video')} skipped. Run Match VODs again any time: skipped videos that still have a game show up again, and videos already linked are left out.</p><div class="row" style="gap:8px;margin-top:10px">${ytStep(y,n-1,-1)>=0?'<button class="no" data-a="ytnav" data-d="-1">Back</button>':''}<button class="go" data-a="ytclose">Close</button></div>`;return}
  const v=q.v,pub=String(v.published).slice(0,10);
  const mapsOf=c=>c.miss.slice().sort((a,b)=>String(a.map).localeCompare(String(b.map))).map(g=>`<span style="white-space:nowrap;${c.mapG&&c.mapG.id===g.id?'font-weight:700;color:var(--pk)':''}">${esc(mapCanon(g.map))} ${esc(wsc(g.round_score)||'—')}</span>`).join(' · ')+(c.miss.length<c.u.x.rows.length?` <span class="mu" style="font-size:12px">(${plural(c.u.x.rows.length-c.miss.length,'other map')} already ${c.u.x.rows.length-c.miss.length>1?'have':'has'} a VOD)</span>`:'');
  const when=c=>c.dd===0?'same day as the video':c.dd>0?plural(c.dd,'day')+' before the video':plural(-c.dd,'day')+' after the video';
@@ -3576,7 +3578,7 @@ function ytDraw(){
  d.innerHTML=head+`<p class="mu" style="margin-bottom:8px">Video ${y.i+1} of ${n}${y.already?' · '+plural(y.already,'video')+' left out (no games found, or their games all have a VOD)':''}</p>
  <div class="cd" style="padding:10px 12px;gap:4px;margin-bottom:10px"><a href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer" style="font-weight:600;font-size:15px;overflow-wrap:anywhere">${esc(v.title)}</a><span class="mu" style="font-size:12.5px">Posted ${esc(fmtD(pub))}${q.pick?' · <span style="color:#34c46a;font-weight:600">Linked to '+esc(q.pick)+'</span>':''}</span>${q.on.length?`<span class="mu" style="font-size:12px">Already the VOD on: ${esc(q.on.slice(0,4).map(g=>g.team+' vs '+g.opponent+', '+mapCanon(g.map)+', '+fmtD(g.match_date)).join(' · '))}${q.on.length>4?' and '+(q.on.length-4)+' more':''}</span>`:''}</div>
  <div style="overflow:auto;max-height:52vh;display:flex;flex-direction:column;gap:8px">${rows||(q.pick?'<p class="mu">Nothing left to link for this video.</p>':q.none?'<p class="mu">No games found between the teams in this title. Skip it, or add the VOD on the game by hand.</p>':'<p class="mu">Every game this video could belong to now has a VOD.</p>')}</div>
- <div class="row wrap" style="gap:8px;margin-top:10px;justify-content:space-between"><div class="row" style="gap:8px">${y.i?'<button class="no" data-a="ytnav" data-d="-1">Back</button>':''}<button class="no" data-a="ytnav" data-d="1">${q.cands.length?'None of these, skip':'Skip'}</button></div></div>`;
+ <div class="row wrap" style="gap:8px;margin-top:10px;justify-content:space-between"><div class="row" style="gap:8px">${ytStep(y,y.i-1,-1)>=0?'<button class="no" data-a="ytnav" data-d="-1">Back</button>':''}<button class="no" data-a="ytnav" data-d="1">${q.cands.length?'None of these, skip':'Skip'}</button></div></div>`;
  d.querySelector('[style*="max-height:52vh"]')?.scrollTo(0,0);
 }
 async function ytPick(d,b){
@@ -3588,7 +3590,7 @@ async function ytPick(d,b){
  if(!q.pick)y.linked++;
  q.pick=c.u.r.team+' vs '+c.u.r.opponent+(d.g||games.length<c.u.x.rows.length?', '+games.map(g=>mapCanon(g.map)).join(', '):'')+', '+fmtD(c.u.x.date);
  // what's linked is no longer offered, for this video or any other
- y.list.forEach(o=>{o.cands.forEach(x=>{x.miss=x.miss.filter(g=>!ytVod(g))});o.cands=o.cands.filter(x=>x.miss.length)});y.i++;ytDraw();
+ y.list.forEach(o=>{o.cands.forEach(x=>{x.miss=x.miss.filter(g=>!ytVod(g))});o.cands=o.cands.filter(x=>x.miss.length)});y.i=ytStep(y,y.i+1,1);ytDraw();
 }
 function ytB(){
  const y=sco.yt,saved=(()=>{try{return localStorage.getItem('liv.ytpl')||''}catch{return ''}})();
@@ -4528,7 +4530,7 @@ const A={
  lpteam:()=>{const t=sco.teams.find(x=>x.id===sco.oppId);if(t&&!sco.lp?.running)lpRunTeam(t)},
  lpstop:()=>{sco.lp.stop=true;render()},
  gapopen:d=>{sco.gapBack={page:sco.page,oppId:sco.oppId,tab:sco.tab};Object.assign(sco,{page:'gaps',gapTeam:d.t||null,gapF:''});render();window.scrollTo?.(0,0)},
- gapjoin:d=>gapJoin(String(d.f).split(','),String(d.t).split(',')),gapres:async(d,b)=>{const ids=String(d.ids||'').split(',').filter(Boolean),v=!!d.v;b.disabled=true;const r=await sb.from('scout_matches').update({gaps_resolved:v}).in('id',ids).select();if(r.error){b.disabled=false;return toast(/gaps_resolved/.test(r.error.message||'')?'Marking games resolved needs a database update. Paste stage36.sql into the Supabase SQL Editor and run it.':scErr(r.error))}r.data.forEach(x=>{const o=sco.m.find(y=>y.id===x.id);if(o)Object.assign(o,x)});if(!v&&!sco.m.some(x=>x.gaps_resolved))sco.gapF='';render();toast(v?'Marked resolved. It stays under Resolved if you need it back.':'Showing it in Missing data again')},ytpick:(d,b)=>ytPick(d,b),ytnav:d=>{const y=sco.yt;if(!y?.list)return;y.i=Math.max(0,Math.min(y.list.length,y.i+ +d.d));ytDraw()},ytclose:()=>$('#dlg').close(),ytreopen:()=>{const y=sco.yt;if(y?.list){if(y.i>=y.list.length)y.i=0;ytOpen()}},gapback:()=>{Object.assign(sco,sco.gapBack||{page:'home'});render()},
+ gapjoin:d=>gapJoin(String(d.f).split(','),String(d.t).split(',')),gapres:async(d,b)=>{const ids=String(d.ids||'').split(',').filter(Boolean),v=!!d.v;b.disabled=true;const r=await sb.from('scout_matches').update({gaps_resolved:v}).in('id',ids).select();if(r.error){b.disabled=false;return toast(/gaps_resolved/.test(r.error.message||'')?'Marking games resolved needs a database update. Paste stage36.sql into the Supabase SQL Editor and run it.':scErr(r.error))}r.data.forEach(x=>{const o=sco.m.find(y=>y.id===x.id);if(o)Object.assign(o,x)});if(!v&&!sco.m.some(x=>x.gaps_resolved))sco.gapF='';render();toast(v?'Marked resolved. It stays under Resolved if you need it back.':'Showing it in Missing data again')},ytpick:(d,b)=>ytPick(d,b),ytnav:d=>{const y=sco.yt;if(!y?.list)return;const i=ytStep(y,y.i+ +d.d,+d.d);if(i>=0)y.i=i;ytDraw()},ytclose:()=>$('#dlg').close(),ytreopen:()=>{const y=sco.yt;if(y?.list){if(!ytOpenQ(y.list[y.i]))y.i=ytStep(y,0,1);ytOpen()}},gapback:()=>{Object.assign(sco,sco.gapBack||{page:'home'});render()},
  gapf:d=>{sco.gapF=d.k;render()},
  gapnoboard:()=>{const nb=sco._gapNb||[],maps=nb.flatMap(x=>x.rows.filter(g=>!hasBoard(g)));if(!maps.length)return;const d=$('#dlg');
   d.innerHTML=`<h2 class="serif" style="font-size:26px;margin-bottom:10px">Mark scoreboards as No data?</h2><p class="mu" style="overflow-wrap:anywhere">${plural(maps.length,'map')} in the ${nb.length+' series'} showing will be marked as having no scoreboard, so Missing data stops asking for one. Nothing else changes. You can undo it on each map's Scoreboard.</p><div class="row" style="margin-top:16px"><button class="go" data-a="gapnoboardyes">Mark ${plural(maps.length,'map')}</button><button class="no" data-a="close">Cancel</button></div>`;d.showModal()},
