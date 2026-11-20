@@ -1669,7 +1669,7 @@ function driveRenewLater(){
 }
 async function drivePick(b){
  if(!rxOpen())return toast('Replays are still being read for '+(rxT()?.name||'another team')+'. Wait until that finishes.');
- if(!driveOn())return toast('Google Drive is not set up yet. The site owner can set it up in Admin, Site Settings.');
+ if(!driveOn())return toast('Google Drive is not set up yet. The site owner can set it up in Admin, Website Settings.');
  b.disabled=true;
  try{
   await Promise.all([loadScript('https://accounts.google.com/gsi/client'),loadScript('https://apis.google.com/js/api.js')]);
@@ -1736,7 +1736,7 @@ async function driveFetch(url,headers={},job){
   if(r.status===401){gdrv.tok=null;continue}
   if(r.status===429||r.status>=500){await nap(2000*(i+1));continue}
   if(r.status===403){const t=await r.text().catch(()=>'');if(/rateLimit|quota|userRateLimitExceeded/i.test(t)&&i<5){await nap(3000*(i+1));continue}
-   throw new Error(/insufficient|scope/i.test(t)?'Google Drive did not allow looking inside folders. When Google asks, allow Liv Analytics to see your Drive files, or see Admin, Site Settings, Google Drive, step 4.':/PERMISSION_DENIED|forbidden/i.test(t)?'Google Drive refused access to this. Check you can open it in Drive with the same Google account.':'Google Drive refused the download. Try again in a minute.')}
+   throw new Error(/insufficient|scope/i.test(t)?'Google Drive did not allow looking inside folders. When Google asks, allow Liv Analytics to see your Drive files, or see Admin, Website Settings, Google Drive, step 4.':/PERMISSION_DENIED|forbidden/i.test(t)?'Google Drive refused access to this. Check you can open it in Drive with the same Google account.':'Google Drive refused the download. Try again in a minute.')}
   if(!r.ok)throw new Error(r.status===404?'That file or folder is no longer in Google Drive, or you no longer have access to it.':'Google Drive answered '+r.status+'.');
   return r;
  }
@@ -2097,7 +2097,7 @@ async function prepVodSave(b){
 // THE MAP: the blueprint for each floor, with the round's operators dragged to where they were
 function prepBoardH(){
  const d=prep.rd;if(!d)return '';const can=canEditS(),fl=bpFloors(d.map);
- if(!fl.length){return `<h3 class="oph">Where they were</h3>${prep.bpErr?`<p>${esc(prep.bpErr)}</p>`:!prep.bp?'<p class="mu">Loading the map…</p>':`<p class="mu" style="font-size:13px">There's no blueprint for ${esc(d.map)} yet. ${staff()?`<button class="actx" data-a="admgo" data-v="bprints">Add blueprints in Admin</button>`:'The site owner can add them in Admin, Map Blueprints.'}</p>`}`}
+ if(!fl.length){return `<h3 class="oph">Where they were</h3>${prep.bpErr?`<p>${esc(prep.bpErr)}</p>`:!prep.bp?'<p class="mu">Loading the map…</p>':`<p class="mu" style="font-size:13px">There's no blueprint for ${esc(d.map)} yet. ${staff()?`<button class="actx" data-a="admgo" data-v="bprints">Add blueprints in Admin</button>`:'The site owner can add them in Admin, Default Plans.'}</p>`}`}
  if(!fl.some(f=>f.id===d.floor))d.floor=fl[0].id;
  const pin=p=>d.ops.some(o=>norm(o)===norm(p.op)),on=d.pins.filter(p=>p.f===d.floor&&pin(p)),fname=id=>fl.find(f=>f.id===id)?.floor;
  const tabs=fl.length>1?`<div class="row wrap" style="gap:6px" role="group" aria-label="Floor">${fl.map(f=>{const n=d.pins.filter(p=>p.f===f.id&&pin(p)).length;return `<button class="ch" style="height:30px" data-a="prepfloor" data-k="${f.id}" aria-pressed="${f.id===d.floor}">${esc(f.floor)}${n?` (${n})`:''}</button>`}).join('')}</div>`:'';
@@ -2168,13 +2168,80 @@ async function prepSave(b,auto){
 // Pictures of each floor, or a PDF where each page is a floor. Shared by every team's Anti-Strat pages.
 const PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
 function bprintsV(){
- const H=admHead('Map Blueprints','The floor plans used on Anti-Strat rounds, where operators are placed. Add a picture for each floor, or a PDF where each page is a floor. Every team uses these.');
+ const tab=adm.dpTab||'bp',T=[['bp','Map blueprints'],['img','Map pictures'],['sites','Site names']];
+ const H=admHead('Default Plans','Defaults every team uses: floor plans, map pictures and bomb site names.')+`<div class="row wrap" style="gap:6px;margin-bottom:12px" role="group" aria-label="Default plans">${T.map(t=>`<button class="ch" data-a="dptab" data-k="${t[0]}" aria-pressed="${tab===t[0]}">${t[1]}</button>`).join('')}</div>`;
+ if(tab==='img')return H+(!owner()?'<div class="cd"><p>Only the site owner can change map pictures.</p></div>':siteSet?mapImgCard(siteSet).replace('margin-top:16px','margin-top:0'):setupMsg('stage22.sql'));
+ if(tab==='sites')return H+siteNamesCard();
+ return bpListV(H);
+}
+function bpListV(H0){
+ const H=H0+'<p class="mu" style="margin-bottom:10px;max-width:980px">The floor plans used on Anti-Strat rounds, where operators are placed. Add a picture for each floor, or a PDF where each page is a floor. Every team uses these.</p>';
  if(adm.bp===undefined||adm.bp===null){adm.bp=null;prepBpLoad().then(()=>{if(view==='bprints')render()});return H+'<p class="mu">Loading…</p>'}
  if(adm.bp.err)return H+`<div class="cd"><p>${esc(adm.bp.err)}</p></div>`;
  const maps=[...new Set([...MAP_POOL.map(m=>m[0]),...adm.bp.rows.map(b=>mapCanon(b.map))])];
  const busy=adm.bpBusy||{};
  return H+`<div style="display:flex;flex-direction:column;gap:12px;max-width:980px">${maps.map(m=>{const fl=bpFloors(m,adm.bp.rows),fid='bpf-'+m.replace(/[^a-z0-9]/gi,'');return `<section class="cd" style="gap:10px" aria-label="${esc(m)}"><div class="row wrap" style="gap:12px;justify-content:space-between"><div class="row" style="gap:12px;min-width:0">${mapPhoto(m,'t')}<div style="min-width:0"><h2 style="font-size:17px;font-weight:600">${esc(m)}</h2><p class="mu" style="font-size:12.5px">${fl.length?plural(fl.length,'floor'):'No blueprints yet'}</p></div></div><div><label class="no bpup" for="${fid}" style="display:inline-flex;align-items:center;height:34px;padding:0 12px;cursor:pointer">${busy[m]?esc(busy[m]):'Add pictures or a PDF'}</label><input id="${fid}" type="file" class="sr" accept="image/png,image/jpeg,image/webp,application/pdf" multiple data-c="bpfile" data-map="${esc(m)}"${busy[m]?' disabled':''}></div></div>${fl.length?`<div class="bpg">${fl.map((f,i)=>`<div class="bpc"><img src="${esc(f.image_url)}" alt="${esc(m)}, ${esc(f.floor)}" loading="lazy"><input class="fi" style="height:34px" maxlength="60" value="${esc(f.floor)}" aria-label="Floor name" data-c="bpname" data-id="${f.id}"><div class="row" style="gap:4px;justify-content:space-between"><span class="row" style="gap:4px"><button class="actx" data-a="bpmove" data-id="${f.id}" data-k="-1"${i?'':' disabled'} aria-label="Move ${esc(f.floor)} up">↑</button><button class="actx" data-a="bpmove" data-id="${f.id}" data-k="1"${i<fl.length-1?'':' disabled'} aria-label="Move ${esc(f.floor)} down">↓</button></span><button class="actx" style="color:#ff8a8a" data-a="bpdel" data-id="${f.id}">Remove</button></div></div>`).join('')}</div>`:''}</section>`}).join('')}</div>`;
 }
+// ---- SITE NAMES: for each map, up to 4 bomb sites with a default name and the other names (other languages, spellings) that mean the same site.
+// Rounds are shown with the default name everywhere: names are swapped when rounds load, so stats group under one site.
+let snIxOf,snIx=new Map();
+const snKey=s=>norm(s).replace(/\s+/g,' ');
+function siteIx(){
+ const s=siteSet?.site_names||null;if(snIxOf===s)return snIx;snIxOf=s;snIx=new Map();
+ if(s&&typeof s==='object')for(const [m,l] of Object.entries(s)){const mm=new Map();(Array.isArray(l)?l:[]).forEach(e=>{const n=String(e?.name||'').trim();if(!n)return;[n,...(Array.isArray(e.also)?e.also:[])].forEach(a=>{const k=snKey(String(a||''));if(k)mm.set(k,n)})});if(mm.size)snIx.set(squash(mapCanon(m)),mm)}
+ return snIx;
+}
+// one name, or a few joined with , / & (each part is swapped on its own)
+const siteCanon=(map,v)=>{const t=String(v??'').trim();if(!t)return v;const mm=siteIx().get(squash(mapCanon(map)));if(!mm)return v;const one=mm.get(snKey(t));if(one!=null)return one;
+ if(!/[,/&]/.test(t))return v;const parts=t.split(/(\s*[,/&]\s*)/);let hit=false;const out=parts.map((p,i)=>{if(i%2)return p;const x=mm.get(snKey(p));if(x!=null){hit=true;return x}return p}).join('');return hit?out:v};
+const fixSites=rows=>{if(!siteIx().size)return rows;for(const x of rows||[])if(x&&x.site&&'round_number' in x&&'map' in x){const c=siteCanon(x.map,x.site);if(c!==x.site)x.site=c}return rows};
+const siteDefaults=map=>((siteSet?.site_names||{})[mapCanon(map)]||[]).map(e=>String(e?.name||'').trim()).filter(Boolean);
+const snMaps=()=>[...new Set([...MAP_POOL.map(m=>m[0]),...VETO_MAPS,...Object.keys(siteSet?.site_names||{})])].sort((a,b)=>a.localeCompare(b));
+function snDraft(m){
+ adm.sn=adm.sn||{};if(adm.sn[m])return adm.sn[m];
+ const l=((siteSet?.site_names||{})[m]||[]).map(e=>({name:String(e?.name||''),also:(Array.isArray(e?.also)?e.also:[]).join(', ')}));
+ while(l.length<4)l.push({name:'',also:''});return adm.sn[m]=l.slice(0,4);
+}
+const snSplit=s=>[...new Set(String(s||'').split(/[,\n;]+/).map(x=>x.trim()).filter(Boolean))];
+function siteNamesCard(){
+ const head='<p class="mu" style="margin-bottom:10px;max-width:860px">For each map, give every bomb site one default name, and list the other names it shows up as (other languages, short forms, spellings). Wherever a round has one of the other names, the site shows the default name instead, so stats for the same site are grouped together. Separate the other names with commas.</p>';
+ if(!owner())return head+'<div class="cd"><p>Only the site owner can change site names.</p></div>';
+ if(!siteSet)return setupMsg('stage22.sql');
+ if(!('site_names' in siteSet))return head+'<div class="cd"><p>This needs a database update. Paste stage48.sql into the Supabase SQL Editor and run it.</p></div>';
+ const seen=adm.snSeen;
+ const scan=`<div class="row wrap" style="gap:8px 12px;margin-bottom:10px;max-width:860px"><button class="no" data-a="snscan" ${seen?.busy?'disabled':''}>${seen?.busy?'Looking…':seen?'Look again':'Find site names in scouting data'}</button><span class="mu" style="font-size:12.5px">${seen?.busy?'':seen?.err?esc(seen.err):seen?'Names not grouped yet are listed under each map. Pick a site next to a name to add it.':'Lists the site names saved on rounds that are not grouped under a default name yet.'}</span></div>`;
+ return head+scan+`<div style="display:flex;flex-direction:column;gap:8px;max-width:860px">${snMaps().map(m=>{
+  const d=snDraft(m),saved=(siteSet.site_names||{})[m]||[],nSet=saved.filter(e=>e?.name).length,nAlso=saved.reduce((a,e)=>a+(Array.isArray(e?.also)?e.also.length:0),0);
+  const loose=seen?.maps?.get(m)||[],defs=d.map(x=>x.name.trim()).filter(Boolean),k=squash(m);
+  const looseH=loose.length?`<div style="display:flex;flex-direction:column;gap:6px"><b style="font-weight:600;font-size:13px">Not grouped yet</b><div class="row wrap" style="gap:6px">${loose.slice(0,40).map(([n,c])=>`<span class="row" style="gap:6px;border:1px solid var(--bd);border-radius:999px;padding:2px 4px 2px 10px;font-size:12.5px"><span>${esc(n)} <span class="mu">${c}</span></span>${defs.length?`<select class="fi" style="height:26px;width:auto;font-size:12px;padding:0 6px" data-snadd="${esc(m)}" data-v="${esc(n)}" aria-label="Group ${esc(n)} under"><option value="">Group under…</option>${d.map((x,i)=>x.name.trim()?`<option value="${i}">${esc(x.name)}</option>`:'').join('')}</select>`:''}</span>`).join('')}</div>${defs.length?'':'<p class="mu" style="font-size:12px">Give the sites their default names first, then group these under them.</p>'}</div>`:'';
+  return `<details class="cd" style="gap:10px" ${adm.snOpen===m?'open':''} data-snm="${esc(m)}"><summary style="cursor:pointer;font-weight:600">${esc(m)} <span class="mu" style="font-weight:400;font-size:12.5px">· ${nSet?plural(nSet,'site')+' named'+(nAlso?', '+plural(nAlso,'other name'):''):'not set'}${loose.length?' · <span style="color:#ff8a8a">'+loose.length+' not grouped</span>':''}</span></summary>
+  <div style="display:flex;flex-direction:column;gap:8px">${d.map((x,i)=>`<div class="row wrap" style="gap:6px 8px;align-items:flex-end"><div style="flex:1 1 200px;min-width:0"><label for="sn-${k}-${i}-n" style="font-size:12px">Site ${i+1}, default name</label><input id="sn-${k}-${i}-n" class="fi" maxlength="80" data-sn="${esc(m)}" data-i="${i}" data-f="name" value="${esc(x.name)}" placeholder="Like 2F Executive Lounge / CEO Office"></div><div style="flex:2 1 280px;min-width:0"><label for="sn-${k}-${i}-a" style="font-size:12px">Other names</label><input id="sn-${k}-${i}-a" class="fi" maxlength="1000" data-sn="${esc(m)}" data-i="${i}" data-f="also" value="${esc(x.also)}" placeholder="Separated by commas"></div></div>`).join('')}</div>
+  ${looseH}<div class="row" style="gap:8px"><button class="go" data-a="snsave" data-m="${esc(m)}">Save ${esc(m)}</button></div></details>`}).join('')}</div>`;
+}
+async function snSave(m,b){
+ const d=snDraft(m),out=[];
+ for(let i=0;i<d.length;i++){const name=d[i].name.trim(),also=snSplit(d[i].also).filter(a=>snKey(a)!==snKey(name));if(!name&&also.length)return toast('Give site '+(i+1)+' on '+m+' a default name first.');if(name)out.push({name,also})}
+ const keys=new Map();for(const e of out)for(const a of [e.name,...e.also]){const k=snKey(a);if(keys.has(k)&&keys.get(k)!==e.name)return toast('"'+a+'" is listed under two sites on '+m+'. Keep it under one.');keys.set(k,e.name)}
+ if(b)b.disabled=true;const sn={...(siteSet.site_names||{})};if(out.length)sn[m]=out;else delete sn[m];
+ const r=await sb.from('site_settings').update({site_names:sn,updated_at:new Date().toISOString()}).eq('id',true).select().single();
+ if(b)b.disabled=false;if(r.error)return toast(/site_names/.test(r.error.message)?'Paste stage48.sql into the Supabase SQL Editor and run it first.':r.error.message);
+ siteSet=r.data;delete adm.sn[m];adm.snOpen=m;
+ // rounds already loaded switch to the default names now; the rest do when they load
+ if(sco)fixSites(scAll('r'));if(prep?.r)fixSites(prep.r);
+ if(adm.snSeen?.maps)adm.snSeen.maps.set(m,(adm.snSeen.maps.get(m)||[]).filter(([n])=>siteCanon(m,n)===n&&!siteDefaults(m).some(x=>snKey(x)===snKey(n))));
+ render();toast(m+' site names saved. Rounds show the default names everywhere.');
+}
+async function snScan(){
+ adm.snSeen={busy:true};render();
+ const r=await allRowsRaw(()=>{let q=sb.from('scout_rounds').select('map,site');if(cur?.id)q=q.eq('owner_team_id',cur.id);return q.order('id')});
+ if(r.error){adm.snSeen={err:'Could not read rounds: '+r.error.message};return view==='bprints'&&render()}
+ const by=new Map();for(const x of r.data){const m=mapCanon(x.map||'');if(!m)continue;for(const p of String(x.site||'').split(/\s*[,/&]\s*/)){const n=p.trim();if(!n)continue;if(siteCanon(m,n)!==n||siteDefaults(m).some(y=>snKey(y)===snKey(n)))continue;const mm=by.get(m)||by.set(m,new Map()).get(m),k=snKey(n),e=mm.get(k)||{n,c:0};e.c++;mm.set(k,e)}}
+ const maps=new Map();for(const [m,mm] of by){const key=snMaps().find(x=>squash(x)===squash(m))||m;maps.set(key,[...mm.values()].sort((a,b)=>b.c-a.c).map(e=>[e.n,e.c]))}
+ adm.snSeen={maps};if(view==='bprints')render();
+}
+document.addEventListener('input',e=>{const t=e.target;if(!t.dataset||t.dataset.sn==null)return;const d=snDraft(t.dataset.sn);d[+t.dataset.i][t.dataset.f]=t.value;adm.snOpen=t.dataset.sn});
+document.addEventListener('change',e=>{const t=e.target;if(!t.dataset||t.dataset.snadd==null||t.value==='')return;const m=t.dataset.snadd,d=snDraft(m),x=d[+t.value];x.also=[...snSplit(x.also),t.dataset.v].join(', ');adm.snOpen=m;
+ if(adm.snSeen?.maps)adm.snSeen.maps.set(m,(adm.snSeen.maps.get(m)||[]).filter(([n])=>n!==t.dataset.v));render();toast('Added. Click Save '+m+' to keep it.')});
 const bpName=f=>f.name.replace(/\.[a-z0-9]+$/i,'').replace(/[_-]+/g,' ').trim().slice(0,60)||'Floor';
 async function bpPdfPages(file){
  await loadScript(PDFJS+'pdf.min.js');pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS+'pdf.worker.min.js';
@@ -2405,7 +2472,8 @@ const normRes=s=>{const k=norm(s);return['w','win','won'].includes(k)?'W':['l','
 const safeLink=(u,l)=>/^https?:\/\//i.test(u||'')?`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer" style="color:var(--pk)">${esc(l)}</a>`:esc(l===u?'':l);
 const canSc=()=>canAn();
 // Supabase returns at most 1,000 rows per request, so long lists are read in pages
-async function allRows(q){
+async function allRows(q){const r=await allRowsRaw(q);if(r.data)fixSites(r.data);return r}
+async function allRowsRaw(q){
  const first=await q().range(0,999);if(first.error||first.data.length<1000)return first.error?first:{data:first.data};
  const out=[...first.data];
  for(let i=1000;;i+=6000){const rs=await Promise.all([0,1,2,3,4,5].map(k=>q().range(i+k*1000,i+k*1000+999)));for(const r of rs){if(r.error)return r;out.push(...r.data);if(r.data.length<1000)return{data:out}}}
@@ -3386,7 +3454,7 @@ async function rdOpen(id){
 function rdHtml(){
  const f=sco.rd,g=sco.m.find(x=>x.id===f.gid),r=f.id?sco.r.find(x=>x.id===f.id):null;
  const o=r||{team:g.team,opponent:g.opponent,round_number:f.next,side:'',site:'',result:'',opponent_operators:''},tm=roundTeams(o),res=normRes(o.result);
- const sites=[...new Set(sco.r.filter(x=>mapCanon(x.map)===mapCanon(g.map)).map(x=>(x.site||'').trim()).filter(Boolean))].sort();
+ const sites=[...new Set([...siteDefaults(g.map),...[...new Set(sco.r.filter(x=>mapCanon(x.map)===mapCanon(g.map)).map(x=>(x.site||'').trim()).filter(Boolean))].sort()])];
  const team=(t,i)=>{const sk=l=>l.map(o=>norm(opCanon(o))).sort().join(),all=f.stats.filter(p=>sameName(p.team_name,t.who)),ps=all.length&&sk(all.map(p=>repOp(p.operator)))===sk(t.ops)?all:[],na=Array(t.na||0).fill('N/A'),slots=ps.length?[...ps.map(p=>({label:p.player_username,op:repOp(p.operator),pid:p.id})),...Array(Math.max(0,5-ps.length)).fill(0).map((_,j)=>({label:'Player not in the replay',op:na[j]||''}))]:[0,1,2,3,4].map(j=>({label:'Operator '+(j+1),op:[...t.ops,...na][j]||''})),d=new Set(opDup(slots.map(x=>x.op)).map(o=>norm(opCanon(o))));
   return `<fieldset style="border:1px solid var(--bd);border-radius:10px;padding:8px 10px;min-width:0;margin:0"><legend style="font-weight:600;padding:0 4px;overflow-wrap:anywhere">${esc(t.who)}${t.side?' · '+t.side:''}</legend>${slots.map((x,j)=>{const id='rdo'+i+'_'+j,bad=x.op&&d.has(norm(opCanon(x.op)));return `<div class="row" style="gap:8px;padding:2px 0"><label for="${id}" style="margin:0;color:var(--tx);flex:1 1 80px;min-width:0;font-size:13px;overflow-wrap:anywhere">${esc(x.label)}${bad?' <span class="over">twice</span>':''}</label><select id="${id}" class="fi" style="flex:0 1 170px;min-width:0;height:34px;padding:0 6px${bad?';border-color:#ff8a8a':''}" data-rdo="${i}" data-pid="${x.pid||''}" data-was="${esc(x.op)}">${opOptions(isNA(x.op)?'':x.op,t.side).replace('>None</option>','>None</option><option value="N/A"'+(isNA(x.op)?' selected':'')+'>N/A (player left)</option>')}</select></div>`}).join('')}</fieldset>`};
  const fx=(id,l,inner)=>`<div style="flex:1 1 140px;min-width:0"><label for="${id}">${l}</label>${inner}</div>`;
@@ -4365,10 +4433,10 @@ function actlogV(){
 
 // SITE SETTINGS (owner)
 function sitesetV(){
- if(!owner())return ownerOnly('Site settings');
- if(!siteSet)return admHead('Site settings','For the whole site.')+setupMsg('stage22.sql');
+ if(!owner())return ownerOnly('Website settings');
+ if(!siteSet)return admHead('Website settings','For the whole site.')+setupMsg('stage22.sql');
  const s=siteSet;
- return admHead('Site settings','For the whole site. Changes save as you make them.')+`<div class="cd" data-auto="siteset" data-dirty style="gap:16px;max-width:720px">
+ return admHead('Website settings','For the whole site. Changes save as you make them.')+`<div class="cd" data-auto="siteset" data-dirty style="gap:16px;max-width:720px">
  <div><span class="lb" style="font-size:15px;font-weight:600;color:var(--tx)">Announcement</span><p class="mu" style="font-size:12.5px;margin-bottom:6px">A message shown at the top of every page for everyone signed in. People can hide it, and it comes back when you change it.</p><textarea id="ssa" class="fi ta" maxlength="500" placeholder="e.g. Scrims are moved to 6pm this week">${esc(s.announcement)}</textarea><label class="row" style="gap:8px;margin-top:6px;color:var(--tx)"><input id="sson" type="checkbox"${s.announcement_on?' checked':''}> Show the announcement</label></div>
  <div><span class="lb" style="font-size:15px;font-weight:600;color:var(--tx)">Sign-ups</span><label class="row" style="gap:8px;color:var(--tx);margin-top:4px"><input type="radio" name="ssup" value="invite"${s.open_signups?'':' checked'}> Invite only <span class="mu">(recommended)</span></label><label class="row" style="gap:8px;color:var(--tx);margin-top:4px"><input type="radio" name="ssup" value="open"${s.open_signups?' checked':''}> Anyone can sign up <span class="mu">and joins with no team until you give them one</span></label></div>
  <div><span class="lb" style="font-size:15px;font-weight:600;color:var(--tx)">Default accent color</span><p class="mu" style="font-size:12.5px;margin-bottom:6px">Used for people who are not on a team yet. Everyone else sees their team's color.</p><div class="row wrap" style="gap:10px">${COL.map(c=>`<button type="button" class="sw" data-a="sssw" data-c="${c}" style="background:${c}" aria-label="Color ${c}" aria-pressed="${c===s.default_color}"></button>`).join('')}</div><div style="margin-top:10px;max-width:220px"><label for="ssc">Or enter a hex code</label><input id="ssc" class="fi" value="${esc(s.default_color)}" maxlength="7" spellcheck="false" autocomplete="off"></div></div>
@@ -4382,7 +4450,7 @@ function sitesetV(){
  <li>Open <b>APIs and Services</b>, then <b>Credentials</b>, then Create credentials, <b>API key</b>. Copy it into the box below. Then click the key to edit it: under Application restrictions pick Websites and add <code>${esc(location.origin)}/*</code>, and under API restrictions pick <b>Google Picker API</b>. Save.</li>
  <li>Open the <b>Cloud overview</b> (Dashboard) for the project and copy the <b>Project number</b> into the box below.</li></ol></details>
  <div class="row wrap" style="gap:10px;align-items:flex-end"><div style="flex:2 1 260px;min-width:0"><label for="ssgc">Client ID</label><input id="ssgc" class="fi" spellcheck="false" autocomplete="off" placeholder="123456789-abc….apps.googleusercontent.com" value="${esc(s.google_client_id)}"></div><div style="flex:2 1 220px;min-width:0"><label for="ssgk">API key</label><input id="ssgk" class="fi" spellcheck="false" autocomplete="off" placeholder="AIza…" value="${esc(s.google_api_key)}"></div><div style="flex:1 1 150px;min-width:0"><label for="ssgp">Project number</label><input id="ssgp" class="fi" inputmode="numeric" spellcheck="false" autocomplete="off" placeholder="123456789012" value="${esc(s.google_project_number)}"></div></div></div>`:''}
- <p class="mu" style="font-size:12px">Last changed ${esc(ago(s.updated_at))}.</p></div>${mapImgCard(s)}`;
+ <p class="mu" style="font-size:12px">Last changed ${esc(ago(s.updated_at))}.</p></div><p class="mu" style="margin-top:12px;font-size:12.5px">Map pictures are in Admin, Default Plans.</p>`;
 }
 function mapImgCard(s){
  const head='<span class="lb" style="font-size:15px;font-weight:600;color:var(--tx)">Map pictures</span><p class="mu" style="font-size:12.5px;margin-bottom:6px">Your own picture for each map. It is used everywhere on the site instead of the built-in one. PNG, JPG or WebP. Big pictures are made smaller (1280 pixels wide) when you upload them, so the site stays quick. Wide pictures work best.</p>';
@@ -4433,7 +4501,7 @@ async function saveSiteSet(f,qt){
  const r=await sb.from('site_settings').update(row).eq('id',true).select().single();if(r.error)return say(qt,r.error.message);
  siteSet=r.data;applyAccent();const b=$('#sitebanner');if(b)b.outerHTML=siteBanner();
  document.querySelectorAll('[data-a=sssw]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.c===row.default_color));
- return qt?{}:toast('Site settings saved');
+ return qt?{}:toast('Website settings saved');
 }
 AUTO.siteset=f=>saveSiteSet(f,1);AUTO_AFTER.add('sssw');
 const sbKey=()=>'sbhide:'+(siteSet?.updated_at||'');
@@ -4441,7 +4509,7 @@ const sbKey=()=>'sbhide:'+(siteSet?.updated_at||'');
 function siteBanner(){const s=siteSet,none='<span id="sitebanner" class="sp"></span>';if(!s?.announcement_on||!s.announcement.trim())return none;let hid=false;try{hid=localStorage.getItem(sbKey())==='1'}catch{}return hid?none:`<div id="sitebanner" class="hban" role="status"><span class="hbs" aria-hidden="true">✦</span><span class="hbt">${esc(s.announcement)}</span><span class="hbs" aria-hidden="true">✦</span><button class="actx" data-a="sbhide">Hide</button></div>`}
 
 // BACKUPS AND EXPORT (owner)
-const BK=[['teams','Teams','id'],['team_members','Team members','team_id,user_id'],['profiles','People','id'],['invites','Invites','email'],['team_roster','Rosters','id'],['schedule_entries','Schedule','id'],['strats','Strats','id'],['journal_goals','Journal goals','id'],['journal_notes','Journal notes','id'],['scrims','Scrims','id'],['scrim_map_results','Scrim maps','scrim_id,map'],['scrim_player_notes','Scrim player notes','scrim_id,user_id'],['scrim_vod_notes','Timestamp notes','id'],['scout_teams','Scouted teams','id'],['scout_matches','Match library','id'],['scout_vetoes','Vetoes','id'],['scout_rounds','Round library','id'],['scout_settings','Rating settings','owner_team_id'],['prep_logs','Drone Prep and Anti-Strat','id'],['map_blueprints','Map blueprints','id'],['player_round_stats','Player round stats','id'],['site_settings','Site settings','id'],['activity_log','Activity log','id']];
+const BK=[['teams','Teams','id'],['team_members','Team members','team_id,user_id'],['profiles','People','id'],['invites','Invites','email'],['team_roster','Rosters','id'],['schedule_entries','Schedule','id'],['strats','Strats','id'],['journal_goals','Journal goals','id'],['journal_notes','Journal notes','id'],['scrims','Scrims','id'],['scrim_map_results','Scrim maps','scrim_id,map'],['scrim_player_notes','Scrim player notes','scrim_id,user_id'],['scrim_vod_notes','Timestamp notes','id'],['scout_teams','Scouted teams','id'],['scout_matches','Match library','id'],['scout_vetoes','Vetoes','id'],['scout_rounds','Round library','id'],['scout_settings','Rating settings','owner_team_id'],['prep_logs','Drone Prep and Anti-Strat','id'],['map_blueprints','Map blueprints','id'],['player_round_stats','Player round stats','id'],['site_settings','Website settings','id'],['activity_log','Activity log','id']];
 const bkFetch=(t,ord)=>allRows(()=>{let q=sb.from(t).select('*');ord.split(',').forEach(c=>{q=q.order(c)});return q});
 const csvOf=rows=>{const cols=[...new Set(rows.flatMap(r=>Object.keys(r)))],cell=v=>{if(v==null)return '';const s=typeof v==='object'?JSON.stringify(v):String(v);return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};return [cols.join(','),...rows.map(r=>cols.map(c=>cell(r[c])).join(','))].join('\r\n')};
 function backupV(){
@@ -4463,7 +4531,7 @@ async function bkCsv(t,btn){
  if(r.error)return toast(`${x[1]} could not be read: ${r.error.message}`);
  dlFile(`liv-analytics-${t}-${today()}.csv`,csvOf(r.data),'text/csv');((adm.bk=adm.bk||{}).counts=adm.bk.counts||{})[t]=r.data.length;toast(`${x[1]}: ${plural(r.data.length,'row')} downloaded`);
 }
-const adminCards=[['Manage Teams','edit and merge teams, everywhere at once','mteams','<path d="M4 11l8-7 8 7v9H4z"/><path d="M9 20v-6h6v6"/>'],['Manage Users','find people, assign teams and roles','users','<circle cx="9" cy="9" r="3"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5"/>'],['Teams','all teams, open any dashboard','teamsV','<path d="M4 11l8-7 8 7v9H4z"/>'],['Create team','name, logo, color, players','create','<path d="M12 5v14M5 12h14"/>'],['Roles and Permissions','who can do what, and team roles','roles','<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/>'],['Invites','people who have not signed up yet','invitesV','<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>'],['Data Pulls','Liquipedia pulls for every team','pulls','<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>'],['Activity Log','who changed what, and when','actlog','<path d="M4 6h16M4 12h16M4 18h10"/>'],['Map Blueprints','floor plans for Anti-Strat','bprints','<path d="M3 5h18v14H3z"/><path d="M9 5v8h6M15 9v10M3 13h6"/>'],['Site Settings','owner only','siteset','<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'],['Backups and Export','owner only','backup','<path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M12 11v6M9 14l3 3 3-3"/>']];
+const adminCards=[['Manage Teams','edit and merge teams, everywhere at once','mteams','<path d="M4 11l8-7 8 7v9H4z"/><path d="M9 20v-6h6v6"/>'],['Manage Users','find people, assign teams and roles','users','<circle cx="9" cy="9" r="3"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5"/>'],['Teams','all teams, open any dashboard','teamsV','<path d="M4 11l8-7 8 7v9H4z"/>'],['Create team','name, logo, color, players','create','<path d="M12 5v14M5 12h14"/>'],['Roles and Permissions','who can do what, and team roles','roles','<path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/>'],['Invites','people who have not signed up yet','invitesV','<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>'],['Data Pulls','Liquipedia pulls for every team','pulls','<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>'],['Activity Log','who changed what, and when','actlog','<path d="M4 6h16M4 12h16M4 18h10"/>'],['Default Plans','blueprints, map pictures, site names','bprints','<path d="M3 5h18v14H3z"/><path d="M9 5v8h6M15 9v10M3 13h6"/>'],['Website Settings','owner only','siteset','<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'],['Backups and Export','owner only','backup','<path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M12 11v6M9 14l3 3 3-3"/>']];
 function adminV(){return `<div class="row wrap" style="margin-bottom:24px"><div><h1 class="serif" style="font-size:24px">Admin panel</h1><p class="mu">Owner and admins only.</p></div></div><div class="g">${adminCards.map(c=>`<button class="c" data-a="${c[2]?'admgo':'soon'}" data-v="${c[2]}"><span class="ic">${ico(c[3]||'<circle cx="12" cy="12" r="3"/>')}</span><span><b>${c[0]}</b><small>${c[1]}</small></span>${c[2]?'':'<span class="soon">Soon</span>'}</button>`).join('')}</div>`}
 const srch=ph=>`<input class="fi" type="search" data-c="filter" aria-label="${ph}" placeholder="${ph}">`;
 function teamsV(){return `<div class="row wrap" style="margin-bottom:20px"><div><h1 class="serif" style="font-size:24px">Teams</h1><p class="mu">Every team on the site, including all scouted teams. Open one to see its dashboard.</p></div><span class="sp"></span><button class="go" data-a="go" data-v="create">New team</button></div>${srch('Search teams')}
@@ -4616,7 +4684,8 @@ const A={
  xgo:(d,b)=>xExport(b),
  cover:()=>openCover(),
  strats:()=>openStrats(),
- gdeck:()=>openSc('games','m'),mapimgdel:d=>{if(confirm('Use the built-in picture for '+d.k+' again?'))mapImgSave(d.k,null)},banpull:async(d,b)=>{const r=sco.m.find(x=>x.id===d.id);if(!r)return;b.disabled=true;const res=await banPull(mvSeriesRows(r).rows);b.disabled=false;toast(res&&typeof res==='object'?'Filled in '+plural(res.n,'detail')+'. The '+res.note+'.':typeof res==='string'?res:res?'Filled in '+plural(res,'detail')+' from official / siege.gg pages.':'Nothing new on the official or siege.gg page for this series.');if(view==='sc')render()},banpullall:d=>banPullAll(),dprep:()=>openPrep('drone'),sprep:()=>openPrep('strat'),prepmap:d=>{prep.map=d.k;prep.site='';prep.round=null;render()},prepside:d=>{prep.side=d.k;prep.site='';render()},prepsite:d=>{prep.site=d.k;prep.msel=new Set();render()},
+ gdeck:()=>openSc('games','m'),dptab:d=>{adm.dpTab=d.k;render()},snsave:(d,b)=>snSave(d.m,b),snscan:()=>snScan(),
+mapimgdel:d=>{if(confirm('Use the built-in picture for '+d.k+' again?'))mapImgSave(d.k,null)},banpull:async(d,b)=>{const r=sco.m.find(x=>x.id===d.id);if(!r)return;b.disabled=true;const res=await banPull(mvSeriesRows(r).rows);b.disabled=false;toast(res&&typeof res==='object'?'Filled in '+plural(res.n,'detail')+'. The '+res.note+'.':typeof res==='string'?res:res?'Filled in '+plural(res,'detail')+' from official / siege.gg pages.':'Nothing new on the official or siege.gg page for this series.');if(view==='sc')render()},banpullall:d=>banPullAll(),dprep:()=>openPrep('drone'),sprep:()=>openPrep('strat'),prepmap:d=>{prep.map=d.k;prep.site='';prep.round=null;render()},prepside:d=>{prep.side=d.k;prep.site='';render()},prepsite:d=>{prep.site=d.k;prep.msel=new Set();render()},
  prepdr:d=>{const n=+d.k;prep.dr=n?{from:dayShift(today(),-n),to:''}:{from:'',to:''};render()},
  preplog:d=>prepOpen(d.id),mtedit:d=>mtEdit(d.id),mtmerge:d=>mtMergeOpen(d.id),mtgo:(d,b)=>mtGo(b),mtcombine:(d,b)=>mtCombine(d.id,b),mtswap:()=>{const m=adm.mg;adm.mg={from:m.to,to:m.from,use:m.use};mtMergeDraw()},prepmergemode:()=>{prep.merge=!prep.merge;prep.msel=new Set();render()},prepmerge:(d,b)=>prepMerge([d.v,d.k],b),prepmergesel:(d,b)=>prepMerge([...prep.msel],b),prepunmerge:async(d,b)=>{const g=prep.groups?.get(d.k);if(!g)return;if(await prepSetStrat(g.rows,null,b)){toast(`${g.title} is unmerged. Its rounds are back on their own strats.`);render()}},prepout:async(d,b)=>{const x=prepRounds(true).find(o=>o.r.id===d.id);if(x&&await prepSetStrat([x],null,b)){toast(`Round ${x.r.round_number} is back on its own strat.`);render()}},prepround:d=>{prep.round=d.id;prep.rd=null;render();scrollTo(0,0)},prepback:()=>{if(prep.rd?.dirty&&!confirm('This round has changes that are not saved. Leave without saving?'))return;prep.round=null;prep.rd=null;render()},prepsaveround:(d,b)=>prepRoundSave(b),prepbanedit:()=>{prep.rd.banEdit=!prep.rd.banEdit;prepPaint('prepbans',prepBansH())},prepbansave:(d,b)=>prepBanSave(b),prepvodsave:(d,b)=>prepVodSave(b),prepjump:()=>{const v=prepT($('#prepat').value);if(Number.isNaN(v))return toast('Write the round start like 12:34 or 1:02:30');prep.rd.vod_at=v;prepDirty();prepPaint('prepvodbox',prepVodH())},prepfloor:d=>{prep.rd.floor=d.k;prep.rd.arm='';prepPaint('prepboard',prepBoardH())},prepunpin:d=>{prep.rd.pins=prep.rd.pins.filter(p=>norm(p.op)!==norm(d.k));prepDirty();prepPaint('prepboard',prepBoardH())},bpmove:d=>bpMove(d.id,+d.k),bpdel:d=>bpDel(d.id),prepsave:(d,b)=>prepSave(b),prepclose:()=>{prep&&(prep.dlg=null);$('#dlg').close()},
  prepadd:()=>{const w=$('#prepdl');if(!w)return;const j=w.querySelectorAll('input').length;if(j>=20)return toast('A round can have up to 20 drones.');w.insertAdjacentHTML('beforeend',`<input id="pdr${j}" class="fi" list="preprooms" maxlength="80" aria-label="Drone ${j+1}" placeholder="Room" data-pdr="1">`);$('#pdr'+j).focus()},
