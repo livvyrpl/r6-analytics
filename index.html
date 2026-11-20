@@ -3554,7 +3554,7 @@ function ytCands(v,units){
 async function ytRead(){
  const s=sco,url=($('#ytu')?.value||'').trim();if(!url)return;try{localStorage.setItem('liv.ytpl',url)}catch{}
  s.yt={url,busy:true,err:''};render();
- let d;try{d=await ytCall(url)}catch(e){s.yt={url,busy:false,err:e.message};if(sco===s&&view==='sc')render();return}
+ let d;try{d=await ytCall(url)}catch(e){const old=/^Paste a YouTube playlist link,/.test(e.message)&&!/[?&]list=/.test(url);s.yt={url,busy:false,err:old?'The YouTube reader in Supabase is an old copy that only reads playlists. Replace the youtube-playlist Edge Function code with the newest file and deploy it, then try the channel again.':e.message};if(sco===s&&view==='sc')render();return}
  const team=s.gapTeam?s.teams.find(x=>x.id===s.gapTeam):null,units=gapRows(team).map(x=>({x,r:x.r,day:ytDay(x.date)}));
  const vids=(d.videos||[]).slice().sort((x,y)=>String(x.published).localeCompare(String(y.published)));
  const list=vids.map(v=>{const on=v.id?s.m.filter(g=>String(g.vod_link||'').includes(v.id)):[],all=ytCands(v,units);let c=on.length?all.filter(c=>c.u.x.rows.some(g=>on.includes(g))):all;c.forEach(x=>{x.miss=x.u.x.rows.filter(g=>!ytVod(g))});c=c.filter(x=>x.miss.length).slice(0,8);return{v,cands:c,pick:null,on,none:!all.length}}).filter(q=>q.cands.length||q.none&&!q.on.length);
@@ -3594,9 +3594,9 @@ function ytB(){
  const y=sco.yt,saved=(()=>{try{return localStorage.getItem('liv.ytpl')||''}catch{return ''}})();
  const vodNow=y?.list?gapRows(sco.gapTeam?sco.teams.find(x=>x.id===sco.gapTeam):null).filter(x=>!x.has.vod).length:0;
  const res=y?.list?`<p>${y.title?'<b style="font-weight:600">'+esc(y.title)+'</b>: ':''}${plural(y.total,'video')} read${y.already?', '+y.already+' left out because their games all have a VOD':''}. <span style="color:#34c46a;font-weight:600">Linked ${plural(y.linked,'video')}</span>. Matches missing a VOD: ${y.vodBefore} before, ${vodNow} now.${y.list.length?` <button class="no" style="height:26px;font-size:12px;margin-left:6px" data-a="ytreopen">${y.i<y.list.length?'Continue ('+(y.list.length-y.i)+' left)':'Review again'}</button>`:''}</p>`:'';
- return `<details class="cd" style="gap:8px;margin-bottom:8px" ${y?'open':''}><summary style="cursor:pointer;font-weight:600">Find VODs from a YouTube playlist</summary>
- <p class="mu" style="font-size:12.5px">Paste a playlist link. For each video, every game between the two teams in its title is shown, closest to the upload date first, and you pick the one it belongs to. A video is left out when every game it could belong to already has a VOD.</p>
- <form data-s="ytread" class="row wrap" style="gap:8px"><input id="ytu" class="fi" style="flex:1 1 260px;min-width:0" inputmode="url" aria-label="YouTube playlist link" placeholder="https://www.youtube.com/playlist?list=…" value="${esc(y?.url??saved)}"><button class="go" ${y?.busy?'disabled':''}>${y?.busy?'Reading…':'Match VODs'}</button></form>
+ return `<details class="cd" style="gap:8px;margin-bottom:8px" ${y?'open':''}><summary style="cursor:pointer;font-weight:600">Find VODs from a YouTube playlist or channel</summary>
+ <p class="mu" style="font-size:12.5px">Paste a playlist link or a channel link (like youtube.com/@ChannelName, which reads its newest 2,000 uploads). For each video, every game between the two teams in its title is shown, closest to the upload date first, and you pick the one it belongs to. A video is left out when every game it could belong to already has a VOD.</p>
+ <form data-s="ytread" class="row wrap" style="gap:8px"><input id="ytu" class="fi" style="flex:1 1 260px;min-width:0" inputmode="url" aria-label="YouTube playlist or channel link" placeholder="Playlist or channel link: youtube.com/playlist?list=… or youtube.com/@…" value="${esc(y?.url??saved)}"><button class="go" ${y?.busy?'disabled':''}>${y?.busy?'Reading…':'Match VODs'}</button></form>
  ${y?.err?`<p class="over">${esc(y.err)}</p>`:''}${res}</details>`;
 }
 function gapB(){

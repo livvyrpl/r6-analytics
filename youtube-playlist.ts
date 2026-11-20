@@ -1,5 +1,5 @@
 // Supabase Edge Function: youtube-playlist
-// Reads the title, link and upload date of every video in a YouTube playlist, so Missing data can match VODs to games.
+// Reads the title, link and upload date of every video in a YouTube playlist (or a channel's uploads, newest 2,000), so Missing data can match VODs to games.
 // Needs a secret named YOUTUBE_API_KEY (Supabase > Edge Functions > Secrets). Only signed-in users of the site can call it.
 const ORIGINS = ['https://livvyrpl.github.io'];
 const cors = (o: string | null) => ({
@@ -18,9 +18,29 @@ Deno.serve(async (req) => {
     if (!key) return out({ error: 'The YouTube key is not set. Add a secret named YOUTUBE_API_KEY in Supabase > Edge Functions > Secrets.' });
     const { playlist } = await req.json().catch(() => ({}));
     const raw = String(playlist || '').trim();
-    const m = raw.match(/[?&]list=([A-Za-z0-9_-]+)/) || raw.match(/^([A-Za-z0-9_-]{10,})$/);
-    if (!m) return out({ error: 'Paste a YouTube playlist link, like https://www.youtube.com/playlist?list=PL...' });
-    const id = m[1];
+    let id = '', chTitle = '';
+    const m = raw.match(/[?&]list=([A-Za-z0-9_-]+)/);
+    // a channel link (or @handle): read the channel's uploads playlist, newest first
+    const ch = m ? null : raw.match(/youtube\.com\/channel\/(UC[A-Za-z0-9_-]{20,})/i) || raw.match(/^(UC[A-Za-z0-9_-]{20,})$/);
+    const hd = m || ch ? null : raw.match(/youtube\.com\/(@[^/?#\s]+)/i) || raw.match(/^(@[^/?#\s]+)$/);
+    const un = m || ch || hd ? null : raw.match(/youtube\.com\/(?:c|user)\/([^/?#\s]+)/i);
+    if (m) id = m[1];
+    else if (ch || hd || un) {
+      const look = async (q: Record<string, string>) => {
+        const r = await fetch('https://www.googleapis.com/youtube/v3/channels?' + new URLSearchParams({ part: 'snippet,contentDetails', key, ...q }));
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(String(j?.error?.message || r.status));
+        return j?.items?.[0] || null;
+      };
+      const name = decodeURIComponent((ch || hd || un)![1]);
+      let c = ch ? await look({ id: name }) : hd ? await look({ forHandle: name }) : await look({ forUsername: name });
+      if (!c && un) c = await look({ forHandle: '@' + name });
+      if (!c) return out({ error: 'That channel was not found. Paste its link, like https://www.youtube.com/@ChannelName' });
+      id = c.contentDetails?.relatedPlaylists?.uploads || '';
+      chTitle = c.snippet?.title || '';
+      if (!id) return out({ error: 'Could not read the videos of that channel.' });
+    } else if (/^[A-Za-z0-9_-]{10,}$/.test(raw)) id = raw;
+    if (!id) return out({ error: 'Paste a YouTube playlist or channel link, like https://www.youtube.com/playlist?list=PL... or https://www.youtube.com/@ChannelName' });
     const videos: { id: string; title: string; published: string }[] = [];
     let page = '';
     // 50 videos a page, up to 2,000 videos
@@ -44,8 +64,8 @@ Deno.serve(async (req) => {
       page = j.nextPageToken || '';
       if (!page) break;
     }
-    let title = '';
-    try {
+    let title = chTitle ? chTitle + ' (channel uploads)' : '';
+    if (!title) try {
       const r = await fetch('https://www.googleapis.com/youtube/v3/playlists?' + new URLSearchParams({ part: 'snippet', id, key }));
       title = (await r.json())?.items?.[0]?.snippet?.title || '';
     } catch { /* the title is only for show */ }
