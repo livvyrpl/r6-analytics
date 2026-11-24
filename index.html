@@ -2445,7 +2445,7 @@ const LIB={
  m:{table:'scout_matches',title:'Match Library',date:'match_date',conflict:'owner_team_id,match_date,dedupe_key',req:['match_date','opponent','map'],
   cols:[['match_date','Date'],['team','Team 1'],['opponent','Team 2'],['map','Map'],['league','League'],['phase','Phase'],['start_side','Starting Side'],['picked_by','Map Picked By'],['our_atk_ban','T1 ATK Ban'],['our_def_ban','T1 DEF Ban'],['opp_atk_ban','T2 ATK Ban'],['opp_def_ban','T2 DEF Ban'],['split_score','Split'],['round_score','Score'],['total_rounds','Total Rd'],['ot_start','OT Side'],['result','Win/Loss'],['vod_link','VOD']],
   extra:[['source_name','Source'],['replay_link','Replay file'],['source_link','Source link']],show:['source_name','replay_link'],
-  alias:{rounds:'round_score',result:'result',wl:'result',winloss:'result',teamname:'team',roundscore:'round_score',round:'round_score',score:'round_score',splitscore:'split_score',start:'start_side',startside:'start_side',startingside:'start_side',pickedby:'picked_by',mappickedby:'picked_by',atkban:'our_atk_ban',defban:'our_def_ban',oppatkban:'opp_atk_ban',oppdefban:'opp_def_ban',total:'total_rounds',totalrd:'total_rounds',totalrounds:'total_rounds',otstart:'ot_start',otside:'ot_start'},
+  alias:{rounds:'round_score',result:'result',wl:'result',winloss:'result',teamname:'team',roundscore:'round_score',round:'round_score',score:'round_score',splitscore:'split_score',start:'start_side',startside:'start_side',startingside:'start_side',pickedby:'picked_by',mappickedby:'picked_by',atkban:'our_atk_ban',defban:'our_def_ban',oppatkban:'opp_atk_ban',oppdefban:'opp_def_ban',total:'total_rounds',totalrd:'total_rounds',totalrounds:'total_rounds',otstart:'ot_start',otside:'ot_start',otstartingside:'ot_start',vodlink:'vod_link',vod:'vod_link'},
   key:r=>[r.match_date,...[norm(r.team),norm(r.opponent)].sort(),norm(r.map),norm(r.phase)].join('|')},
  v:{table:'scout_vetoes',title:'Vetoes',date:'veto_date',conflict:'owner_team_id,veto_date,dedupe_key',req:['veto_date','opponent'],
   cols:[['veto_date','Date'],['team','Team Name'],['opponent','Opponent'],['league','League'],['phase','Phase'],...banF('t1'),...banF('t2'),['t1_pick','T1 Pick'],['t2_pick','T2 Pick'],['decider','Decider'],['t1_pick_2','T1 Pick 2'],['t2_pick_2','T2 Pick 2'],['format','Format'],['check','Check']],
@@ -3276,7 +3276,7 @@ const RATE_DEF={win:3,loss:-2,by:-1,against:2,picked:0};
 const RATE_LABEL=[['win','Win'],['loss','Loss'],['by','Banned by this team'],['against','Banned against this team'],['picked','Picked by this team']];
 // the order maps appear in the sheet, used when two maps tie
 const MAP_ORDER=['Bank','Border','Chalet','Clubhouse','Villa','Fortress','Kafe Dostoyevsky','Lair','Nighthaven Labs'];
-const mapCanon=n=>{const k=norm(n).replace(/ dostoyevsky| labs/g,'').replace(/ /g,''),p=MAP_POOL.find(m=>norm(m[0]).replace(/ dostoyevsky| labs/g,'').replace(/ /g,'')===k);return p?p[0]:String(n||'').trim()};
+const mapCanon=n=>{let k=norm(n).replace(/ dostoyevsky| labs/g,'').replace(/ /g,'');if(k==='labs')k='nighthaven';const p=MAP_POOL.find(m=>norm(m[0]).replace(/ dostoyevsky| labs/g,'').replace(/ /g,'')===k);return p?p[0]:String(n||'').trim()};
 const rateCfg=()=>({f:{...RATE_DEF,...(sco.st?.factors||{})},w:sco.st?.map_weights||{}});
 function mapPower(t,rows,vetoes=sco.v){
  const k=scKeys(t),{f,w}=rateCfg(),by=new Map(),get=m=>{const n=mapCanon(m);if(!by.has(n))by.set(n,{name:n,W:0,L:0,D:0,by:0,against:0,picked:0});return by.get(n)};
@@ -3678,15 +3678,25 @@ const SHF_F=['league','phase','start_side','picked_by','our_atk_ban','our_def_ba
 const SHF_L={league:'League',phase:'Phase',start_side:'Starting side',picked_by:'Map picked by',our_atk_ban:'T1 ATK ban',our_def_ban:'T1 DEF ban',opp_atk_ban:'T2 ATK ban',opp_def_ban:'T2 DEF ban',split_score:'Split',round_score:'Score',total_rounds:'Total rounds',ot_start:'OT side',result:'Win/Loss',vod_link:'VOD',source_link:'Source link'};
 const shfEmpty=v=>v==null||String(v).trim()==='';
 const shfLoose=n=>squash(String(n||'').replace(/\b(e-?sports?|gaming|team|clan|club|gg|academy)\b/gi,''))||squash(n);
-const shfTeam=(a,b)=>{if(twinSame(a,b))return true;const x=shfLoose(a),y=shfLoose(b);if(!x||!y)return false;if(x===y||Math.min(x.length,y.length)>=3&&(x.startsWith(y)||y.startsWith(x)))return true;const ini=n=>{const w=String(n||'').replace(/\b(e-?sports?|gaming|clan|club|gg)\b/gi,'').replace(/([a-z])([A-Z])/g,'$1 $2').split(/[^A-Za-z0-9]+/).filter(Boolean);return w.length>1?w.map(s=>s[0]).join('').toLowerCase():''};const ia=ini(a),ib=ini(b);return ia.length>=2&&ia===y||ib.length>=2&&ib===x};
+const shfTeam=(a,b)=>{if(twinSame(a,b))return true;const x=shfLoose(a),y=shfLoose(b);if(!x||!y)return false;if(x===y||Math.min(x.length,y.length)>=3&&(x.startsWith(y)||y.startsWith(x)))return true;const ini=n=>{const w=String(n||'').replace(/\b(e-?sports?|gaming|clan|club|gg)\b/gi,'').replace(/([a-z])([A-Z])/g,'$1 $2').split(/[^A-Za-z0-9]+/).filter(Boolean);return w.length>1?w.map(s=>s[0]).join('').toLowerCase():''};const ia=ini(a),ib=ini(b);if(ia.length>=2&&ia===y||ib.length>=2&&ib===x)return true;const sub=(s,l)=>{if(s.length<2||s.length>6||s.length>=l.length||s[0]!==l[0])return false;let j=0;for(const ch of l)if(ch===s[j])j++;return j===s.length};const fx=squash(a),fy=squash(b);return sub(fy,fx)||sub(fx,fy)||sub(fy,x)||sub(fx,y)||sub(y,fx)||sub(x,fy)};
+document.addEventListener('paste',e=>{const el=e.target;if(!el||el.id!=='shft')return;const h=e.clipboardData?.getData('text/html')||'';if(!/<tr[\s>]/i.test(h))return;
+ const doc=new DOMParser().parseFromString(h,'text/html'),trs=[...doc.querySelectorAll('tr')];if(!trs.length)return;
+ const unwrap=u=>{try{const x=new URL(u,location.href);if(/(^|\.)google\.[a-z.]+$/.test(x.hostname)&&x.pathname==='/url'&&x.searchParams.get('q'))return x.searchParams.get('q');return x.href}catch{return u}};
+ const cells=tr=>{const out=[];for(const td of tr.children){const a=td.querySelector('a[href]');out.push({txt:(td.textContent||'').replace(/[\t\r\n]+/g,' ').trim(),href:a?unwrap(a.getAttribute('href')):''});const n=+td.getAttribute('colspan')||1;for(let i=1;i<n;i++)out.push({txt:'',href:''})}return out};
+ const rows=trs.map(cells),hi=rows.findIndex(r=>r.some(c=>/^date$/i.test(c.txt))),head=hi>=0?rows[hi].map(c=>c.txt):[];
+ const linkCol=i=>/vod|link|source|replay/i.test(head[i]||'');
+ const tsv=rows.map((r,ri)=>r.map((c,i)=>ri!==hi&&c.href&&(linkCol(i)||/^(vod|link|watch|video)$/i.test(c.txt))?c.href:c.txt).join('\t')).join('\n');
+ e.preventDefault();const s=el.selectionStart??el.value.length,en=el.selectionEnd??s;el.value=el.value.slice(0,s)+tsv+el.value.slice(en);el.selectionStart=el.selectionEnd=s+tsv.length;
+ toast('Pasted '+plural(Math.max(0,rows.length-(hi>=0?hi+1:0)),'row')+' with their links. Click Check rows.')});
 function shfPlan(text){
  // a title row above the header has no tabs, and would make the whole paste read as commas
  if(text.includes('\t')){const ls=text.split(/\r?\n/);while(ls.length&&!ls[0].includes('\t'))ls.shift();text=ls.join('\n')}
  const p=csvPreview('m',text);if(p.error)return{error:p.error==='This file has no rows to import.'?'No rows found. Copy the header row (Date, Team 1, Team 2, Map…) along with the rows.':p.error};
- const plan=new Map(),rows=[];
+ const plan=new Map(),rows=[];let noLink=0;
  for(const x of p.rows){
   const r={...x.r},bad=x.errs||[];
   if(!r.match_date||!/^\d{4}-\d{2}-\d{2}$/.test(r.match_date)||!r.opponent||!r.map){rows.push({line:x.line,r,st:'bad',why:bad[0]||'Needs a date, both teams and a map'});continue}
+  for(const k of ['vod_link','source_link'])if(r[k]&&!/^https?:\/\//i.test(r[k])){if(k==='vod_link')noLink++;delete r[k]}
   if(r.split_score&&!parseScore(r.split_score))delete r.split_score;if(r.round_score&&!parseScore(r.round_score))delete r.round_score;
   const day=ytDay(r.match_date),mp=mapCanon(r.map);
   const cands=sco.m.filter(g=>mapCanon(g.map)===mp&&Math.abs(ytDay(g.match_date)-day)<=1&&(shfTeam(g.team,r.team)&&shfTeam(g.opponent,r.opponent)||shfTeam(g.team,r.opponent)&&shfTeam(g.opponent,r.team)));
@@ -3704,7 +3714,7 @@ function shfPlan(text){
    if(k)plan.set(g.id,up);n+=k}
   rows.push({line:x.line,r,g:top[0],st:n?'fill':'full',n,diff,fields:[...fl]});
  }
- return{rows,plan};
+ return{rows,plan,noLink};
 }
 function shfB(){
  if(!canEditS())return '';const s=sco.shf||{};const P=s.plan;
@@ -3716,7 +3726,7 @@ function shfB(){
  <textarea id="shft" class="fi" rows="5" style="height:auto;min-height:96px;font-family:ui-monospace,monospace;font-size:12px" placeholder="Paste the rows here, header row included" aria-label="Rows from the sheet">${esc(s.text||'')}</textarea>
  <div class="row wrap" style="gap:8px"><button class="no" data-a="shfgo">Check rows</button>${nFill?`<button class="go" data-a="shfapply" ${s.busy?'disabled':''}>${s.busy?'Filling in…':'Fill in '+plural(nFill,'game')}</button>`:''}${s.text?'<button class="no" data-a="shfclear">Clear</button>':''}</div>
  ${s.err?`<p class="over">${esc(s.err)}</p>`:''}${s.done?`<p style="color:#34c46a;font-weight:600">${esc(s.done)}</p>`:''}
- ${P?`<p><b style="font-weight:600">${plural(P.rows.length,'row')} read.</b> ${nFill?`<span style="color:#34c46a;font-weight:600">${plural(nFill,'game')} can get ${plural(nF,'detail')}.</span> `:''}${cnt('full')?plural(cnt('full'),'row')+' match a game that has everything already. ':''}${cnt('none')?`<span class="over">${plural(cnt('none'),'row')} found no saved game.</span> `:''}${cnt('two')?`<span class="over">${cnt('two')} fit more than one game.</span> `:''}${cnt('bad')?`<span class="over">${cnt('bad')} could not be read.</span>`:''}</p>
+ ${P?`<p><b style="font-weight:600">${plural(P.rows.length,'row')} read.</b> ${nFill?`<span style="color:#34c46a;font-weight:600">${plural(nFill,'game')} can get ${plural(nF,'detail')}.</span> `:''}${cnt('full')?plural(cnt('full'),'row')+' match a game that has everything already. ':''}${cnt('none')?`<span class="over">${plural(cnt('none'),'row')} found no saved game.</span> `:''}${cnt('two')?`<span class="over">${cnt('two')} fit more than one game.</span> `:''}${cnt('bad')?`<span class="over">${cnt('bad')} could not be read.</span>`:''}</p>${P.noLink?`<p class="over">${plural(P.noLink,'row')} had VOD text without the link. Copy the cells in Google Sheets with Ctrl+C and paste them here with Ctrl+V (not Ctrl+Shift+V), so the links come along.</p>`:''}
  ${list?`<div style="overflow:auto;max-height:420px"><table class="tbl"><thead><tr><th scope="col">Row</th><th scope="col">Date</th><th scope="col">Teams</th><th scope="col">Map</th><th scope="col">What happens</th></tr></thead><tbody>${list}</tbody></table></div>`:''}`:''}</details>`;
 }
 async function shfApply(){
