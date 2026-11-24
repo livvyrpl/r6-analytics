@@ -2445,7 +2445,7 @@ const LIB={
  m:{table:'scout_matches',title:'Match Library',date:'match_date',conflict:'owner_team_id,match_date,dedupe_key',req:['match_date','opponent','map'],
   cols:[['match_date','Date'],['team','Team 1'],['opponent','Team 2'],['map','Map'],['league','League'],['phase','Phase'],['start_side','Starting Side'],['picked_by','Map Picked By'],['our_atk_ban','T1 ATK Ban'],['our_def_ban','T1 DEF Ban'],['opp_atk_ban','T2 ATK Ban'],['opp_def_ban','T2 DEF Ban'],['split_score','Split'],['round_score','Score'],['total_rounds','Total Rd'],['ot_start','OT Side'],['result','Win/Loss'],['vod_link','VOD']],
   extra:[['source_name','Source'],['replay_link','Replay file'],['source_link','Source link']],show:['source_name','replay_link'],
-  alias:{rounds:'round_score',result:'result',wl:'result',winloss:'result',teamname:'team',roundscore:'round_score',round:'round_score',score:'round_score',splitscore:'split_score',start:'start_side',startside:'start_side',startingside:'start_side',pickedby:'picked_by',mappickedby:'picked_by',atkban:'our_atk_ban',defban:'our_def_ban',oppatkban:'opp_atk_ban',oppdefban:'opp_def_ban',total:'total_rounds',totalrd:'total_rounds',totalrounds:'total_rounds',otstart:'ot_start',otside:'ot_start',otstartingside:'ot_start',vodlink:'vod_link',vod:'vod_link'},
+  alias:{rounds:'round_score',result:'result',wl:'result',winloss:'result',teamname:'team',roundscore:'round_score',round:'round_score',score:'round_score',splitscore:'split_score',start:'start_side',startside:'start_side',startingside:'start_side',pickedby:'picked_by',mappickedby:'picked_by',atkban:'our_atk_ban',defban:'our_def_ban',oppatkban:'opp_atk_ban',oppdefban:'opp_def_ban',total:'total_rounds',totalrd:'total_rounds',totalrounds:'total_rounds',otstart:'ot_start',otside:'ot_start',otstartingside:'ot_start',vodlink:'vod_link',vod:'vod_link',team1atkban:'our_atk_ban',team1defban:'our_def_ban',team2atkban:'opp_atk_ban',team2defban:'opp_def_ban',t1atkban:'our_atk_ban',t1defban:'our_def_ban',t2atkban:'opp_atk_ban',t2defban:'opp_def_ban'},
   key:r=>[r.match_date,...[norm(r.team),norm(r.opponent)].sort(),norm(r.map),norm(r.phase)].join('|')},
  v:{table:'scout_vetoes',title:'Vetoes',date:'veto_date',conflict:'owner_team_id,veto_date,dedupe_key',req:['veto_date','opponent'],
   cols:[['veto_date','Date'],['team','Team Name'],['opponent','Opponent'],['league','League'],['phase','Phase'],...banF('t1'),...banF('t2'),['t1_pick','T1 Pick'],['t2_pick','T2 Pick'],['decider','Decider'],['t1_pick_2','T1 Pick 2'],['t2_pick_2','T2 Pick 2'],['format','Format'],['check','Check']],
@@ -3685,10 +3685,73 @@ document.addEventListener('paste',e=>{const el=e.target;if(!el||el.id!=='shft')r
  const cells=tr=>{const out=[];for(const td of tr.children){const a=td.querySelector('a[href]');out.push({txt:(td.textContent||'').replace(/[\t\r\n]+/g,' ').trim(),href:a?unwrap(a.getAttribute('href')):''});const n=+td.getAttribute('colspan')||1;for(let i=1;i<n;i++)out.push({txt:'',href:''})}return out};
  const rows=trs.map(cells),hi=rows.findIndex(r=>r.some(c=>/^date$/i.test(c.txt))),head=hi>=0?rows[hi].map(c=>c.txt):[];
  const linkCol=i=>/vod|link|source|replay/i.test(head[i]||'');
- const tsv=rows.map((r,ri)=>r.map((c,i)=>ri!==hi&&c.href&&(linkCol(i)||/^(vod|link|watch|video)$/i.test(c.txt))?c.href:c.txt).join('\t')).join('\n');
+ const tsv=rows.map((r,ri)=>r.map((c,i)=>ri!==hi&&c.href&&(linkCol(i)||/^(vod|link|watch|video)$/i.test(c.txt))?c.href:c.href&&/^https?:/i.test(c.href)&&!/^https?:/i.test(c.txt)?c.txt+' <'+c.href+'>':c.txt).join('\t')).join('\n');
  e.preventDefault();const s=el.selectionStart??el.value.length,en=el.selectionEnd??s;el.value=el.value.slice(0,s)+tsv+el.value.slice(en);el.selectionStart=el.selectionEnd=s+tsv.length;
  toast('Pasted '+plural(Math.max(0,rows.length-(hi>=0?hi+1:0)),'row')+' with their links. Click Check rows.')});
+// ---- ROUND LOG SHEET: rows are rounds (Match ID, Map, Round #, Team, Opponent Name, bans, Side, Site, Result, operators).
+// Rows are grouped into games; each game is found by the two teams, the map and how its rounds add up (or its VOD link), then its rounds are filled in.
+const RL_H={matchid:'mid',match:'mid',map:'map',round:'n',roundnumber:'n',rd:'n',team:'team',teamname:'team',opponentname:'opp',opponent:'opp',ban1:'ban_1',ban2:'ban_2',side:'side',site:'site',result:'result',winloss:'result',operator1:'operator_1',operator2:'operator_2',operator3:'operator_3',operator4:'operator_4',operator5:'operator_5',operators:'ops',oppoperators:'opponent_operators',opponentoperators:'opponent_operators',vod:'vod',vodlink:'vod'};
+const rlIs=text=>{const first=String(text).split(/\r?\n/).slice(0,8);return first.some(l=>{const h=l.split('\t').map(hdrKey);return h.includes('round')&&(h.includes('opponentname')||h.includes('operator1')||h.includes('site'))})};
+const rlCell=v=>{const m=/^(.*?)\s*<(https?:\/\/[^>\s]+)>$/.exec(String(v||'').trim());return m?{t:m[1].trim(),u:m[2]}:{t:String(v||'').trim(),u:''}};
+function rlPlan(text){
+ const lines=String(text).split(/\r?\n/).map(l=>l.split('\t'));const hi=lines.findIndex(r=>{const h=r.map(hdrKey);return h.includes('round')&&h.includes('map')});
+ if(hi<0)return{error:'No header row found. Copy the header row (Match ID, Map, Round #, Team, Opponent Name…) along with the rows.'};
+ const cols=lines[hi].map(h=>RL_H[hdrKey(h)]||null);if(!cols.includes('opp')||!cols.includes('team'))return{error:'The header row needs Team and Opponent Name columns.'};
+ const recs=[];for(const vals of lines.slice(hi+1)){const r={};let vod='';cols.forEach((c,i)=>{if(!c)return;const x=rlCell(vals[i]);r[c]=x.t;if(x.u&&(c==='opp'||c==='vod'||!vod))vod=vod||x.u});if(r.vod&&/^https?:\/\//i.test(r.vod))vod=vod||r.vod;
+  const n=parseInt(r.n,10);if(!r.map||!r.team||!r.opp||!(n>0))continue;r.n=n;r.vodU=vod;recs.push(r)}
+ if(!recs.length)return{error:'No rounds found under the header row.'};
+ // games: same Match ID (with the same teams and map), or the next rows of the same teams and map while the round number keeps going up
+ const groups=[];let cur=null;
+ for(const r of recs){const k=[r.mid||'',mapCanon(r.map),squash(r.team),squash(r.opp)].join('|');if(!cur||cur.k!==k||(!r.mid&&r.n<=cur.last)){cur={k,rows:[],last:0};groups.push(cur)}cur.rows.push(r);cur.last=r.n}
+ const rnd=new Map();scAll('r').forEach(x=>{const m=norm(x.match_id);(rnd.get(m)||rnd.set(m,[]).get(m)).push(x)});
+ const used=new Set(),out=[];
+ for(const G of groups){
+  const f=G.rows[0],mp=mapCanon(f.map),n=G.rows.length,w=G.rows.filter(x=>normRes(x.result)==='W').length,l=G.rows.filter(x=>normRes(x.result)==='L').length,vod=G.rows.map(x=>x.vodU).find(Boolean)||'';
+  const info={team:f.team,opp:f.opp,map:mp,n,w,l,vod,rows:G.rows};
+  const cands=sco.m.filter(g=>mapCanon(g.map)===mp&&(shfTeam(g.team,f.team)&&shfTeam(g.opponent,f.opp)||shfTeam(g.team,f.opp)&&shfTeam(g.opponent,f.team)));
+  if(!cands.length){out.push({...info,st:'none'});continue}
+  const turn=g=>!(shfTeam(g.team,f.team)&&shfTeam(g.opponent,f.opp)),vid=u=>{const m=/(?:v=|youtu\.be\/|\/video\/)([A-Za-z0-9_-]{6,})/.exec(u||'');return m?m[1]:String(u||'').trim()};
+  const fit=g=>{let s=0;if(vod&&g.vod_link&&vid(g.vod_link)===vid(vod))s+=20;const sc=parseScore(g.round_score);if(sc){const a=turn(g)?sc.b:sc.a,b=turn(g)?sc.a:sc.b;if(a===w&&b===l)s+=8;else if(a+b===n)s+=2;else s-=10}else if(g.total_rounds&&+g.total_rounds===n)s+=2;const have=(rnd.get(norm(matchId(g)))||[]).length;if(!have)s+=1;else if(have===n)s+=1;if(used.has(g.id))s-=30;return s};
+  const ranked=cands.map(g=>[g,fit(g)]).sort((a,b)=>b[1]-a[1]);
+  if(ranked[0][1]<0){out.push({...info,st:'none',why:'Games between these teams on '+mp+' have a different score'});continue}
+  if(ranked.length>1&&ranked[0][1]===ranked[1][1]){out.push({...info,st:'two',why:ranked.filter(z=>z[1]===ranked[0][1]).length+' saved games fit equally. Add the VOD or score to the game to tell them apart'});continue}
+  const g=ranked[0][0];used.add(g.id);const tg=turn(g),have=rnd.get(norm(matchId(g)))||[],byN=new Map(have.map(x=>[+x.round_number,x]));
+  const ins=[],upd=[];let fields=0;
+  for(const r of G.rows){
+   const ops=[1,2,3,4,5].map(i=>r['operator_'+i]||'');if(!ops.some(Boolean)&&r.ops){const o=opNames(r.ops);for(let i=0;i<5;i++)ops[i]=o[i]||''}
+   let x={team:f.team,opponent:f.opp,ban_1:r.ban_1||'',ban_2:r.ban_2||'',side:startNorm(r.side)||'',site:r.site||'',result:normRes(r.result)||'',opponent_operators:r.opponent_operators||''};ops.forEach((o,i)=>x['operator_'+(i+1)]=o);
+   if(tg)x=flipRound(x);x.side=startNorm(x.side)||'';x.team=g.team;x.opponent=g.opponent;
+   const old=byN.get(r.n);
+   if(!old)ins.push({owner_team_id:sco.tid,match_id:matchId(g),round_date:g.match_date||null,league:g.league||'',map:g.map,round_number:r.n,...x});
+   else{const up={};for(const k of ['ban_1','ban_2','side','site','result','operator_1','operator_2','operator_3','operator_4','operator_5','opponent_operators']){const ov=k==='side'?startNorm(old.side):old[k];if(shfEmpty(ov)&&!shfEmpty(x[k]))up[k]=x[k]}if(Object.keys(up).length){upd.push([old.id,up]);fields+=Object.keys(up).length}}
+  }
+  const gu={},a=tg?l:w,b=tg?w:l;
+  if(vod&&shfEmpty(g.vod_link))gu.vod_link=vod;if(shfEmpty(g.round_score)&&a+b===n&&a!==b)gu.round_score=a+'-'+b;if(shfEmpty(g.result)&&a!==b&&a+b===n)gu.result=a>b?'W':'L';if(!g.total_rounds&&n)gu.total_rounds=n;
+  out.push({...info,g,st:ins.length||upd.length||Object.keys(gu).length?'fill':'full',ins,upd,fields,gu});
+ }
+ return{kind:'r',games:out};
+}
+function rlB(P,s){
+ const L=P.games,c=k=>L.filter(x=>x.st===k).length,fill=L.filter(x=>x.st==='fill'),nIns=fill.reduce((a,x)=>a+x.ins.length,0),nUpd=fill.reduce((a,x)=>a+x.fields,0),nG=fill.reduce((a,x)=>a+Object.keys(x.gu).length,0);
+ const GL={vod_link:'VOD',round_score:'score',result:'result',total_rounds:'total rounds'};
+ const tag=x=>x.st==='fill'?`<span style="color:#34c46a;font-weight:600">${[x.ins.length?'adds '+plural(x.ins.length,'round'):'',x.fields?'fills '+plural(x.fields,'round detail'):'',Object.keys(x.gu).length?'game gets '+Object.keys(x.gu).map(k=>GL[k]).join(', '):''].filter(Boolean).join(' · ')}</span>`:x.st==='full'?'<span class="mu">Already has all of it</span>':x.st==='none'?`<span class="over">No saved game found</span>${x.why?` <span class="mu">${esc(x.why)}</span>`:''}`:`<span class="over">${esc(x.why||'')}</span>`;
+ const list=L.filter(x=>x.st!=='full').slice(0,300).map(x=>`<tr><td style="overflow-wrap:anywhere">${x.g?`<button class="no" style="border:0;height:auto;padding:0;background:none;text-align:left;font-weight:600;white-space:normal" data-a="smatch" data-id="${x.g.id}">${esc(x.team)} vs ${esc(x.opp)}</button>${x.g.match_date?` <span class="mu" style="font-size:12px">${esc(fmtD(x.g.match_date))}</span>`:''}`:esc(x.team+' vs '+x.opp)}</td><td>${esc(x.map)}</td><td>${x.n} (${x.w}-${x.l})</td><td style="font-size:12.5px">${tag(x)}</td></tr>`).join('');
+ return `<p><b style="font-weight:600">Round log: ${plural(L.length,'game')} read.</b> ${fill.length?`<span style="color:#34c46a;font-weight:600">${plural(fill.length,'game')} get ${[nIns?plural(nIns,'new round'):'',nUpd?plural(nUpd,'round detail'):'',nG?plural(nG,'game detail'):''].filter(Boolean).join(', ')}.</span> `:''}${c('full')?plural(c('full'),'game')+' already have everything. ':''}${c('none')?`<span class="over">${plural(c('none'),'game')} found no saved game.</span> `:''}${c('two')?`<span class="over">${c('two')} fit more than one game.</span>`:''}</p>
+ ${list?`<div style="overflow:auto;max-height:420px"><table class="tbl"><thead><tr><th scope="col">Teams</th><th scope="col">Map</th><th scope="col">Rounds</th><th scope="col">What happens</th></tr></thead><tbody>${list}</tbody></table></div>`:''}`;
+}
+async function rlApply(){
+ const s=sco.shf,P=s?.plan;if(!P||P.kind!=='r')return;s.busy=true;s.err='';render();
+ let rIns=0,rUpd=0,gUp=0,fail=0;const fill=P.games.filter(x=>x.st==='fill'),ins=fill.flatMap(x=>x.ins);
+ for(let i=0;i<ins.length;i+=200){const r=await sb.from('scout_rounds').insert(ins.slice(i,i+200)).select();if(r.error||!r.data){fail+=Math.min(200,ins.length-i);continue}sco.r=[...scAll('r'),...fixSites(r.data)];rIns+=r.data.length}
+ const ups=fill.flatMap(x=>x.upd);
+ for(let i=0;i<ups.length;i+=8)await Promise.all(ups.slice(i,i+8).map(async([id,up])=>{const r=await sb.from('scout_rounds').update(up).eq('id',id).select().single();if(r.error||!r.data){fail++;return}const o=scAll('r').find(x=>x.id===id);if(o)Object.assign(o,fixSites([r.data])[0]);rUpd++}));
+ for(const x of fill){const only={};for(const [k,v] of Object.entries(x.gu))if(shfEmpty(x.g[k]))only[k]=v;if(!Object.keys(only).length)continue;const r=await sb.from('scout_matches').update(only).eq('id',x.g.id).select().single();if(r.error||!r.data){fail++;continue}Object.assign(x.g,r.data);gUp++}
+ s.busy=false;s.done=`Added ${plural(rIns,'round')}, filled ${plural(rUpd,'round')} and ${plural(gUp,'game')}.`+(fail?` ${fail} could not be saved (you may not have permission).`:'');
+ s.plan=rlPlan(s.text);if(s.plan.error){s.err=s.plan.error;s.plan=null}render();
+}
 function shfPlan(text){
+ if(rlIs(text))return rlPlan(text);
+ text=String(text).replace(/ <https?:\/\/[^>\s]*>/g,'');
  // a title row above the header has no tabs, and would make the whole paste read as commas
  if(text.includes('\t')){const ls=text.split(/\r?\n/);while(ls.length&&!ls[0].includes('\t'))ls.shift();text=ls.join('\n')}
  const p=csvPreview('m',text);if(p.error)return{error:p.error==='This file has no rows to import.'?'No rows found. Copy the header row (Date, Team 1, Team 2, Map…) along with the rows.':p.error};
@@ -3716,13 +3779,21 @@ function shfPlan(text){
  }
  return{rows,plan,noLink};
 }
+function shfFrame(s,body,nFill){
+ return `<details class="cd" style="gap:8px;margin-bottom:8px" open data-shf><summary style="cursor:pointer;font-weight:600">Fill in from a sheet</summary>
+ <p class="mu" style="font-size:12.5px">Paste rows copied from a sheet, header row included (Ctrl+C in Google Sheets, Ctrl+V here, so links come along). <b style="font-weight:600">Game sheet</b> (Date, Team 1, Team 2, Map…): each row finds its saved game (same teams and map, within a day) and fills in whatever the game is missing: VOD, bans, scores, sides, phase. <b style="font-weight:600">Round log</b> (Match ID, Map, Round #, Team, Opponent Name…): the rounds are grouped into games, each game is found by the two teams, the map and its score (or the VOD link on the opponent name), and its rounds are filled in. Nothing already saved is changed.</p>
+ <textarea id="shft" class="fi" rows="5" style="height:auto;min-height:96px;font-family:ui-monospace,monospace;font-size:12px" placeholder="Paste the rows here, header row included" aria-label="Rows from the sheet">${esc(s.text||'')}</textarea>
+ <div class="row wrap" style="gap:8px"><button class="no" data-a="shfgo">Check rows</button>${nFill?`<button class="go" data-a="shfapply" ${s.busy?'disabled':''}>${s.busy?'Filling in…':'Fill in '+plural(nFill,'game')}</button>`:''}${s.text?'<button class="no" data-a="shfclear">Clear</button>':''}</div>
+ ${s.err?`<p class="over">${esc(s.err)}</p>`:''}${s.done?`<p style="color:#34c46a;font-weight:600">${esc(s.done)}</p>`:''}${body}</details>`;
+}
 function shfB(){
  if(!canEditS())return '';const s=sco.shf||{};const P=s.plan;
+ if(P?.kind==='r')return shfFrame(s,rlB(P,s),P.games.filter(x=>x.st==='fill').length);
  const cnt=k=>P?P.rows.filter(x=>x.st===k).length:0,nFill=P?P.plan.size:0,nF=P?[...P.plan.values()].reduce((a,u)=>a+Object.keys(u).length,0):0;
  const tag=x=>x.st==='fill'?`<span style="color:#34c46a;font-weight:600">Fills ${x.fields.map(f=>SHF_L[f]).join(', ')}</span>`:x.st==='full'?'<span class="mu">Nothing missing</span>':x.st==='none'?`<span class="over">No saved game found</span>${x.why?` <span class="mu">${esc(x.why)}</span>`:''}`:`<span class="over">${esc(x.why||'')}</span>`;
  const list=P?P.rows.filter(x=>x.st!=='full').slice(0,300).map(x=>`<tr><td class="mu">${x.line}</td><td>${esc(x.r.match_date||'')}</td><td style="overflow-wrap:anywhere">${x.g?`<button class="no" style="border:0;height:auto;padding:0;background:none;text-align:left;font-weight:600;white-space:normal" data-a="smatch" data-id="${x.g.id}">${esc(x.r.team||'')} vs ${esc(x.r.opponent||'')}</button>`:esc((x.r.team||'')+' vs '+(x.r.opponent||''))}</td><td>${esc(x.r.map||'')}</td><td style="font-size:12.5px">${tag(x)}${x.diff?` <span class="mu">(${x.diff} kept as saved)</span>`:''}</td></tr>`).join(''):'';
  return `<details class="cd" style="gap:8px;margin-bottom:8px" ${s.open?'open':''} data-shf><summary style="cursor:pointer;font-weight:600">Fill in from a sheet</summary>
- <p class="mu" style="font-size:12.5px">Copy rows from a Match Library sheet (with the header row: Date, Team 1, Team 2, Map, and any of League, Phase, Starting Side, bans, Split, Score, Win/Loss, VOD) and paste them here. Each row finds its saved game (same teams and map, within a day) and fills in only what the game is missing, mostly VODs. Nothing already saved is changed.</p>
+ <p class="mu" style="font-size:12.5px">Paste rows copied from a sheet, header row included (Ctrl+C in Google Sheets, Ctrl+V here, so links come along). <b style="font-weight:600">Game sheet</b> (Date, Team 1, Team 2, Map…): each row finds its saved game (same teams and map, within a day) and fills in whatever the game is missing: VOD, bans, scores, sides, phase. <b style="font-weight:600">Round log</b> (Match ID, Map, Round #, Team, Opponent Name…): the rounds are grouped into games, each game is found by the two teams, the map and its score (or the VOD link on the opponent name), and its rounds are filled in. Nothing already saved is changed.</p>
  <textarea id="shft" class="fi" rows="5" style="height:auto;min-height:96px;font-family:ui-monospace,monospace;font-size:12px" placeholder="Paste the rows here, header row included" aria-label="Rows from the sheet">${esc(s.text||'')}</textarea>
  <div class="row wrap" style="gap:8px"><button class="no" data-a="shfgo">Check rows</button>${nFill?`<button class="go" data-a="shfapply" ${s.busy?'disabled':''}>${s.busy?'Filling in…':'Fill in '+plural(nFill,'game')}</button>`:''}${s.text?'<button class="no" data-a="shfclear">Clear</button>':''}</div>
  ${s.err?`<p class="over">${esc(s.err)}</p>`:''}${s.done?`<p style="color:#34c46a;font-weight:600">${esc(s.done)}</p>`:''}
@@ -4731,7 +4802,7 @@ const A={
  gapnovod:async(d,b)=>{const r=scAll('m').find(x=>x.id===d.id);if(!r)return;const k=mgKey(r),ids=scAll('m').filter(x=>mgKey(x)===k).map(x=>x.id),v=d.v==='1';b.disabled=true;
   const q=await sb.from('scout_matches').update({no_vod:v}).in('id',ids).select('id,no_vod');if(q.error){b.disabled=false;return toast(/no_vod/.test(q.error.message||'')?'Run stage47.sql in Supabase first, then try again.':scErr(q.error))}
   q.data.forEach(y=>{const g=scAll('m').find(x=>x.id===y.id);if(g)g.no_vod=y.no_vod});render();toast(v?'Marked as no VOD':'VOD will be asked for again')},
- gaptool:d=>{sco.gapTool=sco.gapTool===d.k?'':d.k;render()},shfgo:()=>{const text=($('#shft')?.value||'').trim();sco.shf={...(sco.shf||{}),text,open:true,err:'',done:''};if(!text){sco.shf.plan=null;return render()}const p=shfPlan(text);if(p.error){sco.shf.err=p.error;sco.shf.plan=null}else sco.shf.plan=p;render()},shfapply:()=>shfApply(),shfclear:()=>{sco.shf={open:true};render()},
+ gaptool:d=>{sco.gapTool=sco.gapTool===d.k?'':d.k;render()},shfgo:()=>{const text=($('#shft')?.value||'').trim();sco.shf={...(sco.shf||{}),text,open:true,err:'',done:''};if(!text){sco.shf.plan=null;return render()}const p=shfPlan(text);if(p.error){sco.shf.err=p.error;sco.shf.plan=null}else sco.shf.plan=p;render()},shfapply:()=>sco.shf?.plan?.kind==='r'?rlApply():shfApply(),shfclear:()=>{sco.shf={open:true};render()},
  gapfix:d=>{A.smatch({id:d.id});sco.meditId=d.id;sco.ved=null;render();if(d.k==='veto')setTimeout(()=>$('#vedsec')?.scrollIntoView({block:'center'}),50);else window.scrollTo?.(0,0)},
  ccopen:d=>ccOpen(d.t||null),
  sct:()=>openSc('home'),slm:()=>openSc('lib','m'),slr:()=>openSc('lib','r'),slv:()=>openSc('lib','v'),
