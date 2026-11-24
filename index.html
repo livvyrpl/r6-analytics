@@ -3700,9 +3700,9 @@ function rlPlan(text){
  const recs=[];for(const vals of lines.slice(hi+1)){const r={};let vod='';cols.forEach((c,i)=>{if(!c)return;const x=rlCell(vals[i]);r[c]=x.t;if(x.u&&(c==='opp'||c==='vod'||!vod))vod=vod||x.u});if(r.vod&&/^https?:\/\//i.test(r.vod))vod=vod||r.vod;
   const n=parseInt(r.n,10);if(!r.map||!r.team||!r.opp||!(n>0))continue;r.n=n;r.vodU=vod;recs.push(r)}
  if(!recs.length)return{error:'No rounds found under the header row.'};
- // games: same Match ID (with the same teams and map), or the next rows of the same teams and map while the round number keeps going up
+ // games: the next rows of the same team, opponent and map while the round number keeps going up (Match ID is not used: it is often empty)
  const groups=[];let cur=null;
- for(const r of recs){const k=[r.mid||'',mapCanon(r.map),squash(r.team),squash(r.opp)].join('|');if(!cur||cur.k!==k||(!r.mid&&r.n<=cur.last)){cur={k,rows:[],last:0};groups.push(cur)}cur.rows.push(r);cur.last=r.n}
+ for(const r of recs){const k=[mapCanon(r.map),squash(r.team),squash(r.opp)].join('|');if(!cur||cur.k!==k||r.n<=cur.last){cur={k,rows:[],last:0};groups.push(cur)}cur.rows.push(r);cur.last=r.n}
  const rnd=new Map();scAll('r').forEach(x=>{const m=norm(x.match_id);(rnd.get(m)||rnd.set(m,[]).get(m)).push(x)});
  const used=new Set(),out=[];
  for(const G of groups){
