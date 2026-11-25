@@ -2319,7 +2319,8 @@ async function rpPump(){
   const [tid,o]=rpQ.shift();rpBusy++;
   (async()=>{try{
    const dir=`${tid}/${o.matchId}`;let have=rpHave.get(dir);
-   if(!have){const l=await sb.storage.from(RP_B).list(dir,{limit:100});if(l.error&&/bucket/i.test(l.error.message)){rpNoBucket=true;rpQ.length=0;return}have=new Set((l.data||[]).map(x=>x.name));rpHave.set(dir,have)}
+   // rounds already saved are written again, so they pick up what newer versions of the reader find (facing, drones); once per visit
+   if(!have){have=new Set();rpHave.set(dir,have)}
    const name=rpPath(tid,o.matchId,o.roundNumber).split('/').pop();if(have.has(name))return;
    const up=await sb.storage.from(RP_B).upload(rpPath(tid,o.matchId,o.roundNumber),await rpGz(o),{contentType:'application/gzip',upsert:true});
    if(up.error){if(/bucket/i.test(up.error.message)){rpNoBucket=true;rpQ.length=0}return}
