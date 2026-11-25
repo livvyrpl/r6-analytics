@@ -56,6 +56,7 @@ type Reader struct {
 	Movements                []EntityPositions   `json:"movements,omitempty"`
 	Tracks                   []PlayerTrack       `json:"tracks,omitempty"` // where each player was, for the 2D replay (track.go)
 	Clock                    *RoundClock         `json:"clock,omitempty"`
+	Drones                   []DroneTrack        `json:"drones,omitempty"`
 	LocationEvents           []LocationEvent     `json:"locationEvents,omitempty"`
 	Scoreboard               Scoreboard
 	SkippedRecords           int  `json:"-"`

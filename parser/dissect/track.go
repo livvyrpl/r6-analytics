@@ -46,6 +46,13 @@ type PlayerTrack struct {
 	Points    []TrackPoint `json:"points"`
 }
 
+// DroneTrack is one drone: where it went, and the player who most likely threw it (nearest when it first moved).
+type DroneTrack struct {
+	Owner     string       `json:"owner"`
+	TeamIndex int          `json:"teamIndex"`
+	Points    []TrackPoint `json:"points"`
+}
+
 type RoundClock struct {
 	PrepSeconds   float32            `json:"prepSeconds"`   // how long prep lasted in the replay
 	ActionStart   float32            `json:"actionStart"`   // seconds since prep start when the action phase began
@@ -279,6 +286,8 @@ func (r *Reader) buildTracks() {
 		yaw    float32
 	}
 	objs := map[uint32]*obj{}
+	// drones: position records without the player bits (flags 0x80 with 0x40 or 0x20, not 0x18)
+	drones := map[uint32]*obj{}
 	posRun := -1
 	for fi, fr := range frames {
 		if posRun >= 0 && runOf[fi] != posRun {
@@ -296,7 +305,8 @@ func (r *Reader) buildTracks() {
 				continue
 			}
 			fl := b[m+4]
-			if fl&0x80 == 0 || fl&0x18 == 0 || b[m+5] > 8 {
+			isDrone := fl&0x18 == 0 && fl&0x60 != 0
+			if fl&0x80 == 0 || (fl&0x18 == 0 && !isDrone) || b[m+5] > 8 {
 				continue
 			}
 			if z, _ := u32(b, m-8); z != 0 {
@@ -313,11 +323,15 @@ func (r *Reader) buildTracks() {
 				posRun = runOf[fi]
 			}
 			id, _ := u32(b, m-12)
-			o := objs[id]
+			set := objs
+			if isDrone {
+				set = drones
+			}
+			o := set[id]
 			t := elapsed(fr.num)
 			if o == nil {
 				o = &obj{id: id, at: -1, firstT: t, firstN: fr.num, lastT: -1, yaw: float32(math.NaN())}
-				objs[id] = o
+				set[id] = o
 			}
 			o.count++
 			// facing: in the main movement record (flags B8 or DC, then 3) a unit quaternion (x, y, z, w) follows 18 bytes after the flags.
@@ -510,6 +524,87 @@ func (r *Reader) buildTracks() {
 		}
 	}
 	r.Tracks = tracks
+	// Drones that went somewhere (moved 15 m or more over 2 seconds or more), each given to the nearest player when it
+	// first moved: where that player was then, or where they spawn if their body is not there yet (attackers in prep).
+	posAt := func(tr PlayerTrack, t float32) (TrackPoint, bool) {
+		if len(tr.Points) == 0 {
+			return TrackPoint{}, false
+		}
+		i := sort.Search(len(tr.Points), func(i int) bool { return tr.Points[i].T > t })
+		if i == 0 {
+			return tr.Points[0], true
+		}
+		return tr.Points[i-1], true
+	}
+	dl := make([]*obj, 0)
+	for _, o := range drones {
+		if o.count < 60 || len(o.points) < 2 {
+			continue
+		}
+		var path float64
+		for i := 1; i < len(o.points); i++ {
+			path += math.Hypot(float64(o.points[i].X-o.points[i-1].X), float64(o.points[i].Y-o.points[i-1].Y))
+		}
+		if path < 15 || o.points[len(o.points)-1].T-o.points[0].T < 2 {
+			continue
+		}
+		dl = append(dl, o)
+	}
+	sort.Slice(dl, func(i, j int) bool { return dl[i].firstT < dl[j].firstT })
+	if len(dl) > 40 {
+		dl = dl[:40]
+	}
+	// in prep each attacker throws one drone from where they spawn: pair those one to one, closest pairs first
+	prepOwner := map[*obj]int{}
+	if prepLen > 0 {
+		type pair struct {
+			o    *obj
+			ti   int
+			dist float64
+		}
+		pairs := []pair{}
+		for _, o := range dl {
+			if o.firstT >= float32(prepLen) {
+				continue
+			}
+			for ti, tr := range tracks {
+				if tr.TeamIndex < 0 || tr.TeamIndex >= len(r.Header.Teams) || r.Header.Teams[tr.TeamIndex].Role != Attack || len(tr.Points) == 0 {
+					continue
+				}
+				q, p0 := tr.Points[0], o.points[0]
+				pairs = append(pairs, pair{o, ti, math.Hypot(float64(q.X-p0.X), float64(q.Y-p0.Y))})
+			}
+		}
+		sort.Slice(pairs, func(i, j int) bool { return pairs[i].dist < pairs[j].dist })
+		usedT := map[int]bool{}
+		for _, p := range pairs {
+			if _, done := prepOwner[p.o]; done || usedT[p.ti] {
+				continue
+			}
+			prepOwner[p.o] = p.ti
+			usedT[p.ti] = true
+		}
+	}
+	r.Drones = make([]DroneTrack, 0, len(dl))
+	for _, o := range dl {
+		if ti, ok := prepOwner[o]; ok {
+			r.Drones = append(r.Drones, DroneTrack{Owner: tracks[ti].Username, TeamIndex: tracks[ti].TeamIndex, Points: o.points})
+			continue
+		}
+		p0 := o.points[0]
+		d := DroneTrack{TeamIndex: -1, Points: o.points}
+		best := math.Inf(1)
+		for _, tr := range tracks {
+			q, ok := posAt(tr, p0.T)
+			if !ok {
+				continue
+			}
+			if dist := math.Hypot(float64(q.X-p0.X), float64(q.Y-p0.Y)) + math.Abs(float64(q.Z-p0.Z)); dist < best {
+				best, d.Owner, d.TeamIndex = dist, tr.Username, tr.TeamIndex
+			}
+		}
+		r.Drones = append(r.Drones, d)
+	}
 	c := RoundClock{End: end}
 	if prepLen > 0 {
 		c.PrepSeconds = float32(prepLen)

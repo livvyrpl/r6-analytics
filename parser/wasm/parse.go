@@ -38,6 +38,7 @@ type Result struct {
 	Warnings     []string              `json:"warnings"`
 	Tracks       []dissect.PlayerTrack `json:"tracks,omitempty"` // where each player was, for the 2D replay
 	Clock        *dissect.RoundClock   `json:"clock,omitempty"`
+	Drones       []dissect.DroneTrack  `json:"drones,omitempty"` // drones, with who most likely threw them
 }
 
 // Team is one side in the round. Score is the match score after this round,
@@ -134,6 +135,7 @@ func parse(data []byte, warnings *warningCollector) (Result, error) {
 	}
 	res.Tracks = r.Tracks
 	res.Clock = r.Clock
+	res.Drones = r.Drones
 	if !h.Timestamp.IsZero() {
 		res.Timestamp = h.Timestamp.UTC().Format("2006-01-02T15:04:05Z")
 	}
