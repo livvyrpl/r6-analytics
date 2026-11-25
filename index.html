@@ -2570,7 +2570,7 @@ function rpcMask(img,paint){
  for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){const i=(y*FW+x)*4,r=px[i],gg=px[i+1],b=px[i+2],j=((y/pool)|0)*W+((x/pool)|0);
   if(0.3*r+0.59*gg+0.11*b<170&&Math.max(r,gg,b)-Math.min(r,gg,b)<80)dark[j]=1}
  if(paint){const pc=document.createElement('canvas');pc.width=FW;pc.height=FH;const pg=pc.getContext('2d');pg.drawImage(paint,0,0,FW,FH);const pp=pg.getImageData(0,0,FW,FH).data;
-  for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){const i=(y*FW+x)*4;if(pp[i+3]<128)continue;const j=((y/pool)|0)*W+((x/pool)|0);if(pp[i]>150&&pp[i+2]<100){red[j]=1;nRed++}else if(pp[i+2]>150&&pp[i]<100){blue[j]=1;nBlue++}}}
+  for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){const i=(y*FW+x)*4;if(pp[i+3]<128)continue;const j=((y/pool)|0)*W+((x/pool)|0);if(pp[i]>150&&pp[i+2]<100){red[j]=1;nRed++}else if(pp[i+2]>150&&pp[i]<100&&pp[i+1]<100){blue[j]=1;nBlue++}}}
  // a dark frame around the picture is not a wall: rows and columns along the edges that are mostly dark are cleared
  for(let y=0;y<Math.max(2,H*0.03);y++)for(const yy of [y,H-1-y]){let n=0;for(let x=0;x<W;x++)n+=dark[yy*W+x];if(n>W*0.5)for(let x=0;x<W;x++)dark[yy*W+x]=0}
  for(let x=0;x<Math.max(2,W*0.03);x++)for(const xx of [x,W-1-x]){let n=0;for(let y=0;y<H;y++)n+=dark[y*W+xx];if(n>H*0.5)for(let y=0;y<H;y++)dark[y*W+xx]=0}
@@ -2734,8 +2734,14 @@ async function rpcAutoAll(b,only){
   let M;try{M=rpcMask(img,pimg)}catch{note.push(map+': its picture could not be read');continue}
   const panels=rpcPanels(M),k=panels.length;if(!k){note.push(map+': no floors found on its picture');continue}
   const bands=rpcBands(c),pts=rpcPts(c),bp2=bands.map(bd=>pts.filter(p=>p[2]>=bd.z0&&p[2]<bd.z1)).map(l=>l.length>=30?l:null);
+  // sites coloured one by one: each one's defenders must land in its rooms
+  if(pt?.sites?.length&&pimg){const R2=await rpcSpotsFit(c,M,panels,bands,pimg,pt.sites);
+   if(R2.f){const f=R2.f,K=1/M.sc,mm={...(all[map]||{}),floors:{}};if(all[map]?.paint)mm.paint=all[map].paint;
+    R2.pairs.forEach(([bi,p])=>{mm.floors[rpcKey(bi)]={bp:bp.id,name:rpcPanelName(p,k),s:+(f.s*K).toFixed(4),r:+f.r.toFixed(2),tx:+((panels[p][0]+f.tx)*K).toFixed(1),ty:+(f.ty*K).toFixed(1),fx:!!f.fx,z0:Math.max(-50,+bands[bi].z0.toFixed(1)),z1:Math.min(50,+bands[bi].z1.toFixed(1)),auto:true,colors:true,crop:[Math.round(panels[p][0]*K),0,Math.min(img.naturalWidth,Math.round(panels[p][1]*K)),img.naturalHeight]}});
+    all[map]=mm;done++;note.push(`${map}: ${R2.pairs.length} floors from ${R2.n} coloured sites`);continue}
+   note.push(map+': '+R2.err+', so it was lined up from where players walked')}
   // coloured picture (red bomb sites, blue stairs): line it up from those
-  if(M.nRed>40){
+  else if(M.nRed>40){
    M.redD=rpcDist(M.red,M.W,M.H);M.blueD=rpcDist(M.blue,M.W,M.H);M.redBlobs=rpcBlobs(M.red,M.W,M.H);
    await rpcSiteData(c);const bandOf=z=>bands.findIndex(bd=>z>=bd.z0&&z<bd.z1),sites=(c.sites||[]).map(s=>({...s,bi:bandOf(s.z)})).filter(s=>s.bi>=0),stairs=rpcStairs(c,bands);
    const live2=bands.map((_,i)=>i).filter(i=>bp2[i]||sites.some(s=>s.bi===i)),m2=Math.min(live2.length,k);let bc=null;
@@ -2836,6 +2842,48 @@ function rpcSitesH(c){
 // ---- COLOURING IN THE SITE. Bomb sites red, stairs blue, painted on a layer of their own over the map's picture.
 // Only used to line the map up: the picture itself is not changed and the 2D replay shows it clean.
 const RPP_RED=[255,0,0],RPP_BLUE=[0,0,255];
+// each bomb site gets its own colour (stairs are always blue), so its rooms are known for certain
+const RPP_SITE_COLS=['#ff0000','#ff00ff','#ff8c00','#00b400','#ffd700','#00e5ff','#8b4513','#ff69b4'];
+const rppHex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+// the colour of each site of the map: the ones saved before keep theirs, new sites take a free one
+function rppSiteCols(map,sites){
+ const saved=siteSet?.replay_maps?.[map]?.paint?.sites||[],out={},used=new Set();
+ saved.forEach(s=>{out[norm(s.name)]={name:s.name,color:s.color};used.add(s.color)});
+ (sites||[]).forEach(s=>{const k=norm(s.name);if(out[k])return;const col=RPP_SITE_COLS.find(c=>!used.has(c));if(!col)return;used.add(col);out[k]={name:s.name,color:col}});
+ return out;
+}
+const rppToolCol=p=>p.tool==='blue'?'#0000ff':p.tool?.startsWith('site:')?(p.cols[p.tool.slice(5)]?.color||'#ff0000'):'#ff0000';
+// where each coloured site is on the picture (all its rooms together), and in which panel
+function rppSiteSpots(paint,M,panels,cols){
+ const cv=document.createElement('canvas');cv.width=M.W;cv.height=M.H;const g=cv.getContext('2d');g.imageSmoothingEnabled=false;g.drawImage(paint,0,0,M.W,M.H);const d=g.getImageData(0,0,M.W,M.H).data;
+ const list=Object.values(cols).map(s=>({...s,rgb:rppHex(s.color),n:0,sx:0,sy:0,pn:{}}));
+ for(let i=0;i<M.W*M.H;i++){if(d[i*4+3]<200)continue;const r=d[i*4],gg=d[i*4+1],b=d[i*4+2];let best=null,bd=60*60;for(const s of list){const e=(s.rgb[0]-r)**2+(s.rgb[1]-gg)**2+(s.rgb[2]-b)**2;if(e<bd){bd=e;best=s}}if(!best)continue;
+  const x=i%M.W,y=(i-x)/M.W;best.n++;best.sx+=x;best.sy+=y;const p=panels.findIndex(([a,z])=>x>=a&&x<z);best.pn[p]=(best.pn[p]||0)+1}
+ return list.filter(s=>s.n>=6).map(s=>{const p=+Object.entries(s.pn).sort((a,b)=>b[1]-a[1])[0][0];return{name:s.name,u:s.sx/s.n,v:s.sy/s.n,p:Math.max(0,p)}});
+}
+// lines up every floor from sites coloured one by one: each coloured site must sit where its defenders start
+async function rpcSpotsFit(c,M,panels,bands,paint,saved){
+ const cols={};saved.forEach(s=>cols[norm(s.name)]=s);
+ const spots=rppSiteSpots(paint,M,panels,cols);await rpcSiteData(c);
+ const bandOf=z=>bands.findIndex(bd=>z>=bd.z0&&z<bd.z1);
+ const pin=spots.map(s=>{const w=(c.sites||[]).find(x=>norm(x.name)===norm(s.name));return w?{x:w.x,y:w.y,z:w.z,bi:bandOf(w.z),u:s.u-panels[s.p][0],v:s.v,p:s.p,name:s.name}:null}).filter(x=>x&&x.bi>=0);
+ if(pin.length<2)return{err:'fewer than 2 coloured sites match bomb sites in your replays'};
+ const stairs=rpcStairs(c,bands);M.blueD=M.blueD||rpcDist(M.blue,M.W,M.H);
+ const pOf={};pin.forEach(s=>pOf[s.bi]=s.p);
+ const CAP=Math.max(M.W,M.H)*0.04,dAt=(u,v)=>u<0||v<0||u>=M.W||v>=M.H?CAP:Math.min(CAP,M.blueD[(v|0)*M.W+(u|0)]);
+ const proj=(f,x,y,p)=>{const X=f.fx?-x:x,rad=f.r*Math.PI/180;return[panels[p][0]+f.tx+f.s*(X*Math.cos(rad)-y*Math.sin(rad)),f.ty-f.s*(X*Math.sin(rad)+y*Math.cos(rad))]};
+ const cost=f=>{let s=0,n=0;for(const q of pin){const [u,v]=proj(f,q.x,q.y,q.p);s+=Math.min(CAP,Math.hypot(u-panels[q.p][0]-q.u,v-q.v));n++}
+  if(M.nBlue>20)for(const q of stairs)for(const bi of [q.lo,q.hi]){if(pOf[bi]==null)continue;const [u,v]=proj(f,q.x,q.y,pOf[bi]);s+=0.5*dAt(u,v);n++}return s/n};
+ const fits=[false,true].map(fx=>rpcSimFit(pin,fx)).filter(Boolean);if(!fits.length)return{err:'the coloured sites are in the same spot'};
+ // mirrored or not: with 3 or more sites the better fit; with 2, the staircases decide
+ let f=fits.map(x=>({...x,c:cost(x)})).sort((a,b)=>pin.length>=3?a.res-b.res:a.c-b.c)[0];
+ for(let round=0;round<3;round++){const B={...f},st=Math.max(M.W,M.H)*0.003/(round+1);for(const dr of [-1,0,1])for(const ds of [0.99,1,1.01])for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){const g={...B,r:B.r+dr/(round+1),s:B.s*ds,tx:B.tx+dx*st,ty:B.ty+dy*st},cc=cost(g);if(cc<f.c)f={...g,c:cc}}}
+ // heights without a coloured site follow the order (top floor on the left, lowest on the right)
+ const pts=rpcPts(c),k=panels.length,nb=bands.length,inPanel=(bi,p)=>{const l=pts.filter(q=>q[2]>=bands[bi].z0&&q[2]<bands[bi].z1);if(l.length<30)return 0;let n=0;for(const q of l){const [u,v]=proj(f,q[0],q[1],p);if(u<panels[p][0]||u>=panels[p][1]||v<0||v>=M.H)continue;if(!M.out[(v|0)*M.W+(u|0)])n++}return n/l.length*Math.sqrt(l.length)};
+ let best=null;for(let m=Math.min(nb,k);m>=1&&!best;m--)for(const bs of rpcCombos(nb,m))for(const ps of rpcCombos(k,m)){const pairs=bs.map((bi,j)=>[bi,ps[m-1-j]]);if(Object.entries(pOf).some(([bi,p])=>!pairs.some(x=>x[0]===+bi&&x[1]===p)))continue;const sc=pairs.reduce((s,[bi,p])=>s+inPanel(bi,p),0);if(!best||sc>best.sc)best={sc,pairs}}
+ if(!best)return{err:'the coloured sites are not in floor order (top floor on the left)'};
+ return{f,pairs:best.pairs,n:pin.length};
+}
 async function rppOpen(map){
  const bp=bpFloors(map,adm.bp?.rows||[])[0];if(!bp)return;const img=await rpcImgReady(bp.image_url);if(!img)return toast('The picture could not be loaded.');
  const sc=Math.min(1,2400/Math.max(img.naturalWidth,img.naturalHeight)),W=Math.round(img.naturalWidth*sc),H=Math.round(img.naturalHeight*sc);
@@ -2843,7 +2891,8 @@ async function rppOpen(map){
  const saved=siteSet?.replay_maps?.[map]?.paint;if(saved?.url&&saved.bp===bp.id){const pi=await rpcImgReady(saved.url);if(pi)pg.drawImage(pi,0,0,W,H)}
  // walls of the picture, for filling a room: dark lines, with door gaps closed
  let wall=null;try{const cv=document.createElement('canvas');cv.width=W;cv.height=H;const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,W,H);g.drawImage(img,0,0,W,H);const px=g.getImageData(0,0,W,H).data;wall=new Uint8Array(W*H);for(let i=0;i<W*H;i++){const r=px[i*4],gg=px[i*4+1],b=px[i*4+2];if(0.3*r+0.59*gg+0.11*b<150)wall[i]=1}}catch{}
- adm.rpp={map,bp,img,sc,W,H,paint,wall,tool:'red',mode:'fill',size:Math.max(6,Math.round(W*0.006)),undo:[],dirty:false};render();
+ const cols=rppSiteCols(map,adm.rpc?.sites);
+ adm.rpp={map,bp,img,sc,W,H,paint,wall,cols,colsFor:adm.rpc?.sites||null,tool:Object.keys(cols)[0]?'site:'+Object.keys(cols)[0]:'blue',mode:'fill',size:Math.max(6,Math.round(W*0.006)),undo:[],dirty:false};render();
 }
 // fill the room under a click: everything light and closed in by walls (door gaps closed first, then the fill reaches the walls)
 function rppFill(x,y){
@@ -2854,11 +2903,11 @@ function rppFill(x,y){
  while(q.length){const j=q.pop();if(++n>cap)return toast('That area isn’t closed off (it runs into the rest of the building). Use the brush for it instead.');const X=j%W,Y=(j-X)/W;for(const k of [X>0?j-1:-1,X<W-1?j+1:-1,Y>0?j-W:-1,Y<H-1?j+W:-1])if(k>=0&&!reg[k]&&!closed[k]){reg[k]=1;q.push(k)}}
  // grow back up to the walls
  for(let it=0;it<R+1;it++){const add=[];for(let j=0;j<W*H;j++){if(reg[j]||wall[j])continue;const X=j%W,l=X>0,r=X<W-1,u=j>=W,d=j<W*H-W;if((l&&reg[j-1])||(r&&reg[j+1])||(u&&reg[j-W])||(d&&reg[j+W])||(l&&u&&reg[j-W-1])||(r&&u&&reg[j-W+1])||(l&&d&&reg[j+W-1])||(r&&d&&reg[j+W+1]))add.push(j)}add.forEach(j=>reg[j]=1)}
- const pg=p.paint.getContext('2d'),id=pg.getImageData(0,0,W,H),d=id.data,col=p.tool==='red'?RPP_RED:RPP_BLUE;
+ const pg=p.paint.getContext('2d'),id=pg.getImageData(0,0,W,H),d=id.data,col=rppHex(rppToolCol(p));
  for(let j=0;j<W*H;j++)if(reg[j]){if(p.tool==='erase'){d[j*4+3]=0}else{d[j*4]=col[0];d[j*4+1]=col[1];d[j*4+2]=col[2];d[j*4+3]=255}}
  pg.putImageData(id,0,0);p.dirty=true;rppDraw();
 }
-function rppDot(x,y){const p=adm.rpp,pg=p.paint.getContext('2d');pg.globalCompositeOperation=p.tool==='erase'?'destination-out':'source-over';pg.fillStyle=p.tool==='blue'?'rgb(0,0,255)':'rgb(255,0,0)';pg.beginPath();pg.arc(x,y,p.size,0,7);pg.fill();pg.globalCompositeOperation='source-over';p.dirty=true}
+function rppDot(x,y){const p=adm.rpp,pg=p.paint.getContext('2d');pg.globalCompositeOperation=p.tool==='erase'?'destination-out':'source-over';pg.fillStyle=rppToolCol(p);pg.beginPath();pg.arc(x,y,p.size,0,7);pg.fill();pg.globalCompositeOperation='source-over';p.dirty=true}
 function rppSnap(){const p=adm.rpp;p.undo.push(p.paint.getContext('2d').getImageData(0,0,p.W,p.H));if(p.undo.length>15)p.undo.shift()}
 function rppDraw(){
  const p=adm.rpp,cv=document.getElementById('rppcv');if(!p||!cv)return;
@@ -2877,7 +2926,7 @@ async function rppSave(b){
  const up=await sb.storage.from('blueprints').upload(path,blob,{contentType:'image/png',upsert:true});
  if(up.error){b.disabled=false;b.textContent='Save colours';return toast('Could not save the colours: '+up.error.message)}
  const url=sb.storage.from('blueprints').getPublicUrl(path).data.publicUrl+'?v='+Date.now();
- const all={...(siteSet.replay_maps||{})},m={...(all[p.map]||{})};m.paint={bp:p.bp.id,url};m.floors=m.floors||{};all[p.map]=m;
+ const all={...(siteSet.replay_maps||{})},m={...(all[p.map]||{})};m.paint={bp:p.bp.id,url,sites:Object.values(p.cols)};m.floors=m.floors||{};all[p.map]=m;
  const r=await sb.from('site_settings').update({replay_maps:all,updated_at:new Date().toISOString()}).eq('id',true).select().single();b.disabled=false;b.textContent='Save colours';
  if(r.error)return toast(/replay_maps/.test(r.error.message)?'Paste stage49.sql into the Supabase SQL Editor and run it first.':r.error.message);
  siteSet=r.data;p.dirty=false;toast(`Colours for ${p.map} saved. Press Line up ${p.map} from the colours.`);render();
@@ -2885,10 +2934,12 @@ async function rppSave(b){
 function rppH(c){
  const p=adm.rpp,has=!!siteSet?.replay_maps?.[c.map]?.paint;
  if(!p||p.map!==c.map){if(!adm.rppBusy){adm.rppBusy=1;setTimeout(()=>rppOpen(c.map).finally(()=>{adm.rppBusy=0}),0)}return `<section class="cd" style="gap:8px;background:rgba(0,0,0,.25)"><h3 class="oph">1. Colour the bomb sites and stairs</h3><p class="mu">Loading the picture…</p></section>`}
+ // the sites can arrive after the picture: their colours are set then
+ if(c.sites&&p.colsFor!==c.sites){p.cols=rppSiteCols(c.map,c.sites);p.colsFor=c.sites;if(!p.tool.startsWith('site:')&&p.tool!=='blue'&&p.tool!=='erase'||p.tool==='red')p.tool=Object.keys(p.cols)[0]?'site:'+Object.keys(p.cols)[0]:'blue'}
  const tb=(k,lbl,a='rpptool')=>`<button class="ch" style="height:32px" data-a="${a}" data-k="${k}" aria-pressed="${(a==='rpptool'?p.tool:p.mode)===k}">${lbl}</button>`;
  return `<section class="cd" style="gap:8px;background:rgba(0,0,0,.25)"><h3 class="oph">1. Colour the bomb sites and stairs${has&&!p.dirty?' ✓':''}</h3>
- <p class="mu" style="font-size:12.5px">Colour both rooms of every bomb site red and every staircase blue, on each floor. Click inside a room to fill it, or switch to the brush to paint. The colours are only used to line the map up; your picture stays as it is.</p>
- <div class="row wrap" style="gap:6px;align-items:center">${tb('red','<span style="color:#ff4d4d">■</span> Bomb site')}${tb('blue','<span style="color:#4d7dff">■</span> Stairs')}${tb('erase','Eraser')}<span class="mu" style="margin-left:6px">|</span>${tb('fill','Fill a room','rppmode')}${tb('brush','Brush','rppmode')}${p.mode==='brush'?`<label class="row" style="gap:4px;font-size:12.5px">Size <input id="rppsz" type="range" min="2" max="60" value="${p.size}" style="width:110px"></label>`:''}<span class="sp"></span><button class="no" data-a="rppundo"${p.undo.length?'':' disabled'}>Undo</button><button class="no" data-a="rppclear">Clear</button><button class="go" data-a="rppsave">Save colours</button></div>
+ <p class="mu" style="font-size:12.5px">Pick a bomb site, then colour its rooms (both rooms of that site); do the same for each site. Colour every staircase blue, on each floor. Click inside a room to fill it, or switch to the brush to paint. The colours are only used to line the map up; your picture stays as it is.</p>
+ <div class="row wrap" style="gap:6px;align-items:center">${Object.entries(p.cols).map(([k,s])=>tb('site:'+k,`<span style="color:${s.color}">■</span> ${esc(s.name)}`)).join('')||(c.sites?'<span class="mu" style="font-size:12.5px">No bomb sites found in your replays of this map yet.</span>':'<span class="mu" style="font-size:12.5px">Finding the bomb sites in your replays…</span>')}${tb('blue','<span style="color:#4d7dff">■</span> Stairs')}${tb('erase','Eraser')}<span class="mu" style="margin-left:6px">|</span>${tb('fill','Fill a room','rppmode')}${tb('brush','Brush','rppmode')}${p.mode==='brush'?`<label class="row" style="gap:4px;font-size:12.5px">Size <input id="rppsz" type="range" min="2" max="60" value="${p.size}" style="width:110px"></label>`:''}<span class="sp"></span><button class="no" data-a="rppundo"${p.undo.length?'':' disabled'}>Undo</button><button class="no" data-a="rppclear">Clear</button><button class="go" data-a="rppsave">Save colours</button></div>
  <canvas id="rppcv" class="rppcv" aria-label="Picture to colour"></canvas>
  <div class="row wrap" style="gap:8px;align-items:center"><button class="go" data-a="rpcmapall"${has?'':' disabled'}>2. Line up ${esc(c.map)} from the colours</button>${has?'':'<span class="mu" style="font-size:12.5px">Save the colours first.</span>'}</div></section>`;
 }
