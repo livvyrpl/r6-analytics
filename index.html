@@ -2391,7 +2391,7 @@ function rpOpen(key,R,title){
  if(rpv&&rpv.key===key){rpv.R=R;if(!rpv.ms.cal){const ms=rpMapSetup(R);if(ms.cal){rpv.ms=ms;rpv.floor=0;rpv.box=null}}return}
  rpStop();
  const ms=rpMapSetup(R),c=R.clock||{};
- rpv={key,R,title,ms,t:c.prepSeconds?Math.max(0,c.prepSeconds-5):0,playing:false,speed:1,floor:0,follow:'',trail:true,names:true,cards:true,others:true,zoom:1,panX:0,panY:0,size:'M',ui:true,fov:'cone',drones:'all'};
+ rpv={key,R,title,ms,t:c.prepSeconds?Math.max(0,c.prepSeconds-5):0,playing:false,speed:1,floor:0,follow:'',trail:true,names:true,cards:true,others:true,zoom:1,panX:0,panY:0,size:'M',ui:true,fov:'cone',drones:'all',sheet:true};
  // start on the floor where most players are
  const cnt=ms.floors.map(()=>0);R.tracks.forEach(tr=>{const p=rpAt(tr,rpv.t+20);if(p){const i=rpFloorOf(p.z);if(i>=0)cnt[i]++}});rpv.floor=cnt.indexOf(Math.max(...cnt));if(rpv.floor<0)rpv.floor=0;
 }
@@ -2402,6 +2402,9 @@ const rpTeamCol=i=>i===0?'#3d8ef3':'#f0913a';
 // world position to canvas position
 function rpProj(cv){
  const v=rpv,f=v.ms.floors[v.floor],W=cv.clientWidth,H=cv.clientHeight;
+ const sheet=v.ms.cal&&v.sheet&&v.ms.floors.every(x=>x.url===f.url);
+ if(sheet){const img=rpImage(f.url),iw=img?.naturalWidth||1000,ih=img?.naturalHeight||1000,k=Math.min(W/iw,H/ih)*v.zoom,ox=(W-iw*k)/2+v.panX,oy=(H-ih*k)/2+v.panY;
+  return{img,iw,ih,k,ox,oy,cr:[0,0,iw,ih],sheet:true,p:(x,y,fi)=>{const F=v.ms.floors[fi??v.floor]||f,rad=(F.r||0)*Math.PI/180,X=F.fx?-x:x,xr=X*Math.cos(rad)-y*Math.sin(rad),yr=X*Math.sin(rad)+y*Math.cos(rad);return[ox+(F.tx+F.s*xr)*k,oy+(F.ty-F.s*yr)*k]}}}
  if(v.ms.cal){const img=rpImage(f.url),iw=img?.naturalWidth||1000,ih=img?.naturalHeight||1000,cr=f.crop||[0,0,iw,ih],cw=cr[2]-cr[0]||iw,ch=cr[3]-cr[1]||ih,k=Math.min(W/cw,H/ch)*v.zoom,ox=(W-cw*k)/2-cr[0]*k+v.panX,oy=(H-ch*k)/2-cr[1]*k+v.panY,rad=(f.r||0)*Math.PI/180,cs=Math.cos(rad),sn=Math.sin(rad);
   return{img,iw,ih,k,ox,oy,cr,p:(x,y)=>{const X=f.fx?-x:x,xr=X*cs-y*sn,yr=X*sn+y*cs;return[ox+(f.tx+f.s*xr)*k,oy+(f.ty-f.s*yr)*k]}}}
  if(!v.box){let a=1e9,b=-1e9,c=1e9,d=-1e9;v.R.tracks.forEach(t=>t.points.forEach(p=>{a=Math.min(a,p[1]);b=Math.max(b,p[1]);c=Math.min(c,p[2]);d=Math.max(d,p[2])}));v.box=[a,b,c,d]}
@@ -2414,25 +2417,26 @@ function rpDraw(){
  const g=cv.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.fillStyle='#0b0b10';g.fillRect(0,0,W,H);
  const P=rpProj(cv),R=v.R,t=v.t,deaths=R.clock?.deaths||{},end=rpEnd(),sz={S:8,M:11,L:14}[v.size];
  // only the part of the picture with this floor (a picture can show several floors)
- if(v.ms.cal){if(P.img){g.save();g.beginPath();g.rect(P.ox+P.cr[0]*P.k,P.oy+P.cr[1]*P.k,(P.cr[2]-P.cr[0])*P.k,(P.cr[3]-P.cr[1])*P.k);g.clip();g.fillStyle='#fff';g.fillRect(P.ox+P.cr[0]*P.k,P.oy+P.cr[1]*P.k,(P.cr[2]-P.cr[0])*P.k,(P.cr[3]-P.cr[1])*P.k);g.drawImage(P.img,P.ox,P.oy,P.iw*P.k,P.ih*P.k);g.restore()}}
+ if(P.sheet){if(P.img){g.fillStyle='#fff';g.fillRect(P.ox,P.oy,P.iw*P.k,P.ih*P.k);g.drawImage(P.img,P.ox,P.oy,P.iw*P.k,P.ih*P.k)}}
+ else if(v.ms.cal){if(P.img){g.save();g.beginPath();g.rect(P.ox+P.cr[0]*P.k,P.oy+P.cr[1]*P.k,(P.cr[2]-P.cr[0])*P.k,(P.cr[3]-P.cr[1])*P.k);g.clip();g.fillStyle='#fff';g.fillRect(P.ox+P.cr[0]*P.k,P.oy+P.cr[1]*P.k,(P.cr[2]-P.cr[0])*P.k,(P.cr[3]-P.cr[1])*P.k);g.drawImage(P.img,P.ox,P.oy,P.iw*P.k,P.ih*P.k);g.restore()}}
  else{g.strokeStyle='rgba(255,255,255,.05)';g.lineWidth=1;for(let x=0;x<W;x+=40){g.beginPath();g.moveTo(x,0);g.lineTo(x,H);g.stroke()}for(let y=0;y<H;y+=40){g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke()}}
  const op=n=>R.players.find(p=>p.username===n)?.operator||'';
  const items=R.tracks.map(tr=>{const p=rpAt(tr,t);if(!p)return null;const d=deaths[tr.username],dead=d!=null&&t>=d||p.end&&t<end-1.5;return{tr,p,dead,fl:rpFloorOf(p.z)}}).filter(Boolean);
  // trails: the last 12 seconds, on this floor
- if(v.trail)items.forEach(o=>{if(o.dead)return;const pts=o.tr.points;g.strokeStyle=rpTeamCol(o.tr.teamIndex)+'99';g.lineWidth=2;g.beginPath();let on=false;for(const q of pts){if(q[0]<t-12)continue;if(q[0]>t)break;if(rpFloorOf(q[3])!==v.floor){on=false;continue}const [x,y]=P.p(q[1],q[2]);on?g.lineTo(x,y):g.moveTo(x,y);on=true}g.stroke()});
+ if(v.trail)items.forEach(o=>{if(o.dead)return;const pts=o.tr.points;g.strokeStyle=rpTeamCol(o.tr.teamIndex)+'99';g.lineWidth=2;g.beginPath();let on=false;for(const q of pts){if(q[0]<t-12)continue;if(q[0]>t)break;const qf=rpFloorOf(q[3]);if(!P.sheet&&qf!==v.floor){on=false;continue}if(on!==false&&on!==qf+1)on=false;const [x,y]=P.p(q[1],q[2],qf);on?g.lineTo(x,y):g.moveTo(x,y);on=qf+1}g.stroke()});
  // drones: a small diamond in the thrower's colour while it is out
- if(v.drones!=='off')for(const d of R.drones||[]){const P0=d.points;if(!P0.length||t<P0[0][0]||t>P0[P0.length-1][0])continue;const q=rpAt(d,t);if(!q)continue;const here=rpFloorOf(q.z)===v.floor;if(!here&&v.drones==='floor')continue;
-  const [x,y]=P.p(q.x,q.y),s=here?sz*0.55:sz*0.4,col=d.teamIndex>=0?rpTeamCol(d.teamIndex):'#ccc';g.globalAlpha=here?1:0.35;g.fillStyle=col;g.strokeStyle='#fff';g.lineWidth=1.5;g.beginPath();g.moveTo(x,y-s);g.lineTo(x+s,y);g.lineTo(x,y+s);g.lineTo(x-s,y);g.closePath();g.fill();g.stroke();
+ if(v.drones!=='off')for(const d of R.drones||[]){const P0=d.points;if(!P0.length||t<P0[0][0]||t>P0[P0.length-1][0])continue;const q=rpAt(d,t);if(!q)continue;const dfl=rpFloorOf(q.z),here=P.sheet||dfl===v.floor;if(!here&&v.drones==='floor')continue;
+  const [x,y]=P.p(q.x,q.y,dfl),s=here?sz*0.55:sz*0.4,col=d.teamIndex>=0?rpTeamCol(d.teamIndex):'#ccc';g.globalAlpha=here?1:0.35;g.fillStyle=col;g.strokeStyle='#fff';g.lineWidth=1.5;g.beginPath();g.moveTo(x,y-s);g.lineTo(x+s,y);g.lineTo(x,y+s);g.lineTo(x-s,y);g.closePath();g.fill();g.stroke();
   if(v.names&&here&&d.owner){g.font='500 10px Inter,system-ui,sans-serif';g.fillStyle='rgba(255,255,255,.85)';g.textAlign='center';g.textBaseline='top';g.fillText(d.owner+'’s drone',x,y+s+2)}g.globalAlpha=1}
  // other floors first, faded, then this floor on top
  const order=[...items].sort((a,b)=>(a.fl===v.floor)-(b.fl===v.floor));
  for(const o of order){
-  const here=o.fl===v.floor;if(!here&&!v.others)continue;
-  const [x,y]=P.p(o.p.x,o.p.y),col=rpTeamCol(o.tr.teamIndex),r=here?sz:sz*0.7;
+  const here=P.sheet||o.fl===v.floor;if(!here&&!v.others)continue;
+  const [x,y]=P.p(o.p.x,o.p.y,o.fl),col=rpTeamCol(o.tr.teamIndex),r=here?sz:sz*0.7;
   g.globalAlpha=here?1:0.35;
   if(o.dead){g.strokeStyle=col;g.lineWidth=3;g.beginPath();g.moveTo(x-r*0.7,y-r*0.7);g.lineTo(x+r*0.7,y+r*0.7);g.moveTo(x+r*0.7,y-r*0.7);g.lineTo(x-r*0.7,y+r*0.7);g.stroke();g.globalAlpha=1;continue}
   // which way they face: a see-through cone (this floor) or a small pointer
-  if(v.fov!=='off'&&o.p.yaw!=null){const a=o.p.yaw*Math.PI/180,[x2,y2]=P.p(o.p.x+Math.cos(a),o.p.y+Math.sin(a)),ang=Math.atan2(y2-y,x2-x);
+  if(v.fov!=='off'&&o.p.yaw!=null){const a=o.p.yaw*Math.PI/180,[x2,y2]=P.p(o.p.x+Math.cos(a),o.p.y+Math.sin(a),o.fl),ang=Math.atan2(y2-y,x2-x);
    if(v.fov==='cone'&&here){const L=Math.max(40,r*5),w=Math.PI/4,gr=g.createRadialGradient(x,y,r,x,y,L);gr.addColorStop(0,col+'66');gr.addColorStop(1,col+'00');g.fillStyle=gr;g.beginPath();g.moveTo(x,y);g.arc(x,y,L,ang-w,ang+w);g.closePath();g.fill()}
    else{g.fillStyle=col;g.beginPath();g.moveTo(x+Math.cos(ang)*(r+8),y+Math.sin(ang)*(r+8));g.lineTo(x+Math.cos(ang+0.5)*(r+1),y+Math.sin(ang+0.5)*(r+1));g.lineTo(x+Math.cos(ang-0.5)*(r+1),y+Math.sin(ang-0.5)*(r+1));g.closePath();g.fill()}}
   g.fillStyle='#111';g.beginPath();g.arc(x,y,r+2,0,7);g.fill();g.strokeStyle=v.follow===o.tr.username?'#fff':col;g.lineWidth=v.follow===o.tr.username?3:2.5;g.stroke();
@@ -2464,9 +2468,9 @@ function rpLoop(ts){
 }
 function rpPlay(on){const v=rpv;if(!v)return;v.playing=on??!v.playing;if(v.playing){if(v.t>=rpEnd()-0.1)v.t=0;v.last=0;v.raf=requestAnimationFrame(rpLoop)}else cancelAnimationFrame(v.raf);rpBar()}
 function rpSeek(t){const v=rpv;if(!v)return;v.t=Math.max(0,Math.min(rpEnd(),t));if(v.follow)rpCenter(v.follow);rpDraw()}
-function rpCenter(name){const v=rpv,cv=document.getElementById('rpcv'),tr=v?.R.tracks.find(x=>x.username===name);if(!cv||!tr)return;const p=rpAt(tr,v.t);if(!p)return;const f=rpFloorOf(p.z);if(f!==v.floor){v.floor=f;rpFloorBtns()}const P=rpProj(cv),[x,y]=P.p(p.x,p.y);v.panX+=cv.clientWidth/2-x;v.panY+=cv.clientHeight/2-y}
+function rpCenter(name){const v=rpv,cv=document.getElementById('rpcv'),tr=v?.R.tracks.find(x=>x.username===name);if(!cv||!tr)return;const p=rpAt(tr,v.t);if(!p)return;const f=rpFloorOf(p.z),P0=rpProj(cv);if(!P0.sheet&&f!==v.floor){v.floor=f;rpFloorBtns()}const P=rpProj(cv),[x,y]=P.p(p.x,p.y,f);v.panX+=cv.clientWidth/2-x;v.panY+=cv.clientHeight/2-y}
 function rpFloorBtns(){const e=document.getElementById('rpfl');if(e)e.innerHTML=rpFloorH()}
-const rpFloorH=()=>rpv.ms.floors.length>1?rpv.ms.floors.map((f,i)=>`<button class="ch" data-a="rpfloor" data-k="${i}" aria-pressed="${i===rpv.floor}">${esc(f.name)}</button>`).slice().reverse().join(''):'';
+const rpFloorH=()=>(rpv.ms.cal?`<button class="ch" data-a="rptog" data-k="sheet" aria-pressed="${!!rpv.sheet}" title="All floors side by side, or one floor at a time">Side by side</button>`:'')+(rpv.ms.floors.length>1&&!(rpv.ms.cal&&rpv.sheet)?rpv.ms.floors.map((f,i)=>`<button class="ch" data-a="rpfloor" data-k="${i}" aria-pressed="${i===rpv.floor}">${esc(f.name)}</button>`).slice().reverse().join(''):'');
 // the page part: a box the viewer is drawn into after each page draw
 function rpBoxH(){
  const v=rpv;if(!v)return '';
@@ -2556,7 +2560,9 @@ function rpcMask(img){
  const FX=Math.min(1,2400/Math.max(img.naturalWidth,img.naturalHeight)),FW=Math.max(1,Math.round(img.naturalWidth*FX)),FH=Math.max(1,Math.round(img.naturalHeight*FX));
  const cv=document.createElement('canvas');cv.width=FW;cv.height=FH;const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,FW,FH);g.drawImage(img,0,0,FW,FH);
  const px=g.getImageData(0,0,FW,FH).data,pool=Math.max(1,Math.ceil(Math.max(FW,FH)/1000)),W=Math.ceil(FW/pool),H=Math.ceil(FH/pool),sc=FX/pool,dark=new Uint8Array(W*H);
- for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){const i=(y*FW+x)*4;if(0.3*px[i]+0.59*px[i+1]+0.11*px[i+2]<170)dark[((y/pool)|0)*W+((x/pool)|0)]=1}
+ const red=new Uint8Array(W*H),blue=new Uint8Array(W*H);let nRed=0,nBlue=0;
+ for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){const i=(y*FW+x)*4,r=px[i],gg=px[i+1],b=px[i+2],j=((y/pool)|0)*W+((x/pool)|0);
+  if(r>170&&gg<110&&b<110){red[j]=1;nRed++}else if(b>150&&r<110&&gg<160&&b-r>70){blue[j]=1;nBlue++}else if(0.3*r+0.59*gg+0.11*b<170&&Math.max(r,gg,b)-Math.min(r,gg,b)<80)dark[j]=1}
  // a dark frame around the picture is not a wall: rows and columns along the edges that are mostly dark are cleared
  for(let y=0;y<Math.max(2,H*0.03);y++)for(const yy of [y,H-1-y]){let n=0;for(let x=0;x<W;x++)n+=dark[yy*W+x];if(n>W*0.5)for(let x=0;x<W;x++)dark[yy*W+x]=0}
  for(let x=0;x<Math.max(2,W*0.03);x++)for(const xx of [x,W-1-x]){let n=0;for(let y=0;y<H;y++)n+=dark[y*W+xx];if(n>H*0.5)for(let y=0;y<H;y++)dark[y*W+xx]=0}
@@ -2569,7 +2575,53 @@ function rpcMask(img){
  for(let i=0;i<W*H;i++){if(out[i]||comp[i]>=0)continue;const id=comps.length,q=[i];comp[i]=id;let n=0,x0=W,y0=H,x1=0,y1=0;
   while(q.length){const j=q.pop();n++;const x=j%W,y=(j-x)/W;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;for(const k of [x>0?j-1:-1,x<W-1?j+1:-1,y>0?j-W:-1,y<H-1?j+W:-1])if(k>=0&&!out[k]&&comp[k]<0){comp[k]=id;q.push(k)}}
   comps.push({id,n,x0,y0,x1,y1})}
- return{W,H,sc,comp,dark,out,comps:(()=>{const l=comps.filter(o=>o.n>W*H*0.003).sort((a,b)=>b.n-a.n);return l.filter(o=>o.n>=(l[0]?.n||0)*0.25)})()}; // buildings only: titles, legends and small boxes are left out
+ return{W,H,sc,comp,dark,out,red,blue,nRed,nBlue,comps:(()=>{const l=comps.filter(o=>o.n>W*H*0.003).sort((a,b)=>b.n-a.n);return l.filter(o=>o.n>=(l[0]?.n||0)*0.25)})()}; // buildings only: titles, legends and small boxes are left out
+}
+// ---- COLOURED PICTURES: bomb sites painted red, stairs painted blue. Each site's place in the game is where the
+// defenders start; each staircase's place is where players change height. Pairs of sites are tried against pairs of red
+// areas; the fit where every site lands on red and every staircase on blue (on both of its floors) wins.
+function rpcDist(mask,W,H){
+ const INF=1e9,d=new Float32Array(W*H);for(let i=0;i<W*H;i++)d[i]=mask[i]?0:INF;
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const i=y*W+x;let v=d[i];if(x>0)v=Math.min(v,d[i-1]+1);if(y>0){v=Math.min(v,d[i-W]+1);if(x>0)v=Math.min(v,d[i-W-1]+1.414);if(x<W-1)v=Math.min(v,d[i-W+1]+1.414)}d[i]=v}
+ for(let y=H-1;y>=0;y--)for(let x=W-1;x>=0;x--){const i=y*W+x;let v=d[i];if(x<W-1)v=Math.min(v,d[i+1]+1);if(y<H-1){v=Math.min(v,d[i+W]+1);if(x<W-1)v=Math.min(v,d[i+W+1]+1.414);if(x>0)v=Math.min(v,d[i+W-1]+1.414)}d[i]=v}
+ return d;
+}
+function rpcBlobs(mask,W,H){
+ const seen=new Uint8Array(W*H),out=[];
+ for(let i=0;i<W*H;i++){if(!mask[i]||seen[i])continue;const q=[i];seen[i]=1;let n=0,sx=0,sy=0;while(q.length){const j=q.pop();n++;const x=j%W,y=(j-x)/W;sx+=x;sy+=y;for(const k of [x>0?j-1:-1,x<W-1?j+1:-1,y>0?j-W:-1,y<H-1?j+W:-1])if(k>=0&&mask[k]&&!seen[k]){seen[k]=1;q.push(k)}}
+  if(n>=6)out.push({x:sx/n,y:sy/n,n})}
+ return out;
+}
+// where players change floors: the spot between two points a moment apart on different heights, gathered into staircases
+function rpcStairs(c,bands){
+ const bandOf=z=>bands.findIndex(b=>z>=b.z0&&z<b.z1),raw=[];
+ c.Rs.forEach(R=>R.tracks.forEach(t=>{const P=t.points;for(let i=1;i<P.length;i++){const a=P[i-1],b=P[i];if(b[0]-a[0]>0.6)continue;const ba=bandOf(a[3]),bb=bandOf(b[3]);if(ba<0||bb<0||ba===bb||Math.abs(ba-bb)>1)continue;if(Math.hypot(b[1]-a[1],b[2]-a[2])>3)continue;raw.push({x:(a[1]+b[1])/2,y:(a[2]+b[2])/2,lo:Math.min(ba,bb),hi:Math.max(ba,bb)})}}));
+ const cl=[];raw.forEach(p=>{const e=cl.find(q=>q.lo===p.lo&&q.hi===p.hi&&Math.hypot(q.x-p.x,q.y-p.y)<4);if(e){e.x=(e.x*e.n+p.x)/(e.n+1);e.y=(e.y*e.n+p.y)/(e.n+1);e.n++}else cl.push({...p,n:1})});
+ return cl.filter(q=>q.n>=2);
+}
+// one fit for all floors from the coloured picture: sites to red, staircases to blue. Positions inside each panel are shared.
+function rpcColorFit(M,panels,sites,stairs,pairs){
+ // pairs: [band index, panel index]; landmarks get the panel of their height
+ const pOf={};pairs.forEach(([bi,p])=>pOf[bi]=p);
+ const S=sites.filter(s=>pOf[s.bi]!=null),T=stairs.filter(s=>pOf[s.lo]!=null||pOf[s.hi]!=null);
+ if(S.length<2)return null;
+ const red=M.redBlobs.map(b=>({...b,p:Math.max(0,panels.findIndex(([a,z])=>b.x>=a&&b.x<z))}));
+ const CAP=Math.max(M.W,M.H)*0.04,dAt=(d,u,v)=>{if(u<0||v<0||u>=M.W||v>=M.H)return CAP;return Math.min(CAP,d[(v|0)*M.W+(u|0)])};
+ const proj=(f,x,y,p)=>{const X=f.fx?-x:x,rad=f.r*Math.PI/180;return[panels[p][0]+f.tx+f.s*(X*Math.cos(rad)-y*Math.sin(rad)),f.ty-f.s*(X*Math.sin(rad)+y*Math.cos(rad))]};
+ const cost=f=>{let c=0;for(const s of S){const [u,v]=proj(f,s.x,s.y,pOf[s.bi]);c+=dAt(M.redD,u,v)}
+  for(const s of T)for(const bi of [s.lo,s.hi]){if(pOf[bi]==null)continue;const [u,v]=proj(f,s.x,s.y,pOf[bi]);c+=0.5*dAt(M.blueD,u,v)}
+  return c/(S.length+T.length)};
+ let best=null;
+ for(let i=0;i<S.length;i++)for(let j=0;j<S.length;j++){if(i===j)continue;const A=S[i],B=S[j];if(Math.hypot(A.x-B.x,A.y-B.y)<5)continue;
+  for(const ra of red)for(const rb of red){if(ra===rb||ra.p!==pOf[A.bi]||rb.p!==pOf[B.bi])continue;
+   for(const fx of [false,true]){const f=rpcSimFit([{x:A.x,y:A.y,u:ra.x-panels[ra.p][0],v:ra.y},{x:B.x,y:B.y,u:rb.x-panels[rb.p][0],v:rb.y}],fx);if(!f)continue;
+    const pw=panels[pOf[A.bi]][1]-panels[pOf[A.bi]][0];if(f.s<pw/400||f.s>pw/10)continue;
+    const c=cost(f);if(!best||c<best.c)best={...f,c}}}}
+ if(!best)return null;
+ // smaller steps around the best
+ for(let round=0;round<4;round++){const B={...best},st=Math.max(M.W,M.H)*0.004/(round+1);
+  for(const dr of [-1,0,1])for(const ds of [0.98,1,1.02])for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){const f={...B,r:B.r+dr*2/(round+1),s:B.s*ds,tx:B.tx+dx*st,ty:B.ty+dy*st},c=cost(f);if(c<best.c)best={...f,c}}}
+ best.ok=best.c<CAP*0.35;return best;
 }
 // the best fit of some dots ([x, y, ...]) into one or more buildings of a picture; sizes are in the mask's pixels
 function rpcSolve(pts,M,comps){
@@ -2674,6 +2726,17 @@ async function rpcAutoAll(b,only){
   let M;try{M=rpcMask(img)}catch{note.push(map+': its picture could not be read');continue}
   const panels=rpcPanels(M),k=panels.length;if(!k){note.push(map+': no floors found on its picture');continue}
   const bands=rpcBands(c),pts=rpcPts(c),bp2=bands.map(bd=>pts.filter(p=>p[2]>=bd.z0&&p[2]<bd.z1)).map(l=>l.length>=30?l:null);
+  // coloured picture (red bomb sites, blue stairs): line it up from those
+  if(M.nRed>40){
+   M.redD=rpcDist(M.red,M.W,M.H);M.blueD=rpcDist(M.blue,M.W,M.H);M.redBlobs=rpcBlobs(M.red,M.W,M.H);
+   await rpcSiteData(c);const bandOf=z=>bands.findIndex(bd=>z>=bd.z0&&z<bd.z1),sites=(c.sites||[]).map(s=>({...s,bi:bandOf(s.z)})).filter(s=>s.bi>=0),stairs=rpcStairs(c,bands);
+   const live2=bands.map((_,i)=>i).filter(i=>bp2[i]||sites.some(s=>s.bi===i)),m2=Math.min(live2.length,k);let bc=null;
+   for(const bs of rpcCombos(live2.length,m2))for(const ps of rpcCombos(k,m2)){const pairs=bs.map((bi,j)=>[live2[bi],ps[m2-1-j]]);const fc=rpcColorFit(M,panels,sites,stairs,pairs);await nap(0);if(fc&&(!bc||fc.c<bc.f.c))bc={f:fc,pairs}}
+   if(bc&&bc.f.ok){const f=bc.f,K=1/M.sc,mm={...(all[map]||{}),floors:{}};
+    bc.pairs.forEach(([bi,p])=>{mm.floors[rpcKey(bi)]={bp:bp.id,name:rpcPanelName(p,k),s:+(f.s*K).toFixed(4),r:+f.r.toFixed(2),tx:+((panels[p][0]+f.tx)*K).toFixed(1),ty:+(f.ty*K).toFixed(1),fx:!!f.fx,z0:Math.max(-50,+bands[bi].z0.toFixed(1)),z1:Math.min(50,+bands[bi].z1.toFixed(1)),auto:true,colors:true,fit:+(1-f.c/(Math.max(M.W,M.H)*0.04)).toFixed(2),crop:[Math.round(panels[p][0]*K),0,Math.min(img.naturalWidth,Math.round(panels[p][1]*K)),img.naturalHeight]}});
+    all[map]=mm;done++;note.push(`${map}: ${bc.pairs.length} floors from the coloured sites and stairs`);continue}
+   note.push(map+': the coloured sites did not fit, so it was lined up from where players walked');
+  }
   const live=bands.map((_,i)=>i).filter(i=>bp2[i]),m=Math.min(live.length,k);
   // heights (low to high) go to panels right to left; when the counts differ, every choice in order is tried
   let best=null;
