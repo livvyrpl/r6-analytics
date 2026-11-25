@@ -2865,6 +2865,45 @@ function rppSiteSpots(paint,M,panels,cols){
  return list.filter(s=>s.n>=6).map(s=>{const p=+Object.entries(s.pn).sort((a,b)=>b[1]-a[1])[0][0];return{name:s.name,u:s.sx/s.n,v:s.sy/s.n,p:Math.max(0,p)}});
 }
 // lines up every floor from sites coloured one by one: each coloured site must sit where its defenders start
+// each coloured site's own rooms, as a mask the size of the line-up picture
+function rppSiteMasks(paint,M,cols){
+ const cv=document.createElement('canvas');cv.width=M.W;cv.height=M.H;const g=cv.getContext('2d');g.imageSmoothingEnabled=false;g.drawImage(paint,0,0,M.W,M.H);const d=g.getImageData(0,0,M.W,M.H).data;
+ const list=Object.values(cols).map(s=>({k:norm(s.name),rgb:rppHex(s.color),m:new Uint8Array(M.W*M.H),n:0}));
+ for(let i=0;i<M.W*M.H;i++){if(d[i*4+3]<128)continue;let best=null,bd=60*60;for(const s of list){const e=(s.rgb[0]-d[i*4])**2+(s.rgb[1]-d[i*4+1])**2+(s.rgb[2]-d[i*4+2])**2;if(e<bd){bd=e;best=s}}if(best){best.m[i]=1;best.n++}}
+ const out={};list.forEach(s=>{if(s.n>=6)out[s.k]=rpcDist(s.m,M.W,M.H)});return out;
+}
+// Lines every floor up on its own drawing. Floor plans are drawn straight (a quarter turn at most) and every floor at the
+// same size, but each floor sits at its own spot in its part of the picture. For each floor: its coloured sites must hold
+// their defenders' start, the places where players change floors must be on the blue stairs, and where the defenders
+// walk in prep (they stay inside) must be inside the building
+function rpcShapeFit(c,M,panels,bands,pairs,pin,f0,stairs,masks){
+ const W=M.W,H=M.H;
+ const floors=pairs.map(([bi,p])=>{const P=[];c.Rs.forEach(R=>{const di=R.teams.findIndex(x=>x.role==='Defense'),pe=R.clock?.prepSeconds||40;R.tracks.forEach(tr=>{if(tr.teamIndex!==di)return;tr.points.forEach(q=>{if(q[0]>3&&q[0]<pe&&q[3]>=bands[bi].z0&&q[3]<bands[bi].z1)P.push([q[1],q[2]])})})});
+  const st=Math.max(1,Math.floor(P.length/400));
+  return{bi,p,P:P.filter((_,i)=>i%st===0),pins:pin.filter(q=>q.bi===bi&&q.p===p&&masks[norm(q.name)]),S:stairs.filter(q=>q.lo===bi||q.hi===bi),L:panels[p][0],R:panels[p][1]}}).filter(F=>F.P.length>=30||F.pins.length||F.S.length);
+ if(!floors.length)return{};
+ const BD=M.blueD||(M.blueD=rpcDist(M.blue,W,H));
+ const place=(F,s,r,fx,c0,win,step)=>{const rad=r*Math.PI/180,cs=Math.cos(rad),sn=Math.sin(rad),pw=F.R-F.L,cap=pw*0.08;
+  const rot=(x,y)=>{const X=fx?-x:x;return[s*(X*cs-y*sn),-s*(X*sn+y*cs)]};
+  const A=F.P.map(([x,y])=>rot(x,y)),PA=F.pins.map(q=>[...rot(q.x,q.y),masks[norm(q.name)]]),SA=F.S.map(q=>[...rot(q.x,q.y),Math.sqrt(q.n)]),sw=SA.reduce((s,q)=>s+q[2],0);
+  const at=(D,u,v)=>u<0||v<0||u>=W||v>=H?cap:Math.min(cap,D[(v|0)*W+(u|0)]);
+  let cx,cy;if(c0){cx=c0[0];cy=c0[1]}else{const mu=A.length?A.reduce((s,q)=>s+q[0],0)/A.length:0,mv=A.length?A.reduce((s,q)=>s+q[1],0)/A.length:0;cx=pw/2-mu;cy=H/2-mv}
+  let best=null;const n=Math.round(win/step);
+  for(let i=-n;i<=n;i++)for(let j=-n;j<=n;j++){const tx=cx+i*step,ty=cy+j*step;let e=0,o=0;
+   if(A.length){for(const [u0,v0] of A){const u=F.L+tx+u0,v=ty+v0;if(u<F.L||u>=F.R||v<0||v>=H||M.out[(v|0)*W+(u|0)])o++}e+=0.6*o/A.length}
+   if(PA.length){let d=0;for(const [u0,v0,D] of PA)d+=at(D,F.L+tx+u0,ty+v0)/cap;e+=d/PA.length}
+   if(SA.length){let d=0;for(const [u0,v0,w] of SA)d+=w*at(BD,F.L+tx+u0,ty+v0)/cap;e+=d/sw}
+   if(!best||e<best.e)best={e,tx,ty}}
+  return best};
+ const total=(s,r,fx,prev,fine)=>{let e=0;const pl=floors.map((F,i)=>{const pw=F.R-F.L,q=fine?place(F,s,r,fx,[prev[i].tx,prev[i].ty],pw*0.03,pw*0.003):place(F,s,r,fx,null,pw*0.5,pw*0.02);e+=q.e;return q});return{s,r,fx,e:e/floors.length,pl}};
+ // straight or a quarter turn, mirrored or not, a wide range of sizes; then finer around the best few
+ const r0=Math.round(f0.r/90)*90,tried=[];
+ for(const fx of [false,true])for(const r of [r0,r0+90,r0+180,r0+270])for(let k=-10;k<=10;k++)tried.push(total(f0.s*Math.pow(1.05,k),r,fx));
+ tried.sort((a,b)=>a.e-b.e);let top=tried.slice(0,5);
+ for(const [dr,ds] of [[2,1.025],[1,1.012],[0.5,1.006],[0.25,1.003]]){const next=[...top];for(const T of top)for(const r of [-dr,0,dr])for(const m of [1/ds,1,ds]){if(!r&&m===1)continue;next.push(total(T.s*m,T.r+r,T.fx,T.pl,true))}next.sort((a,b)=>a.e-b.e);top=next.slice(0,3)}
+ const B=top[0],out={};floors.forEach((F,i)=>out[F.bi]={...f0,s:B.s,r:((B.r%360)+360)%360,fx:B.fx,tx:B.pl[i].tx,ty:B.pl[i].ty});
+ return out;
+}
 async function rpcSpotsFit(c,M,panels,bands,paint,saved){
  const cols={};saved.forEach(s=>cols[norm(s.name)]=s);const same=(a,b)=>norm(siteCanon(c.map,a))===norm(siteCanon(c.map,b));
  const spots=rppSiteSpots(paint,M,panels,cols);await rpcSiteData(c);
@@ -2885,22 +2924,8 @@ async function rpcSpotsFit(c,M,panels,bands,paint,saved){
  const pts=rpcPts(c),k=panels.length,nb=bands.length,inPanel=(bi,p)=>{const l=pts.filter(q=>q[2]>=bands[bi].z0&&q[2]<bands[bi].z1);if(l.length<30)return 0;let n=0;for(const q of l){const [u,v]=proj(f,q[0],q[1],p);if(u<panels[p][0]||u>=panels[p][1]||v<0||v>=M.H)continue;if(!M.out[(v|0)*M.W+(u|0)])n++}return n/l.length*Math.sqrt(l.length)};
  let best=null;for(let m=Math.min(nb,k);m>=1&&!best;m--)for(const bs of rpcCombos(nb,m))for(const ps of rpcCombos(k,m)){const pairs=bs.map((bi,j)=>[bi,ps[m-1-j]]);if(Object.entries(pOf).some(([bi,p])=>!pairs.some(x=>x[0]===+bi&&x[1]===p)))continue;const sc=pairs.reduce((s,[bi,p])=>s+inPanel(bi,p),0);if(!best||sc>best.sc)best={sc,pairs}}
  if(!best)return{err:'the coloured sites are not in floor order (top floor on the left)'};
- // each floor is then nudged on its own drawing (place, a little size and turn): where the defenders walk in prep
- // (they stay inside) must be inside the building and off the walls, and its coloured sites still on their rooms
- const fs={};
- for(const [bi,p] of best.pairs){
-  const P=[];c.Rs.forEach(R=>{const di=R.teams.findIndex(x=>x.role==='Defense'),pe=R.clock?.prepSeconds||40;R.tracks.forEach(tr=>{if(tr.teamIndex!==di)return;tr.points.forEach((q,i)=>{if(i%3===0&&q[0]>2&&q[0]<pe&&q[3]>=bands[bi].z0&&q[3]<bands[bi].z1)P.push([q[1],q[2]])})})});
-  if(P.length<40){fs[bi]=f;continue}
-  const pins=pin.filter(q=>q.bi===bi&&q.p===p),pw=panels[p][1]-panels[p][0],cx=P.reduce((s,q)=>s+q[0],0)/P.length,cy=P.reduce((s,q)=>s+q[1],0)/P.length;
-  const sc=g=>{let bad=0;for(const [x,y] of P){const [u,v]=proj(g,x,y,p);if(u<panels[p][0]||u>=panels[p][1]||v<0||v>=M.H){bad++;continue}const j=(v|0)*M.W+(u|0);if(M.out[j])bad++;else if(M.dark[j])bad+=0.3}
-   let s=bad/P.length;for(const q of pins){const [u,v]=proj(g,q.x,q.y,p);s+=0.5*Math.min(1,Math.hypot(u-panels[p][0]-q.u,v-q.v)/(pw*0.08))/pins.length}return s};
-  let g={...f},gc=sc(g);
-  for(const [st,dsr,drr] of [[pw*0.03,0.03,2],[pw*0.012,0.012,0.8],[pw*0.005,0.005,0.3],[pw*0.002,0.002,0.1]])
-   for(let it=0;it<5;it++){const B={...g},[cu,cv]=proj(B,cx,cy,p);let moved=false;
-    for(const dr of [-drr,0,drr])for(const ds of [1-dsr,1,1+dsr]){const h0={...B,r:B.r+dr,s:B.s*ds},[nu,nv]=proj(h0,cx,cy,p);
-     for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){const h={...h0,tx:h0.tx+cu-nu+dx*st,ty:h0.ty+cv-nv+dy*st},hc=sc(h);if(hc<gc-1e-9){g=h;gc=hc;moved=true}}}
-    if(!moved)break}
-  fs[bi]=g}
+ // then the real fit: the size and turn are shared by all floors, each floor has its own place on its drawing
+ const fs=rpcShapeFit(c,M,panels,bands,best.pairs,pin,f,M.nBlue>20?stairs:[],rppSiteMasks(paint,M,cols));
  return{f,fs,pairs:best.pairs,n:pin.length};
 }
 async function rppOpen(map){
