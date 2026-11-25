@@ -1128,7 +1128,7 @@ function drawCharts(){
 const fmtSize=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?(n/1048576).toFixed(1)+' MB':(n/1073741824).toFixed(2)+' GB';
 // REPLAYS: read in a worker on this device, previewed, then saved. The files themselves never leave the browser.
 const REC_VER='2026-11-24',REC_TIMEOUT=12e4,TRADE_SECS=5,squash=s=>norm(s).replace(/[^a-z0-9]/g,'');
-const repMap=n=>{const s=squash(n),p=MAP_POOL.find(m=>squash(m[0])===s);return p?p[0]:String(n||'').replace(/([a-z])([A-Z0-9])/g,'$1 $2')};
+const repMap=n=>{n=mapUnk(n);const s=squash(n),p=MAP_POOL.find(m=>squash(m[0])===s);return p?p[0]:String(n||'').replace(/([a-z])([A-Z0-9])/g,'$1 $2')};
 const repOp=n=>{const s=squash(opKey(n)),o=OPS.find(x=>squash(opKey(x[0]))===s);return o?o[0]:String(n||'')};
 const repErr=e=>/schema cache|does not exist|column/i.test(e.message)?'The replay database tables are not set up yet. Paste stage12.sql and stage13.sql into the Supabase SQL Editor and run them.':scErr(e);
 // A round counts for KOST with a kill, an objective, by surviving, or if the player's killer is killed soon after
@@ -1825,7 +1825,7 @@ const UBI='https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/';
 // The competitive map pool. To change the pool, edit this one list.
 const MAP_POOL=[['Bank','6ilgtuzucX7hEu2MvjhRtp/c7c7e63cff53c8b2192fdec68a736619/R6S_Maps_Bank_EXT.jpg'],['Border','4hqsrL3cokFqedkfjiEaGf/655acbe5ae4ffab54f742d17f929d2af/R6S_Maps_Border_EXT.jpg'],['Chalet','Km3ZJUM7ZMVbGsi6gad5Y/5656a6da468b39f5e8effe5307592f28/R6S_Maps_Chalet_EXT.jpg'],['Clubhouse','1vCw5eD2XzxZlv6Au1gtui/06a84bacaacab62937dd6d4d8ae393c7/R6S_Maps_ClubHouse_EXT.jpg'],['Fortress','1MrLwvq61aSSvvUj3dDiZg/58bd501d0064d7b453396bb5a2bd56be/fortress-reworked-thumbnail.jpg'],['Kafe Dostoyevsky','2nIuPSHvbM57TK90VSwBEm/c9b6b012d961c03a930902fb14e36ea1/R6S_Maps_RussianCafe_EXT.jpg'],['Lair','423IqxUqD6yfPEy6CissY0/8fadc01d9fe5ec8695b80be8be9850a7/ModernizedMap_Lair_keyart.jpg'],['Nighthaven Labs','57i2PyuzpgVFzOvLUSAItO/97a571fdb6f568ae69951b75f572d361/ModernizedMap_Nighthaven_keyart.jpg'],['Villa','Io6dxNeHbCbJoF9WLJf9s/0b9ed52de358585c47c327c46907d1cd/r6s-maps-villa-thumb.jpg']];
 const MAP_ALIAS={kafe:'kafe dostoyevsky',nighthaven:'nighthaven labs'};
-const mapPath=n=>{const k=norm(n);return MAP_POOL.find(m=>norm(m[0])===(MAP_ALIAS[k]||k))?.[1]};
+const mapPath=n=>{const k=norm(mapUnk(n));return MAP_POOL.find(m=>norm(m[0])===(MAP_ALIAS[k]||k))?.[1]};
 const mapImg=(n,w=640)=>{if(!n)return '';const c=siteSet?.map_photos?.[mapCanon(n)];if(c)return c;const p=mapPath(n);return p?UBI+p+'?imwidth='+w:''};
 const mapPhoto=(n,cls='')=>{const p=mapImg(n,640);return p?`<img class="ph ${cls}" src="${esc(p)}" alt="${esc(n)} map" loading="lazy" decoding="async">`:`<div class="ph ph0 ${cls}" aria-hidden="true"></div>`};
 // Name, 1 for attacker or 0 for defender, and icon, from Ubisoft's official operators page.
@@ -4151,7 +4151,8 @@ const RATE_DEF={win:3,loss:-2,by:-1,against:2,picked:0};
 const RATE_LABEL=[['win','Win'],['loss','Loss'],['by','Banned by this team'],['against','Banned against this team'],['picked','Picked by this team']];
 // the order maps appear in the sheet, used when two maps tie
 const MAP_ORDER=['Bank','Border','Chalet','Clubhouse','Villa','Fortress','Kafe Dostoyevsky','Lair','Nighthaven Labs'];
-const mapCanon=n=>{let k=norm(n).replace(/ dostoyevsky| labs/g,'').replace(/ /g,'');if(k==='labs')k='nighthaven';const p=MAP_POOL.find(m=>norm(m[0]).replace(/ dostoyevsky| labs/g,'').replace(/ /g,'')===k);return p?p[0]:String(n||'').trim()};
+const mapUnk=n=>{const m=/^\s*Unknown \((\d+)\)\s*$/.exec(String(n||''));return m&&MAP_IDS[m[1]]||n};
+const mapCanon=n=>{n=mapUnk(n);let k=norm(n).replace(/ dostoyevsky| labs/g,'').replace(/ /g,'');if(k==='labs')k='nighthaven';const p=MAP_POOL.find(m=>norm(m[0]).replace(/ dostoyevsky| labs/g,'').replace(/ /g,'')===k);return p?p[0]:String(n||'').trim()};
 const rateCfg=()=>({f:{...RATE_DEF,...(sco.st?.factors||{})},w:sco.st?.map_weights||{}});
 function mapPower(t,rows,vetoes=sco.v){
  const k=scKeys(t),{f,w}=rateCfg(),by=new Map(),get=m=>{const n=mapCanon(m);if(!by.has(n))by.set(n,{name:n,W:0,L:0,D:0,by:0,against:0,picked:0});return by.get(n)};

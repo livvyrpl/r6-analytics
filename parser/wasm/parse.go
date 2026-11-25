@@ -291,6 +291,10 @@ func mapName(m dissect.Map, warnings *warningCollector) string {
 	name := m.String()
 	if strings.HasPrefix(name, "Map(") {
 		id := strconv.FormatInt(int64(m), 10)
+		// maps added to the game after the parser's table was written
+		if known, ok := map[string]string{"409325881472": "Villa"}[id]; ok {
+			return known
+		}
 		warnings.add("This map is not in the parser's table yet, map id " + id + ".")
 		return "Unknown (" + id + ")"
 	}
