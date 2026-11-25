@@ -2531,13 +2531,19 @@ function rpPins(R,teamIndex){
 // can show several floors) and the site lines the dots up with the walls on its own.
 // Saved per floor: bp (picture), name, s (picture pixels per metre), r (turn, degrees), tx, ty (where 0,0 lands), fx (mirrored),
 // z0, z1 (height range) and crop (the part of the picture with this floor).
+// the 2D files a map has: for each game with a replay, the rounds stored (one listing per game, side by side)
+async function rpcFiles(map,maxGames=16){
+ const q=await sb.from('scout_matches').select('replay_match_id,map,match_date').eq('owner_team_id',cur.id).order('match_date',{ascending:false}).limit(2000);
+ const games=[...new Set((q.data||[]).filter(g=>g.replay_match_id&&mapCanon(g.map)===map).map(g=>g.replay_match_id))].slice(0,maxGames);
+ const lists=await Promise.all(games.map(async mid=>{const l=await rpList(cur.id,mid);const ns=[...(l||[])].map(n=>+((/^R(\d+)/.exec(n)||[])[1]||0)).filter(Boolean);return{mid,ns:[...new Set(ns)].sort((a,b)=>a-b)}}));
+ return{err:q.error?.message||'',games:lists.filter(x=>x.ns.length)};
+}
 async function rpcLoadSample(map){
  const c=adm.rpc;if(!cur){c.err='Open Admin from a team dashboard, so its imported replays can be used to line up the map.';render();return}
  c.loading=true;c.err='';c.Rs=[];render();
- const q=await sb.from('scout_matches').select('replay_match_id,map,match_date').eq('owner_team_id',cur.id).order('match_date',{ascending:false}).limit(2000);
- const games=(q.data||[]).filter(g=>g.replay_match_id&&mapCanon(g.map)===map);
- // a few rounds from different games, so the dots cover more of the building
- for(const g of games.slice(0,20)){for(const n of [1,4,7]){const R=await rpLoad(cur.id,g.replay_match_id,n);if(R?.tracks?.length){c.Rs.push(R);break}}if(c.Rs.length>=4)break}
+ const F=await rpcFiles(map),q={error:F.err?{message:F.err}:null};c.files=F.games;
+ // a few rounds from different games, so the dots cover more of the building (downloaded together)
+ c.Rs=(await Promise.all(F.games.slice(0,4).map(g=>rpLoad(cur.id,g.mid,g.ns[0])))).filter(R=>R?.tracks?.length);
  c.loading=false;if(c.Rs.length){c.sites=null;rpcSiteData(c)}if(!c.Rs.length)c.err=q.error?.message||`No 2D replay of ${map} yet for ${cur.name}. Open a folder of ${map} replays on the Import page first: rounds read from now on keep where players were.`;
  if(adm.rpc===c)render();
 }
@@ -2667,8 +2673,7 @@ function rpcAuto(){
 const rpcImgReady=u=>new Promise(ok=>{const i=rpImage(u);if(i)return ok(i);const im=rpImg.get(u);if(!im)return ok(null);const done=()=>ok(im.naturalWidth?im:null);im.addEventListener('load',done,{once:true});im.addEventListener('error',()=>ok(null),{once:true})});
 async function rpcSamples(map){
  if(!cur)return [];const q=await sb.from('scout_matches').select('replay_match_id,map,match_date').eq('owner_team_id',cur.id).order('match_date',{ascending:false}).limit(2000);
- const out=[];for(const g of (q.data||[]).filter(g=>g.replay_match_id&&mapCanon(g.map)===map).slice(0,20)){for(const n of [1,4,7]){const R=await rpLoad(cur.id,g.replay_match_id,n);if(R?.tracks?.length){out.push(R);break}}if(out.length>=4)break}
- return out;
+ const F=await rpcFiles(map);return (await Promise.all(F.games.slice(0,4).map(g=>rpLoad(cur.id,g.mid,g.ns[0])))).filter(R=>R?.tracks?.length);
 }
 const rpcName=(i,n)=>n>1&&i===0?'Lowest floor':n>1&&i===n-1?'Top floor':'Floor '+(i+1);
 // The floors on a picture sit side by side: left is the top floor, right the lowest. Panels are found from the full-height
@@ -2771,12 +2776,12 @@ function rpcCrop(c,img){
 // site's place in the game is known. The owner clicks where 2 or more sites are on the picture; the size, turn, mirror and
 // position follow from those clicks and go to every floor (the floors are drawn side by side the same way).
 async function rpcSiteData(c){
- const q=await sb.from('scout_matches').select('replay_match_id,map,match_date').eq('owner_team_id',cur.id).order('match_date',{ascending:false}).limit(2000);
- const games=(q.data||[]).filter(g=>g.replay_match_id&&mapCanon(g.map)===c.map).slice(0,8),by=new Map();
+ const games=c.files||(await rpcFiles(c.map)).games,by=new Map();
  const add=R=>{if(!R?.tracks?.length||!R.site)return;const di=R.teams.findIndex(t=>t.role==='Defense');if(di<0)return;const sp=[];R.tracks.filter(t=>t.teamIndex===di).forEach(t=>{const p=t.points.find(q=>q[0]<4);if(p)sp.push(p)});if(sp.length<2)return;
   const k=norm(R.site),e=by.get(k)||{name:R.site,x:0,y:0,z:0,n:0};sp.forEach(p=>{e.x+=p[1];e.y+=p[2];e.z+=p[3];e.n++});by.set(k,e)};
  c.Rs.forEach(add);
- for(const g of games){for(const n of [2,3,5,6,8,9]){if(by.size>=6)break;add(await rpLoad(cur.id,g.replay_match_id,n))}if(by.size>=6)break}
+ const more=[];games.forEach(g=>g.ns.slice(1,5).forEach(n=>more.push([g.mid,n])));
+ for(let i=0;i<more.length&&by.size<6;i+=8)(await Promise.all(more.slice(i,i+8).map(([mid,n])=>rpLoad(cur.id,mid,n)))).forEach(add);
  c.sites=[...by.values()].map(e=>({name:e.name,x:e.x/e.n,y:e.y/e.n,z:e.z/e.n})).sort((a,b)=>b.z-a.z||a.name.localeCompare(b.name));
  if(adm.rpc===c)render();
 }
@@ -2896,10 +2901,10 @@ function rpcCard(){
  const c=adm.rpc=adm.rpc||{map:maps[0]};if(!maps.includes(c.map))c.map=maps[0];
  const bps=bpFloors(c.map,rows),saved=rpcSaved(c.map);
  if(!c.Rs&&!c.loading&&!c.err&&c.tried!==c.map){c.tried=c.map;setTimeout(()=>rpcLoadSample(c.map),0)}
- const head=`<div class="row wrap" style="gap:10px;align-items:flex-end"><div><label for="rpcm">Map</label><select id="rpcm" class="fi" data-c="rpcmap" style="width:auto">${maps.map(m=>`<option${m===c.map?' selected':''}>${esc(m)}${Object.keys(rpcSaved(m)).length?' ✓':''}</option>`).join('')}</select></div><button class="no" data-a="rpcmapall">Line up all floors of ${esc(c.map)}</button><span class="sp"></span><button class="go" data-a="rpcall">Line up every map for me</button></div>`;
+ const head=`<div class="row wrap" style="gap:10px;align-items:flex-end"><div><label for="rpcm">Map</label><select id="rpcm" class="fi" data-c="rpcmap" style="width:auto">${maps.map(m=>`<option value="${esc(m)}"${m===c.map?' selected':''}>${esc(m)}${Object.keys(rpcSaved(m)).length?' ✓':''}</option>`).join('')}</select></div><button class="no" data-a="rpcmapall">Line up all floors of ${esc(c.map)}</button><span class="sp"></span><button class="go" data-a="rpcall">Line up every map for me</button></div>`;
  const what=`<p class="mu" style="font-size:12.5px;max-width:900px">The 2D replay needs to know where each floor sits on your picture (floors side by side: top floor on the left, lowest on the right). Colour the bomb sites and stairs below, save, and press Line up: the site matches them to where defenders start and where players take the stairs in your replays. Then check each floor.</p>`;
- if(c.loading)return `<section class="cd" style="gap:10px">${head}${what}<p class="mu">Reading replays of ${esc(c.map)}…</p></section>`;
- if(!c.Rs?.length)return `<section class="cd" style="gap:10px">${head}${what}<p>${esc(c.err||'')}</p><div><button class="no" data-a="rpcretry">Look again</button></div></section>`;
+ if(c.loading)return `<section class="cd" style="gap:10px">${head}${what}${rppH(c)}<p class="mu">Reading replays of ${esc(c.map)}…</p></section>`;
+ if(!c.Rs?.length)return `<section class="cd" style="gap:10px">${head}${what}${rppH(c)}<p>${esc(c.err||'')}</p><div><button class="no" data-a="rpcretry">Look again</button></div></section>`;
  const bands=rpcBands(c);if(c.band==null||c.band>=bands.length){rpcPick(0)}
  const fl=`<div><p class="lb" style="margin-bottom:6px">1. Floor (from the heights players stood at)</p><div class="row wrap" style="gap:6px">${bands.map((f,i)=>`<button class="ch" style="height:32px" data-a="rpcband" data-k="${i}" aria-pressed="${i===c.band}">${i===0?'Lowest floor':i===bands.length-1?'Top floor':'Floor '+(i+1)}${saved[rpcKey(i)]?' ✓':''}</button>`).join('')}</div></div>`;
  const pics=bps.length===1?'':`<div><p class="lb" style="margin-bottom:6px">2. The picture that shows this floor</p><div class="rpcp">${bps.map(b=>`<button class="rpcpi${b.id===c.bp?' on':''}" data-a="rpcbp" data-k="${b.id}"><img src="${esc(b.image_url)}" alt="" loading="lazy"><span>${esc(b.floor)}</span></button>`).join('')}</div></div>`;
