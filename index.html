@@ -1380,6 +1380,7 @@ async function recRun(){
    try{
     let f=x.file;if(!f){try{f=await x.load()}catch(err){if(a.rp!==p)break;x.res={ok:false,error:err.message||String(err)};tick();if(rx===a)recPaint();continue}if(a.rp!==p)break}
     q.tracks=true;const res=await parseRec(q,f);f=null;if(a.rp!==p||!res)break;
+    if(res.ok&&res.matchId)await rpList(a.tid,res.matchId);
     if(res.ok&&res.tracks){res.rpRound=res.roundNumber;if(canEditS())rpQueue(a.tid,res);delete res.tracks;delete res.clock}
     // a replay read without any players (a damaged or cut-short file) counts as unreadable, so the rest of the match still saves
     if(res.ok&&!(Array.isArray(res.players)&&res.players.length))x.res={ok:false,error:'No players were found in this replay. The file may be damaged or cut short.'};else{if(res.ok&&!Array.isArray(res.teams))res.teams=[];(res?.players||[]).forEach(p=>['kills','deaths','assists','headshots','score'].forEach(k=>{if(typeof p[k]==='number')p[k]=i32(p[k])}));x.res=res}
@@ -1389,7 +1390,8 @@ async function recRun(){
    await recCheck(a,G);
    if(recAlready(a,G))continue;
    if(a.sfix?.has(G)){const gs=recGroups().find(y=>y.key===G);if(gs&&gs.files.every(y=>y.res)){a.sfix.delete(G);await recScoreFix(a,G)}continue}
-   const gk=recGroups().find(y=>y.key===G);if(gk&&(gk.files.every(y=>y.res)||gk.files.filter(y=>y.res).length%4===0))recAutoKey(a,G);
+   // a game saves once, when every file in its folder has been read (sibling folders of a restarted match wait for each other)
+   const gk=recGroups().find(y=>y.key===G);if(gk&&gk.files.every(y=>y.res))recAutoKey(a,G);
   }
   let_go();
  };
@@ -1410,7 +1412,10 @@ function recAlready(a,k){
  {const d=recUp(g.key);if(d&&a.recs.some(y=>!g.files.includes(y)&&recUp(recKey(y))===d))return false}
  const read=g.files.filter(y=>y.res?.ok);if(!read.length||read.some(y=>recRoundNo(y.name)!==y.res.roundNumber))return false;
  const s=recSummary(g),ex=a.rex[s.id];if(!ex||!s.rounds.length)return false;
- const nums=g.files.map(y=>recRoundNo(y.name));if(nums.some(n=>!n))return false;const done=new Set(ex.done);
+ const nums=g.files.map(y=>recRoundNo(y.name));if(nums.some(n=>!n))return false;
+ // rounds that still need their 2D replay file are read (not saved again); the rest count as done
+ const mids=[...new Set(read.map(y=>y.res.matchId).filter(Boolean))],has2d=n=>rpNoBucket||!canEditS()||mids.some(m=>rpListedNow(a.tid,m)?.has(rpName(n)));
+ const done=new Set(ex.done.filter(n=>has2d(n)));
  if(nums.every(n=>done.has(n))){
   const had=parseScore(ex.row.round_score),top=Math.max(...nums),short=!had||had.a+had.b<top||!ex.row.result;
   if(!short||a.sfixTried?.has(k)){a.recs=a.recs.filter(y=>!g.files.includes(y));a.preSaved=(a.preSaved||0)+1;recPaint();return true}
@@ -2304,7 +2309,12 @@ async function prepSave(b,auto){
 // private "replays" storage, one gzip file per round: <team id>/<replay match id>/R<round>.json.gz.
 // The viewer draws the players on the map's floor plans, lined up in Admin, Default Plans, Replay maps.
 const RP_B='replays';
-const rpPath=(tid,mid,n)=>`${tid}/${mid}/R${String(n).padStart(2,'0')}.json.gz`;
+// the version goes in the file name: rounds stored by an older reader (no facing or drones) are read and stored again
+const RP_V=2,rpName=n=>`R${String(n).padStart(2,'0')}-v${RP_V}.json.gz`,rpPath=(tid,mid,n)=>`${tid}/${mid}/${rpName(n)}`,rpOld=(tid,mid,n)=>`${tid}/${mid}/R${String(n).padStart(2,'0')}.json.gz`;
+// which rounds of a replay already have their 2D file, read once per visit to the Import page
+const rpListed=new Map(),rpListedSet=new Map();
+const rpListedNow=(tid,mid)=>rpListedSet.get(tid+'/'+mid)||null;
+async function rpList(tid,mid){const k=tid+'/'+mid;if(rpListed.has(k))return rpListed.get(k);const p=(async()=>{if(rpNoBucket)return null;const l=await sb.storage.from(RP_B).list(k,{limit:100});if(l.error){if(/bucket/i.test(l.error.message))rpNoBucket=true;return null}const s=new Set((l.data||[]).map(x=>x.name));rpListedSet.set(k,s);return s})();rpListed.set(k,p);return p}
 const rpGz=async o=>new Response(new Blob([JSON.stringify(o)]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
 const rpUngz=async b=>JSON.parse(await new Response(b.stream().pipeThrough(new DecompressionStream('gzip'))).text());
 let rpNoBucket=false;const rpHave=new Map(),rpQ=[];let rpBusy=0;
@@ -2319,12 +2329,11 @@ async function rpPump(){
   const [tid,o]=rpQ.shift();rpBusy++;
   (async()=>{try{
    const dir=`${tid}/${o.matchId}`;let have=rpHave.get(dir);
-   // rounds already saved are written again, so they pick up what newer versions of the reader find (facing, drones); once per visit
-   if(!have){have=new Set();rpHave.set(dir,have)}
-   const name=rpPath(tid,o.matchId,o.roundNumber).split('/').pop();if(have.has(name))return;
+   if(!have){have=new Set([...((await rpList(tid,o.matchId))||[])]);rpHave.set(dir,have)}
+   const name=rpName(o.roundNumber);if(have.has(name))return;
    const up=await sb.storage.from(RP_B).upload(rpPath(tid,o.matchId,o.roundNumber),await rpGz(o),{contentType:'application/gzip',upsert:true});
    if(up.error){if(/bucket/i.test(up.error.message)){rpNoBucket=true;rpQ.length=0}return}
-   have.add(name);
+   have.add(name);(await rpList(tid,o.matchId))?.add(name);
   }catch{}finally{rpBusy--;rpPump()}})();
  }
 }
@@ -2333,7 +2342,7 @@ async function rpCopy(tid,from,fromN,to,toN){try{if(from===to&&fromN===toN)retur
 const rpCache=new Map();
 async function rpLoad(tid,mid,n){
  const k=rpPath(tid,mid,n);if(rpCache.has(k))return rpCache.get(k);
- const p=(async()=>{const d=await sb.storage.from(RP_B).download(k);if(d.error||!d.data)return null;try{return await rpUngz(d.data)}catch{return null}})();
+ const p=(async()=>{let d=await sb.storage.from(RP_B).download(k);if(d.error||!d.data)d=await sb.storage.from(RP_B).download(rpOld(tid,mid,n));if(d.error||!d.data)return null;try{return await rpUngz(d.data)}catch{return null}})();
  rpCache.set(k,p);const v=await p;if(!v)rpCache.delete(k);return v;
 }
 // ---- floors: by height. Calibrated floors have their own height range; otherwise floors are found from where players stood.
@@ -2537,7 +2546,7 @@ const rpcSaved=map=>siteSet?.replay_maps?.[map]?.floors||{};
 function rpcPick(i){
  // a floor starts from what was saved for it, or from nothing (the owner picks the picture, then it lines up)
  const c=adm.rpc,b=rpcBands(c)[i];if(!b)return;c.band=i;c.z0=Math.max(-50,+b.z0.toFixed(1));c.z1=Math.min(50,+b.z1.toFixed(1));
- const sv=rpcSaved(c.map)[rpcKey(i)];c.bp=sv?.bp||c.bp||'';c.done=!!sv;
+ const sv=rpcSaved(c.map)[rpcKey(i)],only=bpFloors(c.map,adm.bp?.rows||[]);c.bp=sv?.bp||(only.length===1?only[0].id:c.bp)||'';c.done=!!sv;
  if(sv)Object.assign(c,{s:sv.s,r:sv.r||0,tx:sv.tx,ty:sv.ty,fx:!!sv.fx,z0:sv.z0,z1:sv.z1,auto:false});else{c.s=null;c.auto=false}
 }
 // ---- lining up on its own: the dots of this height should fall inside the building on the picture and fill it
@@ -2658,7 +2667,7 @@ function rpcCard(){
  if(!c.Rs?.length)return `<section class="cd" style="gap:10px">${head}${what}<p>${esc(c.err||'')}</p><div><button class="no" data-a="rpcretry">Look again</button></div></section>`;
  const bands=rpcBands(c);if(c.band==null||c.band>=bands.length){rpcPick(0)}
  const fl=`<div><p class="lb" style="margin-bottom:6px">1. Floor (from the heights players stood at)</p><div class="row wrap" style="gap:6px">${bands.map((f,i)=>`<button class="ch" style="height:32px" data-a="rpcband" data-k="${i}" aria-pressed="${i===c.band}">${i===0?'Lowest floor':i===bands.length-1?'Top floor':'Floor '+(i+1)}${saved[rpcKey(i)]?' ✓':''}</button>`).join('')}</div></div>`;
- const pics=`<div><p class="lb" style="margin-bottom:6px">2. The picture that shows this floor</p><div class="rpcp">${bps.map(b=>`<button class="rpcpi${b.id===c.bp?' on':''}" data-a="rpcbp" data-k="${b.id}"><img src="${esc(b.image_url)}" alt="" loading="lazy"><span>${esc(b.floor)}</span></button>`).join('')}</div></div>`;
+ const pics=bps.length===1?'':`<div><p class="lb" style="margin-bottom:6px">2. The picture that shows this floor</p><div class="rpcp">${bps.map(b=>`<button class="rpcpi${b.id===c.bp?' on':''}" data-a="rpcbp" data-k="${b.id}"><img src="${esc(b.image_url)}" alt="" loading="lazy"><span>${esc(b.floor)}</span></button>`).join('')}</div></div>`;
  const can=c.bp&&c.s!=null;
  const sv=saved[rpcKey(c.band)];
  const tools=`${sv?.auto&&!c.auto?`<p style="font-size:13px"><b style="font-weight:600;color:var(--pk-lt)">Lined up automatically.</b> <span class="mu">Check the big orange dots sit in the bomb site written next to them. If not, drag the dots (or press Line it up for me again), then save.</span></p>`:''}<div class="row wrap" style="gap:6px;align-items:center"><button class="go" data-a="rpcauto"${c.bp?'':' disabled'}>3. Line it up for me</button>${c.auto?`<span class="mu" style="font-size:12.5px">${c.fit>0.3?'Lined up. Check the dots run inside the walls, then save.':'Lined up as well as it could. If the dots are off, drag them, or try another picture.'}</span>`:''}<span class="sp"></span>${can?`<button class="go" data-a="rpcsave">4. Save this floor</button>`:''}${saved[rpcKey(c.band)]?'<button class="no" data-a="rpcdel">Remove</button>':''}</div>
