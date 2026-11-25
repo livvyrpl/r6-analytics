@@ -3015,6 +3015,8 @@ function rpcDraw(){
  if(!img){g.fillStyle='#aaa';g.font='12px Inter,system-ui,sans-serif';g.fillText('Loading the floor plan…',10,20);return}
  const k=Math.min(W/img.naturalWidth,H/img.naturalHeight),ox=(W-img.naturalWidth*k)/2,oy=(H-img.naturalHeight*k)/2;c.view={k,ox,oy};
  g.drawImage(img,ox,oy,img.naturalWidth*k,img.naturalHeight*k);
+ // the owner's colours, faint, so it can be seen that the sites and stairs landed on them
+ const pt0=siteSet?.replay_maps?.[c.map]?.paint,pimg=pt0?.bp===c.bp?rpImage(pt0.url):null;if(pimg){g.globalAlpha=0.35;g.drawImage(pimg,ox,oy,img.naturalWidth*k,img.naturalHeight*k);g.globalAlpha=1}
  Object.entries(c.lm||{}).forEach(([i,q])=>{const s=c.sites?.[+i];if(!s)return;const x=ox+q.u*k,y=oy+q.v*k;g.fillStyle='#e07cc0';g.strokeStyle='#fff';g.lineWidth=2;g.beginPath();g.arc(x,y,7,0,7);g.fill();g.stroke();g.font='600 12px Inter,system-ui,sans-serif';const w=g.measureText(s.name).width+10;g.fillStyle='rgba(0,0,0,.8)';g.fillRect(x+9,y-9,w,18);g.fillStyle='#fff';g.textBaseline='middle';g.fillText(s.name,x+14,y)});
  // every floor at once, each on its own drawing: the saved ones, and the one being adjusted as it is now
  const fls=Object.entries(rpcSaved(c.map)).map(([key,e])=>({i:+key.slice(1)-1,e})).filter(x=>x.i>=0);
@@ -3026,7 +3028,10 @@ function rpcDraw(){
  // a landmark the owner knows: the defenders stand at the bomb site when prep starts
  const seen=new Set();for(const R of c.Rs){const di=R.teams.findIndex(x=>x.role==='Defense');if(di<0)continue;const sp=[];R.tracks.filter(x=>x.teamIndex===di).forEach(x=>{const p=x.points.find(q=>q[0]<4);if(p&&floorAt(p[3]))sp.push(p)});if(sp.length<2)continue;
   let mx=0,my=0;sp.forEach(p=>{const [x,y]=ppOf(floorAt(p[3]).e)(p[1],p[2]);mx+=x;my+=y;g.fillStyle='#ff7a00';g.strokeStyle='#000';g.lineWidth=2;g.beginPath();g.arc(x,y,6,0,7);g.fill();g.stroke()});mx/=sp.length;my/=sp.length;
-  const lab=(R.site||'the bomb site')+' (defenders at the start)';if(seen.has(lab))continue;seen.add(lab);g.font='600 12px Inter,system-ui,sans-serif';const w=g.measureText(lab).width+12;g.fillStyle='rgba(0,0,0,.8)';g.fillRect(mx-w/2,my-30,w,18);g.fillStyle='#ffb36b';g.textAlign='center';g.textBaseline='middle';g.fillText(lab,mx,my-21);g.textAlign='left'}
+  const lab=(siteCanon(c.map,R.site)||'the bomb site')+' (defenders at the start)';if(seen.has(lab))continue;seen.add(lab);g.font='600 12px Inter,system-ui,sans-serif';const w=g.measureText(lab).width+12;g.fillStyle='rgba(0,0,0,.8)';g.fillRect(mx-w/2,my-30,w,18);g.fillStyle='#ffb36b';g.textAlign='center';g.textBaseline='middle';g.fillText(lab,mx,my-21);g.textAlign='left'}
+ // where players changed floors: these must be on the blue stairs, on both floors
+ for(const q of rpcStairs(c,rpcBands(c)))for(const bi of [q.lo,q.hi]){const F=fls.find(x=>x.i===bi);if(!F)continue;const [x,y]=ppOf(F.e)(q.x,q.y);g.fillStyle='#fff';g.strokeStyle='#000';g.lineWidth=2;g.beginPath();g.moveTo(x,y-7);g.lineTo(x+7,y);g.lineTo(x,y+7);g.lineTo(x-7,y);g.closePath();g.fill();g.stroke()}
+ g.font='12px Inter,system-ui,sans-serif';const key='◆ where players changed floors (should be on the blue stairs)   ● defenders at the start (should be in their site colour)';const kw=g.measureText(key).width+14;g.fillStyle='rgba(0,0,0,.75)';g.fillRect(6,H-24,kw,18);g.fillStyle='#fff';g.textBaseline='middle';g.fillText(key,13,H-15);g.textBaseline='alphabetic';
 }
 let rpcDrag=null;
 document.addEventListener('pointerdown',e=>{const c=adm.rpc;if(e.target.id!=='rpccv'||!c||c.arm==null||!c.view||e.button)return;e.stopImmediatePropagation();c.lm=c.lm||{};c.lm[c.arm]={u:(e.offsetX-c.view.ox)/c.view.k,v:(e.offsetY-c.view.oy)/c.view.k};c.arm=null;render()},true);
