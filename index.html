@@ -2559,15 +2559,11 @@ function rpcMask(img){
   comps.push({id,n,x0,y0,x1,y1})}
  return{W,H,sc,comp,dark,comps:(()=>{const l=comps.filter(o=>o.n>W*H*0.003).sort((a,b)=>b.n-a.n);return l.filter(o=>o.n>=(l[0]?.n||0)*0.25)})()}; // buildings only: titles, legends and small boxes are left out
 }
-function rpcAuto(){
- const c=adm.rpc,b=(adm.bp?.rows||[]).find(x=>x.id===c.bp),img=rpImage(b?.image_url);if(!img)return toast('The picture is still loading. Try again in a moment.');
- let M;try{M=rpcMask(img)}catch{return toast('This picture can’t be read by the site (it is stored somewhere that blocks it). Line it up by hand instead.')}
- if(!M.comps.length)return toast('No building outline was found on this picture. Line it up by hand instead.');
- // dots of this floor; attackers outside the building count less
- const pts=rpcPts(c).filter(p=>p[2]>=c.z0&&p[2]<c.z1);if(pts.length<30)return toast('Too few players stood at this height to line it up. Pick another floor.');
+// the best fit of some dots ([x, y, ...]) into one or more buildings of a picture; sizes are in the mask's pixels
+function rpcSolve(pts,M,comps){
  const P=[];const step=Math.max(1,Math.floor(pts.length/1500));for(let i=0;i<pts.length;i+=step)P.push(pts[i]);
- const CELL=6,GW=Math.ceil(M.W/CELL),GH=Math.ceil(M.H/CELL),cellComp=new Int32Array(GW*GH).fill(-1),compCells={};
- for(let y=0;y<M.H;y+=CELL)for(let x=0;x<M.W;x+=CELL){const id=M.comp[y*M.W+x];if(id>=0){cellComp[(y/CELL|0)*GW+(x/CELL|0)]=id;compCells[id]=(compCells[id]||0)+1}}
+ const CELL=6,GW=Math.ceil(M.W/CELL),GH=Math.ceil(M.H/CELL),compCells={};
+ for(let y=0;y<M.H;y+=CELL)for(let x=0;x<M.W;x+=CELL){const id=M.comp[y*M.W+x];if(id>=0)compCells[id]=(compCells[id]||0)+1}
  const mark=new Uint32Array(GW*GH);let stamp=0;
  const score=(s,rad,fx,tx,ty)=>{
   stamp++;const cs=Math.cos(rad),sn=Math.sin(rad);let inn=0,onWall=0;const hit={},cov={};
@@ -2577,19 +2573,69 @@ function rpcAuto(){
   const f=inn/P.length,w=onWall/inn;return f*f*Math.sqrt(cells?covd/cells:0)*(1-w)*(1-w);
  };
  let best={sc:-1};
- for(const C of M.comps.slice(0,4))for(const fx of [false,true])for(const r0 of [0,90,180,270]){
+ for(const C of comps)for(const fx of [false,true])for(const r0 of [0,90,180,270]){
   const rad=r0*Math.PI/180,cs=Math.cos(rad),sn=Math.sin(rad);let a=1e9,bb=-1e9,cc=1e9,d=-1e9;
   for(const p of P){const X=fx?-p[0]:p[0],xr=X*cs-p[1]*sn,yr=X*sn+p[1]*cs;if(xr<a)a=xr;if(xr>bb)bb=xr;if(yr<cc)cc=yr;if(yr>d)d=yr}
   const s0=Math.min((C.x1-C.x0)/((bb-a)||1),(C.y1-C.y0)/((d-cc)||1)),cx=(C.x0+C.x1)/2,cy=(C.y0+C.y1)/2,span=Math.max(C.x1-C.x0,C.y1-C.y0);
   for(let si=0;si<9;si++){const s=s0*(0.7+si*0.1);const tx0=cx-s*(a+bb)/2,ty0=cy+s*(cc+d)/2;
    for(let dx=-3;dx<=3;dx++)for(let dy=-3;dy<=3;dy++){const tx=tx0+dx*span*0.05,ty=ty0+dy*span*0.05,v=score(s,rad,fx,tx,ty);if(v>best.sc)best={sc:v,s,r:r0,fx,tx,ty}}}
  }
- if(best.sc<=0)return toast('Could not line this floor up with that picture. Try another picture, or line it up by hand.');
+ if(best.sc<=0)return best;
  // then smaller steps around the best
  for(let round=0;round<3;round++){const B={...best},span=Math.max(M.W,M.H)*0.012/(round+1);
   for(const dr of [-2,-1,0,1,2])for(const ds of [0.96,0.98,1,1.02,1.04])for(let dx=-2;dx<=2;dx++)for(let dy=-2;dy<=2;dy++){const r=B.r+dr/(round+1),s=B.s*ds,tx=B.tx+dx*span,ty=B.ty+dy*span,v=score(s,r*Math.PI/180,B.fx,tx,ty);if(v>best.sc)best={sc:v,s,r,fx:B.fx,tx,ty}}}
- const k=1/M.sc;Object.assign(c,{s:best.s*k,r:((best.r%360)+360)%360,fx:best.fx,tx:best.tx*k,ty:best.ty*k,auto:true,fit:best.sc});
+ best.r=((best.r%360)+360)%360;return best;
+}
+function rpcAuto(){
+ const c=adm.rpc,b=(adm.bp?.rows||[]).find(x=>x.id===c.bp),img=rpImage(b?.image_url);if(!img)return toast('The picture is still loading. Try again in a moment.');
+ let M;try{M=rpcMask(img)}catch{return toast('This picture can’t be read by the site (it is stored somewhere that blocks it). Line it up by hand instead.')}
+ if(!M.comps.length)return toast('No building outline was found on this picture. Line it up by hand instead.');
+ const pts=rpcPts(c).filter(p=>p[2]>=c.z0&&p[2]<c.z1);if(pts.length<30)return toast('Too few players stood at this height to line it up. Pick another floor.');
+ const best=rpcSolve(pts,M,M.comps.slice(0,6));
+ if(best.sc<=0)return toast('Could not line this floor up with that picture. Try another picture, or line it up by hand.');
+ const k=1/M.sc;Object.assign(c,{s:best.s*k,r:best.r,fx:best.fx,tx:best.tx*k,ty:best.ty*k,auto:true,fit:best.sc});
  rpcDraw();render();
+}
+// ---- EVERY MAP AT ONCE. Each picture shows its floors side by side; each height players stood at is matched to one
+// of those drawings (the best fits, one height per drawing), lined up and saved. The owner then checks and fixes.
+const rpcImgReady=u=>new Promise(ok=>{const i=rpImage(u);if(i)return ok(i);const im=rpImg.get(u);if(!im)return ok(null);const done=()=>ok(im.naturalWidth?im:null);im.addEventListener('load',done,{once:true});im.addEventListener('error',()=>ok(null),{once:true})});
+async function rpcSamples(map){
+ if(!cur)return [];const q=await sb.from('scout_matches').select('replay_match_id,map,match_date').eq('owner_team_id',cur.id).order('match_date',{ascending:false}).limit(2000);
+ const out=[];for(const g of (q.data||[]).filter(g=>g.replay_match_id&&mapCanon(g.map)===map).slice(0,20)){for(const n of [1,4,7]){const R=await rpLoad(cur.id,g.replay_match_id,n);if(R?.tracks?.length){out.push(R);break}}if(out.length>=4)break}
+ return out;
+}
+const rpcName=(i,n)=>n>1&&i===0?'Lowest floor':n>1&&i===n-1?'Top floor':'Floor '+(i+1);
+async function rpcAutoAll(b,only){
+ if(!cur)return toast('Open Admin from a team dashboard, so its imported replays can be used.');
+ const rows=adm.bp?.rows||[],maps=only?[only]:[...new Set(rows.map(x=>mapCanon(x.map)))].sort();if(!maps.length)return;
+ if(b)b.disabled=true;let stop=false;const job=actStart('Lining up the replay maps',()=>{stop=true});const all={...(siteSet.replay_maps||{})},note=[];let done=0;
+ for(const [mi,map] of maps.entries()){
+  if(stop)break;actSet(job,{detail:map+' ('+(mi+1)+' of '+maps.length+')',pct:Math.round(mi/maps.length*100)});
+  const c={map,Rs:await rpcSamples(map)};if(!c.Rs.length){note.push(map+': no 2D replay yet');continue}
+  const bands=rpcBands(c),pts=rpcPts(c);
+  // every drawing of a floor on every picture of this map
+  const cands=[];
+  for(const bp of bpFloors(map,rows)){const img=await rpcImgReady(bp.image_url);if(!img)continue;let M;try{M=rpcMask(img)}catch{continue}M.comps.slice(0,6).forEach(C=>cands.push({bp,img,M,C}))}
+  if(!cands.length){note.push(map+': its pictures could not be read');continue}
+  // how well each height fits each drawing
+  const fit=[],wt=[],cnt=bands.map(band=>pts.filter(p=>p[2]>=band.z0&&p[2]<band.z1).length),mx=Math.max(...cnt);
+  for(const [bi,band] of bands.entries()){const bpts=pts.filter(p=>p[2]>=band.z0&&p[2]<band.z1);fit[bi]=[];wt[bi]=Math.sqrt(cnt[bi]/mx);
+   for(const [ci,cd] of cands.entries()){if(stop)break;fit[bi][ci]=bpts.length>=30?rpcSolve(bpts,cd.M,[cd.C]):{sc:0};await nap(0)}}
+  // one height per drawing, the best total (a height with no good fit is left for the owner)
+  let best={tot:-1,a:[]};const a=[];const used=new Set();
+  const go=bi=>{if(bi===bands.length){// heights where players spent more time count for more (a roof with a few players should not take a floor's drawing)
+   const tot=a.reduce((s,ci,i)=>s+(ci>=0?fit[i][ci].sc*wt[i]:0),0);if(tot>best.tot)best={tot,a:[...a]};return}
+   a[bi]=-1;go(bi+1);for(let ci=0;ci<cands.length;ci++){if(used.has(ci)||!(fit[bi][ci]?.sc>0.12))continue;used.add(ci);a[bi]=ci;go(bi+1);used.delete(ci)}};
+  go(0);rpcAutoAll.last={map,cnt,fit:fit.map(r=>r.map(x=>+(x?.sc||0).toFixed(2)))};
+  const m={...(all[map]||{}),floors:{}};let n=0;
+  best.a.forEach((ci,bi)=>{if(ci<0)return;const cd=cands[ci],f=fit[bi][ci],k=1/cd.M.sc,band=bands[bi];
+   const e={bp:cd.bp.id,name:rpcName(bi,bands.length),s:+(f.s*k).toFixed(4),r:+f.r.toFixed(2),tx:+(f.tx*k).toFixed(1),ty:+(f.ty*k).toFixed(1),fx:!!f.fx,z0:Math.max(-50,+band.z0.toFixed(1)),z1:Math.min(50,+band.z1.toFixed(1)),auto:true,fit:+f.sc.toFixed(2)};
+   e.crop=rpcCrop({...e,Rs:c.Rs,pts:null},cd.img);m.floors[rpcKey(bi)]=e;n++});
+  if(n){all[map]=m;done++}note.push(`${map}: ${n} of ${bands.length} floors`);
+ }
+ const r=await sb.from('site_settings').update({replay_maps:all,updated_at:new Date().toISOString()}).eq('id',true).select().single();if(b)b.disabled=false;
+ if(r.error){actEnd(job,'warn','Could not save: '+r.error.message);return toast(/replay_maps/.test(r.error.message)?'Paste stage49.sql into the Supabase SQL Editor and run it first.':r.error.message)}
+ siteSet=r.data;actEnd(job,'ok',`Lined up ${plural(done,'map')}. `+note.join(' · '));if(adm.rpc){const c=adm.rpc;c.band=null}render();
 }
 // the part of the picture with this floor: where its dots land, with some room around
 function rpcCrop(c,img){
@@ -2606,7 +2652,7 @@ function rpcCard(){
  const c=adm.rpc=adm.rpc||{map:maps[0]};if(!maps.includes(c.map))c.map=maps[0];
  const bps=bpFloors(c.map,rows),saved=rpcSaved(c.map);
  if(!c.Rs&&!c.loading&&!c.err&&c.tried!==c.map){c.tried=c.map;setTimeout(()=>rpcLoadSample(c.map),0)}
- const head=`<div class="row wrap" style="gap:10px;align-items:flex-end"><div><label for="rpcm">Map</label><select id="rpcm" class="fi" data-c="rpcmap" style="width:auto">${maps.map(m=>`<option${m===c.map?' selected':''}>${esc(m)}</option>`).join('')}</select></div></div>`;
+ const head=`<div class="row wrap" style="gap:10px;align-items:flex-end"><div><label for="rpcm">Map</label><select id="rpcm" class="fi" data-c="rpcmap" style="width:auto">${maps.map(m=>`<option${m===c.map?' selected':''}>${esc(m)}${Object.keys(rpcSaved(m)).length?' ✓':''}</option>`).join('')}</select></div><button class="no" data-a="rpcmapall">Line up all floors of ${esc(c.map)}</button><span class="sp"></span><button class="go" data-a="rpcall">Line up every map for me</button></div>`;
  const what=`<p class="mu" style="font-size:12.5px;max-width:900px">The 2D replay needs to know where each floor plan sits. The site works it out from your replays: every dot below is a spot where a player stood (blue one team, orange the other), so the dots trace the rooms and hallways people walked. Do each floor once: pick the floor, pick the picture that shows it, press <b style="font-weight:600">Line it up for me</b>, and check it. The big orange dots are the defenders when prep starts, so they should sit in the bomb site written next to them. If they don’t, drag the dots until they do (scroll to resize, Adjust by hand to turn or mirror), then save.</p>`;
  if(c.loading)return `<section class="cd" style="gap:10px">${head}${what}<p class="mu">Reading replays of ${esc(c.map)}…</p></section>`;
  if(!c.Rs?.length)return `<section class="cd" style="gap:10px">${head}${what}<p>${esc(c.err||'')}</p><div><button class="no" data-a="rpcretry">Look again</button></div></section>`;
@@ -2614,7 +2660,8 @@ function rpcCard(){
  const fl=`<div><p class="lb" style="margin-bottom:6px">1. Floor (from the heights players stood at)</p><div class="row wrap" style="gap:6px">${bands.map((f,i)=>`<button class="ch" style="height:32px" data-a="rpcband" data-k="${i}" aria-pressed="${i===c.band}">${i===0?'Lowest floor':i===bands.length-1?'Top floor':'Floor '+(i+1)}${saved[rpcKey(i)]?' ✓':''}</button>`).join('')}</div></div>`;
  const pics=`<div><p class="lb" style="margin-bottom:6px">2. The picture that shows this floor</p><div class="rpcp">${bps.map(b=>`<button class="rpcpi${b.id===c.bp?' on':''}" data-a="rpcbp" data-k="${b.id}"><img src="${esc(b.image_url)}" alt="" loading="lazy"><span>${esc(b.floor)}</span></button>`).join('')}</div></div>`;
  const can=c.bp&&c.s!=null;
- const tools=`<div class="row wrap" style="gap:6px;align-items:center"><button class="go" data-a="rpcauto"${c.bp?'':' disabled'}>3. Line it up for me</button>${c.auto?`<span class="mu" style="font-size:12.5px">${c.fit>0.3?'Lined up. Check the dots run inside the walls, then save.':'Lined up as well as it could. If the dots are off, drag them, or try another picture.'}</span>`:''}<span class="sp"></span>${can?`<button class="go" data-a="rpcsave">4. Save this floor</button>`:''}${saved[rpcKey(c.band)]?'<button class="no" data-a="rpcdel">Remove</button>':''}</div>
+ const sv=saved[rpcKey(c.band)];
+ const tools=`${sv?.auto&&!c.auto?`<p style="font-size:13px"><b style="font-weight:600;color:var(--pk-lt)">Lined up automatically.</b> <span class="mu">Check the big orange dots sit in the bomb site written next to them. If not, drag the dots (or press Line it up for me again), then save.</span></p>`:''}<div class="row wrap" style="gap:6px;align-items:center"><button class="go" data-a="rpcauto"${c.bp?'':' disabled'}>3. Line it up for me</button>${c.auto?`<span class="mu" style="font-size:12.5px">${c.fit>0.3?'Lined up. Check the dots run inside the walls, then save.':'Lined up as well as it could. If the dots are off, drag them, or try another picture.'}</span>`:''}<span class="sp"></span>${can?`<button class="go" data-a="rpcsave">4. Save this floor</button>`:''}${saved[rpcKey(c.band)]?'<button class="no" data-a="rpcdel">Remove</button>':''}</div>
  ${can?`<details><summary style="cursor:pointer;font-size:13px">Adjust by hand</summary><div class="row wrap" style="gap:6px;margin-top:6px"><span class="mu" style="font-size:12.5px">Drag the dots, scroll over them to resize.</span><button class="no" data-a="rpcrot" data-k="-90">Turn left</button><button class="no" data-a="rpcrot" data-k="90">Turn right</button><button class="no" data-a="rpcrot" data-k="-1">−1°</button><button class="no" data-a="rpcrot" data-k="1">+1°</button><button class="no" data-a="rpcflip">Mirror</button><label class="row" style="gap:4px;font-size:12.5px">Height from <input id="rpcz0" class="fi" type="number" step="0.5" style="width:80px;height:30px" value="${c.z0}"></label><label class="row" style="gap:4px;font-size:12.5px">to <input id="rpcz1" class="fi" type="number" step="0.5" style="width:80px;height:30px" value="${c.z1}"></label></div></details>`:''}`;
  return `<section class="cd" style="gap:12px">${head}${what}${fl}${pics}${tools}${c.bp?'<canvas id="rpccv" class="rpccv" aria-label="Floor plan with player positions"></canvas>':'<p class="mu" style="font-size:13px">Pick the picture that shows this floor.</p>'}</section>`;
 }
@@ -2646,7 +2693,7 @@ async function rpcSave(b,del){
  for(const k of Object.keys(m.floors))if(!/^f\d+$/.test(k))delete m.floors[k];
  const bands=rpcBands(c),name=c.band===0&&bands.length>1?'Lowest floor':c.band===bands.length-1&&bands.length>1?'Top floor':'Floor '+(c.band+1);
  if(del)delete m.floors[key];else{if(!bp)return;if(!(c.z1>c.z0))return toast('The height range needs a "to" above its "from".');const img=rpImage(bp.image_url);
-  m.floors[key]={bp:bp.id,name:bp.floor&&bps1(c.map)>=bands.length?bp.floor:name,s:+c.s.toFixed(4),r:+c.r.toFixed(2),tx:+c.tx.toFixed(1),ty:+c.ty.toFixed(1),fx:!!c.fx,z0:c.z0,z1:c.z1,crop:img?rpcCrop(c,img):null}}
+  m.floors[key]={bp:bp.id,name:bp.floor&&bps1(c.map)>=bands.length?bp.floor:name,s:+c.s.toFixed(4),r:+c.r.toFixed(2),tx:+c.tx.toFixed(1),ty:+c.ty.toFixed(1),fx:!!c.fx,z0:c.z0,z1:c.z1,crop:img?rpcCrop(c,img):null,checked:true}}
  all[c.map]=m;if(b)b.disabled=true;
  const r=await sb.from('site_settings').update({replay_maps:all,updated_at:new Date().toISOString()}).eq('id',true).select().single();if(b)b.disabled=false;
  if(r.error)return toast(/replay_maps/.test(r.error.message)?'Paste stage49.sql into the Supabase SQL Editor and run it first.':r.error.message);
@@ -5427,7 +5474,7 @@ const A={
  gdeck:()=>openSc('games','m'),dptab:d=>{adm.dpTab=d.k;render()},snsave:(d,b)=>snSave(d.m,b),snscan:()=>snScan(),snrds:d=>{adm.snRd=adm.snRd===d.k?null:d.k;render()},snrdgo:d=>snRoundGo(d.t,d.mid,+d.n),sndel:d=>snDelAsk(d.m,d.i),sndelyes:(d,b)=>{b.disabled=true;$('#dlg').close();const e=snList(d.m)[+d.i];if(e)snWrite(d.m,snList(d.m).filter((x,j)=>j!==+d.i),'"'+e.name+'" is no longer a default site on '+d.m+'.')},snun:d=>{const l=snList(d.m),e=l[+d.i];if(!e)return;e.also=e.also.filter(a=>a!==d.v);snWrite(d.m,l,'"'+d.v+'" is out of '+e.name+'.')},
 mapimgdel:d=>{if(confirm('Use the built-in picture for '+d.k+' again?'))mapImgSave(d.k,null)},banpull:async(d,b)=>{const r=sco.m.find(x=>x.id===d.id);if(!r)return;b.disabled=true;const res=await banPull(mvSeriesRows(r).rows);b.disabled=false;toast(res&&typeof res==='object'?'Filled in '+plural(res.n,'detail')+'. The '+res.note+'.':typeof res==='string'?res:res?'Filled in '+plural(res,'detail')+' from official / siege.gg pages.':'Nothing new on the official or siege.gg page for this series.');if(view==='sc')render()},banpullall:d=>banPullAll(),dprep:()=>openPrep('drone'),sprep:()=>openPrep('strat'),rpplay:()=>rpPlay(),rpfollow:d=>{if(!rpv)return;rpv.follow=rpv.follow===d.k?'':d.k;if(rpv.follow)rpCenter(rpv.follow);rpDraw()},rpfloor:d=>{if(!rpv)return;rpv.floor=+d.k;rpv.follow='';rpFloorBtns();rpDraw()},rptog:d=>{if(!rpv)return;rpv[d.k]=!rpv[d.k];rpRebuild()},rpsize:d=>{if(!rpv)return;rpv.size=d.k;rpRebuild()},rpfit:()=>{if(!rpv)return;rpv.zoom=1;rpv.panX=rpv.panY=0;rpv.follow='';rpDraw()},rpfull:()=>{const w=document.getElementById('rpw');if(!w)return;document.fullscreenElement?document.exitFullscreen?.():w.requestFullscreen?.()},rphelp:()=>rpHelp(),rpdrones:()=>{if(!rpv)return;rpv.drones={all:'floor',floor:'off',off:'all'}[rpv.drones]||'all';rpRebuild()},rpfov:()=>rpFov(),rphelpx:()=>$('#dlg').close(),
 asrpsel:d=>{prep.rpSel=d.id;rpStop();rpv=null;render()},asrpfill:(d,b)=>asRpFill(b),
-rpcband:d=>{rpcPick(+d.k);render()},rpcbp:d=>{const c=adm.rpc;if(!c)return;c.bp=d.k;c.s=null;c.auto=false;render()},rpcauto:()=>rpcAuto(),
+rpcband:d=>{rpcPick(+d.k);render()},rpcbp:d=>{const c=adm.rpc;if(!c)return;c.bp=d.k;c.s=null;c.auto=false;render()},rpcauto:()=>rpcAuto(),rpcall:(d,b)=>rpcAutoAll(b),rpcmapall:(d,b)=>rpcAutoAll(b,adm.rpc?.map),
 rpcrot:d=>{const c=adm.rpc,b=(adm.bp?.rows||[]).find(x=>x.id===c?.bp),img=rpImage(b?.image_url);if(!c||!img||c.s==null)return;const cx=img.naturalWidth/2,cy=img.naturalHeight/2,a=(+d.k)*Math.PI/180;
  // turn around the middle of the picture
  const dx=c.tx-cx,dy=c.ty-cy;c.tx=cx+dx*Math.cos(a)+dy*Math.sin(a);c.ty=cy-dx*Math.sin(a)+dy*Math.cos(a);c.r=((c.r+(+d.k))%360+360)%360;rpcDraw()},rpcflip:()=>{const c=adm.rpc;if(!c||c.s==null)return;c.fx=!c.fx;rpcDraw()},rpcsave:(d,b)=>rpcSave(b),rpcdel:(d,b)=>rpcSave(b,true),rpcretry:()=>{const c=adm.rpc;if(c){c.err='';c.tried='';c.Rs=null;render()}},
