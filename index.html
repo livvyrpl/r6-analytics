@@ -2784,10 +2784,11 @@ function rpcCrop(c,img){
 async function rpcSiteData(c){
  const games=c.files||(await rpcFiles(c.map)).games,by=new Map();
  const add=R=>{if(!R?.tracks?.length||!R.site)return;const di=R.teams.findIndex(t=>t.role==='Defense');if(di<0)return;const sp=[];R.tracks.filter(t=>t.teamIndex===di).forEach(t=>{const p=t.points.find(q=>q[0]<4);if(p)sp.push(p)});if(sp.length<2)return;
-  const k=norm(R.site),e=by.get(k)||{name:R.site,x:0,y:0,z:0,n:0};sp.forEach(p=>{e.x+=p[1];e.y+=p[2];e.z+=p[3];e.n++});by.set(k,e)};
+  const nm=siteCanon(c.map,R.site),k=norm(nm),e=by.get(k)||{name:nm,x:0,y:0,z:0,n:0};sp.forEach(p=>{e.x+=p[1];e.y+=p[2];e.z+=p[3];e.n++});by.set(k,e)};
  c.Rs.forEach(add);
- const more=[];games.forEach(g=>g.ns.slice(1,5).forEach(n=>more.push([g.mid,n])));
- for(let i=0;i<more.length&&by.size<6;i+=8)(await Promise.all(more.slice(i,i+8).map(([mid,n])=>rpLoad(cur.id,mid,n)))).forEach(add);
+ const want=siteDefaults(c.map).map(norm),done=()=>want.length?want.every(k=>by.has(k)):by.size>=6;
+ const more=[];for(let j=1;j<40;j++)games.forEach(g=>{if(g.ns[j])more.push([g.mid,g.ns[j]])});
+ for(let i=0;i<more.length&&i<96&&!done();i+=8)(await Promise.all(more.slice(i,i+8).map(([mid,n])=>rpLoad(cur.id,mid,n)))).forEach(add);
  c.sites=[...by.values()].map(e=>({name:e.name,x:e.x/e.n,y:e.y/e.n,z:e.z/e.n})).sort((a,b)=>b.z-a.z||a.name.localeCompare(b.name));
  if(adm.rpc===c)render();
 }
@@ -2847,9 +2848,11 @@ const RPP_SITE_COLS=['#ff0000','#ff00ff','#ff8c00','#00b400','#ffd700','#00e5ff'
 const rppHex=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
 // the colour of each site of the map: the ones saved before keep theirs, new sites take a free one
 function rppSiteCols(map,sites){
- const saved=siteSet?.replay_maps?.[map]?.paint?.sites||[],out={},used=new Set();
- saved.forEach(s=>{out[norm(s.name)]={name:s.name,color:s.color};used.add(s.color)});
- (sites||[]).forEach(s=>{const k=norm(s.name);if(out[k])return;const col=RPP_SITE_COLS.find(c=>!used.has(c));if(!col)return;used.add(col);out[k]={name:s.name,color:col}});
+ const saved=siteSet?.replay_maps?.[map]?.paint?.sites||[],out={},used=new Set(),defs=siteDefaults(map);
+ saved.forEach(s=>{const nm=siteCanon(map,s.name);if(defs.length&&!defs.some(d=>norm(d)===norm(nm)))return;if(out[norm(nm)])return;out[norm(nm)]={name:nm,color:s.color};used.add(s.color)});
+ (defs.length?defs.map(name=>({name})):sites||[]).forEach(s=>{const k=norm(s.name);if(out[k])return;const col=RPP_SITE_COLS.find(c=>!used.has(c));if(!col)return;used.add(col);out[k]={name:s.name,color:col}});
+ // in the order of Site names
+ if(defs.length){const o2={};defs.forEach(d=>{const k=norm(d);if(out[k])o2[k]=out[k]});return o2}
  return out;
 }
 const rppToolCol=p=>p.tool==='blue'?'#0000ff':p.tool?.startsWith('site:')?(p.cols[p.tool.slice(5)]?.color||'#ff0000'):'#ff0000';
@@ -2863,10 +2866,10 @@ function rppSiteSpots(paint,M,panels,cols){
 }
 // lines up every floor from sites coloured one by one: each coloured site must sit where its defenders start
 async function rpcSpotsFit(c,M,panels,bands,paint,saved){
- const cols={};saved.forEach(s=>cols[norm(s.name)]=s);
+ const cols={};saved.forEach(s=>cols[norm(s.name)]=s);const same=(a,b)=>norm(siteCanon(c.map,a))===norm(siteCanon(c.map,b));
  const spots=rppSiteSpots(paint,M,panels,cols);await rpcSiteData(c);
  const bandOf=z=>bands.findIndex(bd=>z>=bd.z0&&z<bd.z1);
- const pin=spots.map(s=>{const w=(c.sites||[]).find(x=>norm(x.name)===norm(s.name));return w?{x:w.x,y:w.y,z:w.z,bi:bandOf(w.z),u:s.u-panels[s.p][0],v:s.v,p:s.p,name:s.name}:null}).filter(x=>x&&x.bi>=0);
+ const pin=spots.map(s=>{const w=(c.sites||[]).find(x=>same(x.name,s.name));return w?{x:w.x,y:w.y,z:w.z,bi:bandOf(w.z),u:s.u-panels[s.p][0],v:s.v,p:s.p,name:s.name}:null}).filter(x=>x&&x.bi>=0);
  if(pin.length<2)return{err:'fewer than 2 coloured sites match bomb sites in your replays'};
  const stairs=rpcStairs(c,bands);M.blueD=M.blueD||rpcDist(M.blue,M.W,M.H);
  const pOf={};pin.forEach(s=>pOf[s.bi]=s.p);
@@ -2939,7 +2942,7 @@ function rppH(c){
  const tb=(k,lbl,a='rpptool')=>`<button class="ch" style="height:32px" data-a="${a}" data-k="${k}" aria-pressed="${(a==='rpptool'?p.tool:p.mode)===k}">${lbl}</button>`;
  return `<section class="cd" style="gap:8px;background:rgba(0,0,0,.25)"><h3 class="oph">1. Colour the bomb sites and stairs${has&&!p.dirty?' ✓':''}</h3>
  <p class="mu" style="font-size:12.5px">Pick a bomb site, then colour its rooms (both rooms of that site); do the same for each site. Colour every staircase blue, on each floor. Click inside a room to fill it, or switch to the brush to paint. The colours are only used to line the map up; your picture stays as it is.</p>
- <div class="row wrap" style="gap:6px;align-items:center">${Object.entries(p.cols).map(([k,s])=>tb('site:'+k,`<span style="color:${s.color}">■</span> ${esc(s.name)}`)).join('')||(c.sites?'<span class="mu" style="font-size:12.5px">No bomb sites found in your replays of this map yet.</span>':'<span class="mu" style="font-size:12.5px">Finding the bomb sites in your replays…</span>')}${tb('blue','<span style="color:#4d7dff">■</span> Stairs')}${tb('erase','Eraser')}<span class="mu" style="margin-left:6px">|</span>${tb('fill','Fill a room','rppmode')}${tb('brush','Brush','rppmode')}${p.mode==='brush'?`<label class="row" style="gap:4px;font-size:12.5px">Size <input id="rppsz" type="range" min="2" max="60" value="${p.size}" style="width:110px"></label>`:''}<span class="sp"></span><button class="no" data-a="rppundo"${p.undo.length?'':' disabled'}>Undo</button><button class="no" data-a="rppclear">Clear</button><button class="go" data-a="rppsave">Save colours</button></div>
+ <div class="row wrap" style="gap:6px;align-items:center">${Object.entries(p.cols).map(([k,s])=>tb('site:'+k,`<span style="color:${s.color}">■</span> ${esc(s.name)}`)).join('')||(c.sites?'<span class="mu" style="font-size:12.5px">No bomb sites for this map yet: add its 4 sites under Site names.</span>':'<span class="mu" style="font-size:12.5px">Finding the bomb sites in your replays…</span>')}${tb('blue','<span style="color:#4d7dff">■</span> Stairs')}${tb('erase','Eraser')}<span class="mu" style="margin-left:6px">|</span>${tb('fill','Fill a room','rppmode')}${tb('brush','Brush','rppmode')}${p.mode==='brush'?`<label class="row" style="gap:4px;font-size:12.5px">Size <input id="rppsz" type="range" min="2" max="60" value="${p.size}" style="width:110px"></label>`:''}<span class="sp"></span><button class="no" data-a="rppundo"${p.undo.length?'':' disabled'}>Undo</button><button class="no" data-a="rppclear">Clear</button><button class="go" data-a="rppsave">Save colours</button></div>
  <canvas id="rppcv" class="rppcv" aria-label="Picture to colour"></canvas>
  <div class="row wrap" style="gap:8px;align-items:center"><button class="go" data-a="rpcmapall"${has?'':' disabled'}>2. Line up ${esc(c.map)} from the colours</button>${has?'':'<span class="mu" style="font-size:12.5px">Save the colours first.</span>'}</div></section>`;
 }
