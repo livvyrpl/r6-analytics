@@ -28,11 +28,16 @@ type TrackPoint struct {
 	X float32 `json:"x"`
 	Y float32 `json:"y"`
 	Z float32 `json:"z"`
+	// which way the player faces, in degrees in the map's x-y plane (0 is +x, 90 is +y); NaN when not known yet
+	Yaw float32 `json:"yaw"`
 }
 
-// MarshalJSON writes a point as [t, x, y, z] with two decimals, to keep rounds small.
+// MarshalJSON writes a point as [t, x, y, z, yaw] with two decimals (yaw a whole degree, left out when not known), to keep rounds small.
 func (p TrackPoint) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("[%.2f,%.2f,%.2f,%.2f]", p.T, p.X, p.Y, p.Z)), nil
+	if p.Yaw != p.Yaw {
+		return []byte(fmt.Sprintf("[%.2f,%.2f,%.2f,%.2f]", p.T, p.X, p.Y, p.Z)), nil
+	}
+	return []byte(fmt.Sprintf("[%.2f,%.2f,%.2f,%.2f,%.0f]", p.T, p.X, p.Y, p.Z, p.Yaw)), nil
 }
 
 type PlayerTrack struct {
@@ -264,13 +269,14 @@ func (r *Reader) buildTracks() {
 	// Each team's bodies are named in the replay's opening part in the same order as that team's players.
 	first := frames[0].start
 	type obj struct {
-		id      uint32
-		at      int
-		count   int
-		firstT  float32
-		firstN  uint32
-		points  []TrackPoint
-		lastNum uint32
+		id     uint32
+		at     int
+		count  int
+		firstT float32
+		firstN uint32
+		points []TrackPoint
+		lastT  float32
+		yaw    float32
 	}
 	objs := map[uint32]*obj{}
 	posRun := -1
@@ -310,16 +316,32 @@ func (r *Reader) buildTracks() {
 			o := objs[id]
 			t := elapsed(fr.num)
 			if o == nil {
-				o = &obj{id: id, at: -1, firstT: t, firstN: fr.num}
+				o = &obj{id: id, at: -1, firstT: t, firstN: fr.num, lastT: -1, yaw: float32(math.NaN())}
 				objs[id] = o
 			}
 			o.count++
+			// facing: in the main movement record (flags B8 or DC, then 3) a unit quaternion (x, y, z, w) follows 18 bytes after the flags.
+			// Its turn about the up axis, plus 90 degrees, is the way the player faces (checked against running direction).
+			if (fl == 0xB8 || fl == 0xDC) && b[m+5] == 3 && m+38 <= len(b) {
+				var q [4]float64
+				for j := range q {
+					q[j] = float64(math.Float32frombits(binary.LittleEndian.Uint32(b[m+22+4*j:])))
+				}
+				if n := math.Sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]); math.Abs(n-1) < 0.02 {
+					qx, qy, qz, qw := q[0], q[1], q[2], q[3]
+					yaw := math.Atan2(2*(qw*qz+qx*qy), 1-2*(qy*qy+qz*qz))*180/math.Pi + 90
+					if yaw > 180 {
+						yaw -= 360
+					}
+					o.yaw = float32(yaw)
+				}
+			}
 			// about 10 points a second is enough to draw
-			if o.lastNum != 0 && fr.num < o.lastNum+3 {
+			if o.lastT >= 0 && t < o.lastT+0.1 {
 				continue
 			}
-			o.lastNum = fr.num
-			o.points = append(o.points, TrackPoint{t, x, y, z})
+			o.lastT = t
+			o.points = append(o.points, TrackPoint{t, x, y, z, o.yaw})
 		}
 	}
 	// Defenders' bodies are there from the first frames. Attackers' bodies appear together when the
