@@ -165,6 +165,18 @@ var activity2 = []byte{0x00, 0x00, 0x00, 0x22, 0xe3, 0x09, 0x00, 0x79}
 var killIndicator = []byte{0x22, 0xd9, 0x13, 0x3c, 0xba}
 
 func readMatchFeedback(r *Reader) error {
+	// where each kill sits in the replay, so the 2D replay can time it to the frame
+	at, before := r.offset, len(r.MatchFeedback)
+	defer func() {
+		for i := before; i < len(r.MatchFeedback); i++ {
+			if u := r.MatchFeedback[i]; u.Type == Kill && u.Target != "" {
+				if r.killOffset == nil {
+					r.killOffset = map[string]int{}
+				}
+				r.killOffset[u.Target] = at
+			}
+		}
+	}()
 	if r.Header.CodeVersion >= Y9S1Update3 {
 		if err := r.Skip(38); err != nil {
 			return err

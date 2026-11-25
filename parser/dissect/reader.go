@@ -22,8 +22,9 @@ type Reader struct {
 	offset                   int
 	queries                  [][]byte
 	listeners                [][]func(r *Reader) error
-	time                     float64 // in seconds
-	timeRaw                  string  // raw dissect format
+	time                     float64        // in seconds
+	timeRaw                  string         // raw dissect format
+	killOffset               map[string]int // where each kill sits in the replay, by target
 	lastDefuserPlayerIndex   int
 	planted                  bool
 	defuserDisabling         bool
@@ -53,9 +54,11 @@ type Reader struct {
 	Barricades               []BarricadePlace    `json:"barricades,omitempty"`
 	GadgetDeployments        []GadgetDeployment  `json:"gadgetDeployments,omitempty"`
 	Movements                []EntityPositions   `json:"movements,omitempty"`
+	Tracks                   []PlayerTrack       `json:"tracks,omitempty"` // where each player was, for the 2D replay (track.go)
+	Clock                    *RoundClock         `json:"clock,omitempty"`
 	LocationEvents           []LocationEvent     `json:"locationEvents,omitempty"`
 	Scoreboard               Scoreboard
-	SkippedRecords           int `json:"-"`
+	SkippedRecords           int  `json:"-"`
 	Truncated                bool `json:"-"`
 }
 
@@ -303,6 +306,7 @@ func (r *Reader) Read() (err error) {
 		r.detectRevivesFromScore()
 		r.detectBleedouts()
 		r.finalizePositions()
+		r.buildTracks()
 	}
 	r.b = nil
 	return err

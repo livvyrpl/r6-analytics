@@ -21,21 +21,23 @@ import (
 // Result is the JSON returned for one .rec file. When OK is false only Error
 // and Warnings are meaningful.
 type Result struct {
-	OK           bool        `json:"ok"`
-	Error        string      `json:"error,omitempty"`
-	GameVersion  string      `json:"gameVersion,omitempty"`
-	MatchID      string      `json:"matchId,omitempty"`
-	Timestamp    string      `json:"timestamp,omitempty"`
-	Map          string      `json:"map,omitempty"`
-	RoundNumber  int         `json:"roundNumber,omitempty"` // 1 is the first round, matching R01 in the file name
-	Teams        []Team      `json:"teams,omitempty"`
-	WinningTeam  *int        `json:"winningTeam"` // 0 or 1, null if the replay does not say
-	WinCondition string      `json:"winCondition,omitempty"`
-	Site         string      `json:"site"` // empty if the replay does not say
-	Players      []Player    `json:"players,omitempty"`
-	Kills        []Kill      `json:"kills,omitempty"`
-	Objectives   []Objective `json:"objectives,omitempty"`
-	Warnings     []string    `json:"warnings"`
+	OK           bool                  `json:"ok"`
+	Error        string                `json:"error,omitempty"`
+	GameVersion  string                `json:"gameVersion,omitempty"`
+	MatchID      string                `json:"matchId,omitempty"`
+	Timestamp    string                `json:"timestamp,omitempty"`
+	Map          string                `json:"map,omitempty"`
+	RoundNumber  int                   `json:"roundNumber,omitempty"` // 1 is the first round, matching R01 in the file name
+	Teams        []Team                `json:"teams,omitempty"`
+	WinningTeam  *int                  `json:"winningTeam"` // 0 or 1, null if the replay does not say
+	WinCondition string                `json:"winCondition,omitempty"`
+	Site         string                `json:"site"` // empty if the replay does not say
+	Players      []Player              `json:"players,omitempty"`
+	Kills        []Kill                `json:"kills,omitempty"`
+	Objectives   []Objective           `json:"objectives,omitempty"`
+	Warnings     []string              `json:"warnings"`
+	Tracks       []dissect.PlayerTrack `json:"tracks,omitempty"` // where each player was, for the 2D replay
+	Clock        *dissect.RoundClock   `json:"clock,omitempty"`
 }
 
 // Team is one side in the round. Score is the match score after this round,
@@ -130,6 +132,8 @@ func parse(data []byte, warnings *warningCollector) (Result, error) {
 		RoundNumber: h.RoundNumber + 1,
 		Site:        h.Site,
 	}
+	res.Tracks = r.Tracks
+	res.Clock = r.Clock
 	if !h.Timestamp.IsZero() {
 		res.Timestamp = h.Timestamp.UTC().Format("2006-01-02T15:04:05Z")
 	}
@@ -330,7 +334,7 @@ func encode(res Result) string {
 // routineLogMessages are things the fork logs at warning level during every
 // normal replay. They say nothing about whether the parse went well.
 var routineLogMessages = map[string]bool{
-	"scoreboard_kill": true,
+	"scoreboard_kill":  true,
 	"replay cut short": true, // reported below in plain words
 }
 

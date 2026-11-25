@@ -1126,7 +1126,7 @@ function drawCharts(){
 }
 const fmtSize=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?(n/1048576).toFixed(1)+' MB':(n/1073741824).toFixed(2)+' GB';
 // REPLAYS: read in a worker on this device, previewed, then saved. The files themselves never leave the browser.
-const REC_VER='2026-11-09',REC_TIMEOUT=12e4,TRADE_SECS=5,squash=s=>norm(s).replace(/[^a-z0-9]/g,'');
+const REC_VER='2026-11-24',REC_TIMEOUT=12e4,TRADE_SECS=5,squash=s=>norm(s).replace(/[^a-z0-9]/g,'');
 const repMap=n=>{const s=squash(n),p=MAP_POOL.find(m=>squash(m[0])===s);return p?p[0]:String(n||'').replace(/([a-z])([A-Z0-9])/g,'$1 $2')};
 const repOp=n=>{const s=squash(opKey(n)),o=OPS.find(x=>squash(opKey(x[0]))===s);return o?o[0]:String(n||'')};
 const repErr=e=>/schema cache|does not exist|column/i.test(e.message)?'The replay database tables are not set up yet. Paste stage12.sql and stage13.sql into the Supabase SQL Editor and run them.':scErr(e);
@@ -1357,7 +1357,8 @@ function parseRec(p,file){
   const w=p.w,bad=m=>({ok:false,error:m}),done=(r,kill)=>{clearTimeout(t);w.onmessage=w.onerror=null;p.abort=null;if(kill){w.terminate();if(p.w===w)p.w=null}ok(r)},t=setTimeout(()=>done(bad('This file took too long to read.'),1),REC_TIMEOUT);
   p.abort=()=>done(null,1);
   w.onerror=e=>{e.preventDefault?.();done(bad('The parser stopped unexpectedly while reading this file. Try it again on its own.'),1)};
-  w.onmessage=e=>{if(e.data.fatal)return done(bad(e.data.fatal),1);try{done(JSON.parse(e.data.json))}catch{done(bad('The parser returned something unreadable.'),1)}};
+  // where players were (for the 2D replay) is only kept when asked for, so importing hundreds of rounds stays light
+  w.onmessage=e=>{if(e.data.fatal)return done(bad(e.data.fatal),1);let j;try{j=JSON.parse(e.data.json)}catch{return done(bad('The parser returned something unreadable.'),1)}if(!p.tracks){delete j.tracks;delete j.clock}done(j)};
   w.postMessage({file});
  });
 }
