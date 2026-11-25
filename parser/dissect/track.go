@@ -364,7 +364,12 @@ func (r *Reader) buildTracks() {
 			}
 		}
 		for _, o := range rest {
-			if o.firstT >= start && o.firstT <= start+30 {
+			// late spawns count too, but not something that appears later and is gone within seconds (a gadget)
+			life := float32(0)
+			if len(o.points) > 0 {
+				life = o.points[len(o.points)-1].T - o.firstT
+			}
+			if o.firstT >= start && (o.firstT <= start+10 || (o.firstT <= start+30 && life > 20)) {
 				att = append(att, o)
 			}
 		}
@@ -372,16 +377,25 @@ func (r *Reader) buildTracks() {
 			prepLen = float64(start)
 		}
 	}
-	pick := func(l []*obj) []*obj {
+	// A team can play with 4 (or fewer): each side keeps only as many bodies as it has players listed.
+	size := map[TeamRole]int{}
+	for _, p := range r.Header.Players {
+		if p.TeamIndex >= 0 && p.TeamIndex < len(r.Header.Teams) {
+			size[r.Header.Teams[p.TeamIndex].Role]++
+		}
+	}
+	pick := func(l []*obj, k int) []*obj {
 		sort.Slice(l, func(i, j int) bool { return l[i].count > l[j].count })
-		if len(l) > 5 {
-			l = l[:5]
+		if k <= 0 || k > 5 {
+			k = 5
+		}
+		if len(l) > k {
+			l = l[:k]
 		}
 		sort.Slice(l, func(i, j int) bool { return l[i].at < l[j].at })
 		return l
 	}
-	def, att = pick(def), pick(att)
-	// When each player died, from the kill feed (in order): the first moment the timer shows that second.
+	def, att = pick(def, size[Defense]), pick(att, size[Attack])
 	// When each player died: the frame its kill feed record is in (the timer text is ambiguous after a plant).
 	death := map[string]float64{}
 	for name, o := range r.killOffset {
@@ -410,13 +424,9 @@ func (r *Reader) buildTracks() {
 				pl = append(pl, i)
 			}
 		}
-		n := len(pl)
-		if len(group) < n {
-			n = len(group)
-		}
 		cost := func(oi, pi int) float64 {
 			o, name := group[oi], r.Header.Players[pl[pi]].Username
-			c := 0.3 * math.Abs(float64(oi-pi))
+			c := 0.0
 			e := lastT(o)
 			if d, ok := death[name]; ok {
 				c += math.Min(60, math.Abs(e-d))
@@ -426,15 +436,18 @@ func (r *Reader) buildTracks() {
 			}
 			return c
 		}
-		best, bestC := make([]int, n), math.Inf(1)
-		perm := make([]int, n)
+		// Every player gets one body or none (left before the round, or disconnected); a body goes to one player at most.
+		// Leaving a player without a body costs more than any fit, so bodies are only left over when there are more of them.
+		const noBody = 70.0
+		best, bestC := make([]int, len(pl)), math.Inf(1)
+		perm := make([]int, len(pl))
 		used := make([]bool, len(group))
-		var try func(k int, c float64)
-		try = func(k int, c float64) {
+		var try func(k int, c float64, free int)
+		try = func(k int, c float64, free int) {
 			if c >= bestC {
 				return
 			}
-			if k == n {
+			if k == len(pl) {
 				bestC = c
 				copy(best, perm)
 				return
@@ -443,14 +456,29 @@ func (r *Reader) buildTracks() {
 				if used[oi] {
 					continue
 				}
+				// the replay names each team in player order: a small cost for every pair that comes out of order
+				inv := 0
+				for j := 0; j < k; j++ {
+					if perm[j] > oi {
+						inv++
+					}
+				}
 				used[oi] = true
 				perm[k] = oi
-				try(k+1, c+cost(oi, k))
+				try(k+1, c+cost(oi, k)+0.3*float64(inv), free-1)
 				used[oi] = false
 			}
+			// no body for this player: only worth trying when there are fewer bodies than players left
+			if free < len(pl)-k {
+				perm[k] = -1
+				try(k+1, c+noBody, free)
+			}
 		}
-		try(0, 0)
-		for k := 0; k < n; k++ {
+		try(0, 0, len(group))
+		for k := range pl {
+			if best[k] < 0 {
+				continue
+			}
 			o := group[best[k]]
 			p := r.Header.Players[pl[k]]
 			tracks = append(tracks, PlayerTrack{Username: p.Username, TeamIndex: ti, Points: o.points})
