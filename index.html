@@ -2566,9 +2566,9 @@ function rpcMask(img,paint){
  const FX=Math.min(1,2400/Math.max(img.naturalWidth,img.naturalHeight)),FW=Math.max(1,Math.round(img.naturalWidth*FX)),FH=Math.max(1,Math.round(img.naturalHeight*FX));
  const cv=document.createElement('canvas');cv.width=FW;cv.height=FH;const g=cv.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,FW,FH);g.drawImage(img,0,0,FW,FH);
  const px=g.getImageData(0,0,FW,FH).data,pool=Math.max(1,Math.ceil(Math.max(FW,FH)/1000)),W=Math.ceil(FW/pool),H=Math.ceil(FH/pool),sc=FX/pool,dark=new Uint8Array(W*H);
- const red=new Uint8Array(W*H),blue=new Uint8Array(W*H);let nRed=0,nBlue=0;
+ const red=new Uint8Array(W*H),blue=new Uint8Array(W*H),lite=new Uint8Array(W*H);let nRed=0,nBlue=0;
  for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){const i=(y*FW+x)*4,r=px[i],gg=px[i+1],b=px[i+2],j=((y/pool)|0)*W+((x/pool)|0);
-  if(0.3*r+0.59*gg+0.11*b<170&&Math.max(r,gg,b)-Math.min(r,gg,b)<80)dark[j]=1}
+  const lum=0.3*r+0.59*gg+0.11*b;if(lum<235)lite[j]=1;if(lum<170&&Math.max(r,gg,b)-Math.min(r,gg,b)<80)dark[j]=1}
  if(paint){const pc=document.createElement('canvas');pc.width=FW;pc.height=FH;const pg=pc.getContext('2d');pg.drawImage(paint,0,0,FW,FH);const pp=pg.getImageData(0,0,FW,FH).data;
   for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){const i=(y*FW+x)*4;if(pp[i+3]<128)continue;const j=((y/pool)|0)*W+((x/pool)|0);if(pp[i]>150&&pp[i+2]<100){red[j]=1;nRed++}else if(pp[i+2]>150&&pp[i]<100&&pp[i+1]<100){blue[j]=1;nBlue++}}}
  // a dark frame around the picture is not a wall: rows and columns along the edges that are mostly dark are cleared
@@ -2583,7 +2583,7 @@ function rpcMask(img,paint){
  for(let i=0;i<W*H;i++){if(out[i]||comp[i]>=0)continue;const id=comps.length,q=[i];comp[i]=id;let n=0,x0=W,y0=H,x1=0,y1=0;
   while(q.length){const j=q.pop();n++;const x=j%W,y=(j-x)/W;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;for(const k of [x>0?j-1:-1,x<W-1?j+1:-1,y>0?j-W:-1,y<H-1?j+W:-1])if(k>=0&&!out[k]&&comp[k]<0){comp[k]=id;q.push(k)}}
   comps.push({id,n,x0,y0,x1,y1})}
- return{W,H,sc,comp,dark,out,red,blue,nRed,nBlue,comps:(()=>{const l=comps.filter(o=>o.n>W*H*0.003).sort((a,b)=>b.n-a.n);return l.filter(o=>o.n>=(l[0]?.n||0)*0.25)})()}; // buildings only: titles, legends and small boxes are left out
+ return{W,H,sc,comp,dark,lite,out,red,blue,nRed,nBlue,comps:(()=>{const l=comps.filter(o=>o.n>W*H*0.003).sort((a,b)=>b.n-a.n);return l.filter(o=>o.n>=(l[0]?.n||0)*0.25)})()}; // buildings only: titles, legends and small boxes are left out
 }
 // ---- COLOURED PICTURES: bomb sites painted red, stairs painted blue. Each site's place in the game is where the
 // defenders start; each staircase's place is where players change height. Pairs of sites are tried against pairs of red
@@ -2679,9 +2679,9 @@ const rpcName=(i,n)=>n>1&&i===0?'Lowest floor':n>1&&i===n-1?'Top floor':'Floor '
 // The floors on a picture sit side by side: left is the top floor, right the lowest. Panels are found from the full-height
 // lines between them, or else from the buildings themselves, left to right.
 function rpcPanels(M){
- const col=new Float32Array(M.W);for(let x=0;x<M.W;x++){let n=0;for(let y=0;y<M.H;y++)n+=M.dark[y*M.W+x];col[x]=n/M.H}
+ const col=new Float32Array(M.W),line=new Float32Array(M.W);for(let x=0;x<M.W;x++){let n=0,l=0;for(let y=0;y<M.H;y++){n+=M.dark[y*M.W+x];if(M.lite)l+=M.lite[y*M.W+x]}col[x]=n/M.H;line[x]=l/M.H}
  // the usual layout: 2, 3 or 4 panels of the same width, with a full-height line at each split
- for(const k of [4,3,2]){let okAll=true;for(let i=1;i<k;i++){const x0=Math.round(M.W*i/k),w=Math.max(2,Math.round(M.W*0.02));let bestc=0;for(let x=x0-w;x<=x0+w;x++)if(x>=0&&x<M.W)bestc=Math.max(bestc,col[x]);if(bestc<0.45){okAll=false;break}}if(okAll)return Array.from({length:k},(_,i)=>[M.W*i/k,M.W*(i+1)/k])}
+ for(const k of [4,3,2]){let okAll=true;for(let i=1;i<k;i++){const x0=Math.round(M.W*i/k),w=Math.max(2,Math.round(M.W*0.02));let bestc=0,lineC=0,gap=1;for(let x=x0-w;x<=x0+w;x++)if(x>=0&&x<M.W){bestc=Math.max(bestc,col[x]);lineC=Math.max(lineC,line[x]);gap=Math.min(gap,col[x])}if(bestc<0.45&&lineC<0.97&&gap>0.003){okAll=false;break}}if(okAll)return Array.from({length:k},(_,i)=>[M.W*i/k,M.W*(i+1)/k])}
  const edges=[0];for(let x=0;x<M.W;){if(col[x]>0.6){let e=x;while(e+1<M.W&&col[e+1]>0.6)e++;if(x>M.W*0.05&&e<M.W*0.95)edges.push((x+e)/2);x=e+1}else x++}
  edges.push(M.W);let panels=[];for(let i=0;i+1<edges.length;i++)if(edges[i+1]-edges[i]>M.W*0.1)panels.push([edges[i],edges[i+1]]);
  if(panels.length<2){const l=[...M.comps].sort((a,b)=>a.x0-b.x0);if(l.length>=2)panels=l.map(c=>[c.x0,c.x1+1])}
@@ -2788,7 +2788,7 @@ async function rpcSiteData(c){
  c.Rs.forEach(add);
  const want=siteDefaults(c.map).map(norm),done=()=>want.length?want.every(k=>by.has(k)):by.size>=6;
  const more=[];for(let j=1;j<40;j++)games.forEach(g=>{if(g.ns[j])more.push([g.mid,g.ns[j]])});
- for(let i=0;i<more.length&&i<96&&!done();i+=8)(await Promise.all(more.slice(i,i+8).map(([mid,n])=>rpLoad(cur.id,mid,n)))).forEach(add);
+ c.more=[];for(let i=0;i<more.length&&i<96&&(!done()||c.Rs.length+c.more.length<16);i+=8)(await Promise.all(more.slice(i,i+8).map(([mid,n])=>rpLoad(cur.id,mid,n)))).forEach(R=>{add(R);if(R?.tracks?.length)c.more.push(R)});
  c.sites=[...by.values()].map(e=>({name:e.name,x:e.x/e.n,y:e.y/e.n,z:e.z/e.n})).sort((a,b)=>b.z-a.z||a.name.localeCompare(b.name));
  if(adm.rpc===c)render();
 }
@@ -2873,35 +2873,51 @@ function rppSiteMasks(paint,M,cols){
  const out={};list.forEach(s=>{if(s.n>=6)out[s.k]=rpcDist(s.m,M.W,M.H)});return out;
 }
 // Lines every floor up on its own drawing. Floor plans are drawn straight (a quarter turn at most) and every floor at the
-// same size, but each floor sits at its own spot in its part of the picture. For each floor: its coloured sites must hold
-// their defenders' start, the places where players change floors must be on the blue stairs, and where the defenders
-// walk in prep (they stay inside) must be inside the building
+// same size, but each floor sits at its own spot in its part of the picture. Every place where players changed floors
+// votes for the positions that put it on a blue staircase, and every site's defender start for the positions that put it
+// inside its colour; the position with the most votes wins. Counting votes (not adding distances) means a few odd spots
+// (a jump, a rappel, a window) can't pull the floors off the stairs.
 function rpcShapeFit(c,M,panels,bands,pairs,pin,f0,stairs,masks){
- const W=M.W,H=M.H;
- const floors=pairs.map(([bi,p])=>{const P=[];c.Rs.forEach(R=>{const di=R.teams.findIndex(x=>x.role==='Defense'),pe=R.clock?.prepSeconds||40;R.tracks.forEach(tr=>{if(tr.teamIndex!==di)return;tr.points.forEach(q=>{if(q[0]>3&&q[0]<pe&&q[3]>=bands[bi].z0&&q[3]<bands[bi].z1)P.push([q[1],q[2]])})})});
-  const st=Math.max(1,Math.floor(P.length/400));
-  return{bi,p,P:P.filter((_,i)=>i%st===0),pins:pin.filter(q=>q.bi===bi&&q.p===p&&masks[norm(q.name)]),S:stairs.filter(q=>q.lo===bi||q.hi===bi),L:panels[p][0],R:panels[p][1]}}).filter(F=>F.P.length>=30||F.pins.length||F.S.length);
+ const W=M.W,H=M.H,bOf=z=>bands.findIndex(b=>z>=b.z0&&z<b.z1);
+ // floor changes: every one from every round read (not gathered), on both floors it joins
+ const ch=[];[...c.Rs,...(c.more||[])].forEach(R=>R.tracks.forEach(t=>{const P=t.points;for(let i=1;i<P.length;i++){const a=P[i-1],b=P[i];if(b[0]-a[0]>0.6)continue;const ba=bOf(a[3]),bb=bOf(b[3]);if(ba<0||bb<0||ba===bb||Math.abs(ba-bb)>1)continue;if(Math.hypot(b[1]-a[1],b[2]-a[2])>3)continue;ch.push({x:(a[1]+b[1])/2,y:(a[2]+b[2])/2,lo:Math.min(ba,bb),hi:Math.max(ba,bb)})}}));
+ const useStairs=stairs.length>0;
+ // pixels of a mask inside a panel, thinned to at most n
+ const pix=(test,L,R,n)=>{const o=[];for(let y=0;y<H;y++)for(let x=Math.ceil(L);x<Math.min(W,R);x++)if(test(y*W+x))o.push(x,y);const k=Math.max(1,Math.ceil(o.length/2/n));if(k===1)return o;const t=[];for(let i=0;i<o.length;i+=2*k)t.push(o[i],o[i+1]);return t};
+ const floors=pairs.map(([bi,p])=>{const L=panels[p][0],R=panels[p][1];
+  const S=useStairs?ch.filter(q=>q.lo===bi||q.hi===bi):[],pins=pin.filter(q=>q.bi===bi&&q.p===p&&masks[norm(q.name)]);
+  return{bi,p,L,R,S,blue:useStairs?pix(i=>M.blue[i],L,R,1800):[],pins:pins.map(q=>({x:q.x,y:q.y,px:pix(i=>masks[norm(q.name)][i]===0,L,R,1800)}))}}).filter(F=>(F.S.length&&F.blue.length)||F.pins.length);
  if(!floors.length)return{};
- const BD=M.blueD||(M.blueD=rpcDist(M.blue,W,H));
- const place=(F,s,r,fx,c0,win,step)=>{const rad=r*Math.PI/180,cs=Math.cos(rad),sn=Math.sin(rad),pw=F.R-F.L,cap=pw*0.08;
-  const rot=(x,y)=>{const X=fx?-x:x;return[s*(X*cs-y*sn),-s*(X*sn+y*cs)]};
-  const A=F.P.map(([x,y])=>rot(x,y)),PA=F.pins.map(q=>[...rot(q.x,q.y),masks[norm(q.name)]]),SA=F.S.map(q=>[...rot(q.x,q.y),Math.sqrt(q.n)]),sw=SA.reduce((s,q)=>s+q[2],0);
-  const at=(D,u,v)=>u<0||v<0||u>=W||v>=H?cap:Math.min(cap,D[(v|0)*W+(u|0)]);
-  let cx,cy;if(c0){cx=c0[0];cy=c0[1]}else{const mu=A.length?A.reduce((s,q)=>s+q[0],0)/A.length:0,mv=A.length?A.reduce((s,q)=>s+q[1],0)/A.length:0;cx=pw/2-mu;cy=H/2-mv}
-  let best=null;const n=Math.round(win/step);
-  for(let i=-n;i<=n;i++)for(let j=-n;j<=n;j++){const tx=cx+i*step,ty=cy+j*step;let e=0,o=0;
-   if(A.length){for(const [u0,v0] of A){const u=F.L+tx+u0,v=ty+v0;if(u<F.L||u>=F.R||v<0||v>=H||M.out[(v|0)*W+(u|0)])o++}e+=0.6*o/A.length}
-   if(PA.length){let d=0;for(const [u0,v0,D] of PA)d+=at(D,F.L+tx+u0,ty+v0)/cap;e+=d/PA.length}
-   if(SA.length){let d=0;for(const [u0,v0,w] of SA)d+=w*at(BD,F.L+tx+u0,ty+v0)/cap;e+=d/sw}
-   if(!best||e<best.e)best={e,tx,ty}}
-  return best};
- const total=(s,r,fx,prev,fine)=>{let e=0;const pl=floors.map((F,i)=>{const pw=F.R-F.L,q=fine?place(F,s,r,fx,[prev[i].tx,prev[i].ty],pw*0.03,pw*0.003):place(F,s,r,fx,null,pw*0.5,pw*0.02);e+=q.e;return q});return{s,r,fx,e:e/floors.length,pl}};
- // straight or a quarter turn, mirrored or not, a wide range of sizes; then finer around the best few
- const r0=Math.round(f0.r/90)*90,tried=[];
- for(const fx of [false,true])for(const r of [r0,r0+90,r0+180,r0+270])for(let k=-10;k<=10;k++)tried.push(total(f0.s*Math.pow(1.05,k),r,fx));
- tried.sort((a,b)=>a.e-b.e);let top=tried.slice(0,5);
- for(const [dr,ds] of [[2,1.025],[1,1.012],[0.5,1.006],[0.25,1.003]]){const next=[...top];for(const T of top)for(const r of [-dr,0,dr])for(const m of [1/ds,1,ds]){if(!r&&m===1)continue;next.push(total(T.s*m,T.r+r,T.fx,T.pl,true))}next.sort((a,b)=>a.e-b.e);top=next.slice(0,3)}
- const B=top[0],out={};floors.forEach((F,i)=>out[F.bi]={...f0,s:B.s,r:((B.r%360)+360)%360,fx:B.fx,tx:B.pl[i].tx,ty:B.pl[i].ty});
+ // a site start counts as much as a fifth of the floor changes (and at least 8)
+ const nS=floors.reduce((s,F)=>s+F.S.length,0),nP=floors.reduce((s,F)=>s+F.pins.length,0)||1,PW=Math.max(8,nS*0.2/nP);
+ let acc=new Float32Array(0),seen=new Int32Array(0),stamp=0;
+ const vote=(F,s,r,fx)=>{const rad=r*Math.PI/180,cs=Math.cos(rad),sn=Math.sin(rad),rot=(x,y)=>{const X=fx?-x:x;return[s*(X*cs-y*sn),-s*(X*sn+y*cs)]};
+  const SP=F.S.map(q=>rot(q.x,q.y)),PP=F.pins.map(q=>rot(q.x,q.y));const all=[...SP,...PP];if(!all.length)return null;
+  // positions that keep the middle of the voting spots within a panel's width of the panel (outside spots, on slopes, roofs
+  // and spawns, may land anywhere)
+  const us=all.map(a=>a[0]).sort((a,b)=>a-b),vs=all.map(a=>a[1]).sort((a,b)=>a-b),pw=F.R-F.L,um=us[us.length>>1],vm=vs[vs.length>>1];
+  const ox=Math.floor(F.L-um-pw),oy=Math.floor(-vm-H),AW=Math.ceil(3*pw)+2,AH=Math.ceil(3*H)+2;if(AW*AH>acc.length){acc=new Float32Array(AW*AH);seen=new Int32Array(AW*AH)}
+  const touched=[];const add=(u,v,px,w)=>{stamp++;for(let i=0;i<px.length;i+=2){const X=(px[i]-u-ox)|0,Y=(px[i+1]-v-oy)|0;if(X<1||Y<1||X>=AW-1||Y>=AH-1)continue;const k=Y*AW+X;if(seen[k]===stamp)continue;seen[k]=stamp;if(!acc[k])touched.push(k);acc[k]+=w}};
+  SP.forEach(([u,v])=>add(u,v,F.blue,1));PP.forEach(([u,v],i)=>add(u,v,F.pins[i].px,PW));
+  let best=-1,bk=0;for(const k of touched){let t=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)t+=acc[k+dy*AW+dx]||0;if(t>best){best=t;bk=k}}
+  // the middle of the best spot (weighted over its neighbours)
+  let sw=0,sx=0,sy=0;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const w=acc[bk+dy*AW+dx]||0;sw+=w;sx+=w*dx;sy+=w*dy}
+  for(const k of touched){acc[k]=0}
+  return{v:best,tx:(bk%AW)+ox+(sw?sx/sw:0)-F.L,ty:((bk/AW)|0)+oy+(sw?sy/sw:0)}};
+ const total=(s,r,fx)=>{let v=0;const pl=[];for(const F of floors){const q=vote(F,s,r,fx);if(!q)return{s,r,fx,v:-1};v+=q.v;pl.push(q)}return{s,r,fx,v,pl}};
+ // the size: defenders spread over most of the building in prep, so the building's outline on the picture over how far
+ // they spread gives a top size; the real size is 0.4 to 1 of that (checked on Bank and Border)
+ const big=new Set((M.comps||[]).map(o=>o.id)),box=F=>{let a=1e9,b=-1e9,c2=1e9,d=-1e9;for(let y=0;y<H;y++)for(let x=Math.ceil(F.L);x<Math.min(W,F.R);x++){if(!big.has(M.comp[y*W+x]))continue;if(x<a)a=x;if(x>b)b=x;if(y<c2)c2=y;if(y>d)d=y}return b-a>(F.R-F.L)*0.15&&d-c2>H*0.15?[b-a,d-c2]:[F.R-F.L,H]};
+ const q=(a,p)=>a[Math.floor(p*(a.length-1))],est=[];
+ floors.forEach(F=>{const X=[],Y=[];[...c.Rs,...(c.more||[])].forEach(R=>{const di=R.teams.findIndex(x=>x.role==='Defense'),pe=R.clock?.prepSeconds||40;R.tracks.forEach(tr=>{if(tr.teamIndex!==di)return;tr.points.forEach(p=>{if(p[0]>3&&p[0]<pe&&bOf(p[3])===F.bi){X.push(p[1]);Y.push(p[2])}})})});
+  if(X.length<100)return;X.sort((a,b)=>a-b);Y.sort((a,b)=>a-b);const ex=q(X,0.97)-q(X,0.03),ey=q(Y,0.97)-q(Y,0.03);if(ex>1&&ey>1){const [bw,bh]=box(F);est.push(Math.sqrt(bw*bh/(ex*ey)))}});
+ est.sort((a,b)=>a-b);const sE=est.length?est[est.length>>1]:f0.s/0.65,tried=[];
+ // straight or a quarter turn, mirrored or not; then finer around the best few
+ for(const fx of [false,true])for(const r of [0,90,180,270])for(let s=sE*0.4;s<sE*1.05;s*=1.02)tried.push(total(s,r,fx));
+ tried.sort((a,b)=>b.v-a.v);let top=tried.slice(0,6).filter(t=>t.v>0);if(!top.length)return{};
+ for(const [dr,ds] of [[0,1.015],[1,1.007],[0.5,1.003]]){const next=[...top];for(const T of top)for(const r of dr?[-dr,0,dr]:[0])for(const m of [1/ds,1,ds]){if(!r&&m===1)continue;const t=total(T.s*m,T.r+r,T.fx);if(t.v>0)next.push(t)}next.sort((a,b)=>b.v-a.v);top=next.slice(0,4)}
+ const B=top[0],out={};if(window.__DIAG)console.log('shape fit',JSON.stringify({s:B.s,r:B.r,fx:B.fx,v:B.v,sE,est}));
+ floors.forEach((F,i)=>out[F.bi]={...f0,s:B.s,r:((B.r%360)+360)%360,fx:B.fx,tx:B.pl[i].tx,ty:B.pl[i].ty});
  return out;
 }
 async function rpcSpotsFit(c,M,panels,bands,paint,saved){
