@@ -2346,11 +2346,13 @@ async function rpLoad(tid,mid,n){
  rpCache.set(k,p);const v=await p;if(!v)rpCache.delete(k);return v;
 }
 // ---- floors: by height. Calibrated floors have their own height range; otherwise floors are found from where players stood.
-function rpAutoFloors(R){
+function rpAutoFloors(R,want){
  const zs=[];R.tracks.forEach(t=>t.points.forEach(p=>zs.push(p[3])));if(!zs.length)return[{z0:-1e9,z1:1e9}];
  const lo=Math.floor(Math.min(...zs)),hi=Math.ceil(Math.max(...zs)),bins=new Array(Math.max(1,Math.round((hi-lo)/0.5))+1).fill(0);
  zs.forEach(z=>bins[Math.round((z-lo)/0.5)]++);
- const min=zs.length*0.03,peaks=[];bins.forEach((c,i)=>{if(c>=min&&c>=(bins[i-1]||0)&&c>=(bins[i+1]||0)){const z=lo+i*0.5;if(!peaks.length||z-peaks[peaks.length-1].z>=2.5)peaks.push({z,c});else if(c>peaks[peaks.length-1].c)peaks[peaks.length-1]={z,c}}});
+ const find=frac=>{const min=zs.length*frac,pk=[];bins.forEach((c,i)=>{if(c>=min&&c>=(bins[i-1]||0)&&c>=(bins[i+1]||0)){const z=lo+i*0.5;if(!pk.length||z-pk[pk.length-1].z>=2.5)pk.push({z,c});else if(c>pk[pk.length-1].c)pk[pk.length-1]={z,c}}});return pk};
+ let peaks=find(0.03);
+ if(want&&peaks.length<want){const more=find(0.004);if(more.length>peaks.length)peaks=[...more].sort((a,b)=>b.c-a.c).slice(0,want).sort((a,b)=>a.z-b.z)}
  if(!peaks.length)return[{z0:-1e9,z1:1e9}];
  return peaks.map((p,i)=>({z0:i?(peaks[i-1].z+p.z)/2:-1e9,z1:i<peaks.length-1?(p.z+peaks[i+1].z)/2:1e9,z:p.z}));
 }
@@ -2404,12 +2406,45 @@ function rpProj(cv){
  const v=rpv,f=v.ms.floors[v.floor],W=cv.clientWidth,H=cv.clientHeight;
  const sheet=v.ms.cal&&v.sheet&&v.ms.floors.every(x=>x.url===f.url);
  if(sheet){const img=rpImage(f.url),iw=img?.naturalWidth||1000,ih=img?.naturalHeight||1000,k=Math.min(W/iw,H/ih)*v.zoom,ox=(W-iw*k)/2+v.panX,oy=(H-ih*k)/2+v.panY;
-  return{img,iw,ih,k,ox,oy,cr:[0,0,iw,ih],sheet:true,p:(x,y,fi)=>{const F=v.ms.floors[fi??v.floor]||f,rad=(F.r||0)*Math.PI/180,X=F.fx?-x:x,xr=X*Math.cos(rad)-y*Math.sin(rad),yr=X*Math.sin(rad)+y*Math.cos(rad);return[ox+(F.tx+F.s*xr)*k,oy+(F.ty-F.s*yr)*k]}}}
+  return{img,iw,ih,k,ox,oy,cr:[0,0,iw,ih],sheet:true,p:(x,y,fi)=>{const F=v.ms.floors[fi??v.floor]||f,rad=(F.r||0)*Math.PI/180,X=F.fx?-x:x,xr=X*Math.cos(rad)-y*Math.sin(rad),yr=X*Math.sin(rad)+y*Math.cos(rad);const [u,w]=rpSnap(img,F.crop,F.tx+F.s*xr,F.ty-F.s*yr);return[ox+u*k,oy+w*k]}}}
  if(v.ms.cal){const img=rpImage(f.url),iw=img?.naturalWidth||1000,ih=img?.naturalHeight||1000,cr=f.crop||[0,0,iw,ih],cw=cr[2]-cr[0]||iw,ch=cr[3]-cr[1]||ih,k=Math.min(W/cw,H/ch)*v.zoom,ox=(W-cw*k)/2-cr[0]*k+v.panX,oy=(H-ch*k)/2-cr[1]*k+v.panY,rad=(f.r||0)*Math.PI/180,cs=Math.cos(rad),sn=Math.sin(rad);
-  return{img,iw,ih,k,ox,oy,cr,p:(x,y)=>{const X=f.fx?-x:x,xr=X*cs-y*sn,yr=X*sn+y*cs;return[ox+(f.tx+f.s*xr)*k,oy+(f.ty-f.s*yr)*k]}}}
+  return{img,iw,ih,k,ox,oy,cr,p:(x,y)=>{const X=f.fx?-x:x,xr=X*cs-y*sn,yr=X*sn+y*cs;const [u,w]=rpSnap(img,f.crop,f.tx+f.s*xr,f.ty-f.s*yr);return[ox+u*k,oy+w*k]}}}
  if(!v.box){let a=1e9,b=-1e9,c=1e9,d=-1e9;v.R.tracks.forEach(t=>t.points.forEach(p=>{a=Math.min(a,p[1]);b=Math.max(b,p[1]);c=Math.min(c,p[2]);d=Math.max(d,p[2])}));v.box=[a,b,c,d]}
  const [a,b,c,d]=v.box,k=Math.min(W/((b-a)||1),H/((d-c)||1))*0.92*v.zoom,ox=W/2-(a+b)/2*k+v.panX,oy=H/2+(c+d)/2*k+v.panY;
  return{k,p:(x,y)=>[ox+x*k,oy-y*k]};
+}
+// Keeps positions inside the building of their floor: a spot outside the walls (or off the picture) moves to the nearest
+// spot inside that floor's drawing. The building is everything the picture's edge can't reach without crossing a wall.
+const rpInWM=new WeakMap();
+function rpIn(img){
+ if(!img?.naturalWidth)return null;let o=rpInWM.get(img);if(o!==undefined)return o;
+ try{const M=rpcMask(img),W=M.W,H=M.H,R=Math.max(3,Math.round(Math.max(W,H)*0.012));
+  // walls thickened so wide doorways close too (rows, then columns)
+  const a=new Uint8Array(W*H),wd=new Uint8Array(W*H);
+  for(let y=0;y<H;y++){let n=0;for(let x=-R;x<W;x++){if(x+R<W&&M.dark[y*W+x+R])n++;if(x-R-1>=0&&M.dark[y*W+x-R-1])n--;if(x>=0)a[y*W+x]=n>0?1:0}}
+  for(let x=0;x<W;x++){let n=0;for(let y=-R;y<H;y++){if(y+R<H&&a[(y+R)*W+x])n++;if(y-R-1>=0&&a[(y-R-1)*W+x])n--;if(y>=0)wd[y*W+x]=n>0?1:0}}
+  // outside: reached from the picture's edge without crossing a thick wall, then grown back up to the real walls
+  const out=new Uint8Array(W*H),st=[];for(let x=0;x<W;x++)st.push(x,(H-1)*W+x);for(let y=0;y<H;y++)st.push(y*W,y*W+W-1);
+  while(st.length){const i=st.pop();if(out[i]||wd[i])continue;out[i]=1;const x=i%W;if(x>0)st.push(i-1);if(x<W-1)st.push(i+1);if(i>=W)st.push(i-W);if(i<W*H-W)st.push(i+W)}
+  let edge=[];for(let i=0;i<W*H;i++)if(out[i])edge.push(i);
+  for(let it=0;it<R+1&&edge.length;it++){const nx=[];for(const i of edge){const x=i%W;for(const j of [x>0?i-1:-1,x<W-1?i+1:-1,i>=W?i-W:-1,i<W*H-W?i+W:-1])if(j>=0&&!out[j]&&!M.dark[j]){out[j]=1;nx.push(j)}}edge=nx}
+  // a building: an enclosed part big enough not to be a label, a line between floors or a box in a corner
+  const comp=new Int32Array(W*H).fill(-1),ok=new Uint8Array(W*H);
+  for(let s=0;s<W*H;s++){if(out[s]||M.dark[s]||comp[s]>=0)continue;const q=[s];comp[s]=s;const mem=[];let x0=W,x1=0,y0=H,y1=0;
+   while(q.length){const i=q.pop();mem.push(i);const x=i%W,y=(i-x)/W;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;for(const j of [x>0?i-1:-1,x<W-1?i+1:-1,i>=W?i-W:-1,i<W*H-W?i+W:-1])if(j>=0&&!out[j]&&!M.dark[j]&&comp[j]<0){comp[j]=s;q.push(j)}}
+   if(mem.length>=W*H*0.0005&&x1-x0>W*0.012&&y1-y0>H*0.03&&mem.length>(x1-x0+1)*(y1-y0+1)*0.15)mem.forEach(i=>ok[i]=1)}
+  o={M:{...M,out},ok,near:{}}}catch{o=null}rpInWM.set(img,o);return o;
+}
+function rpSnap(img,crop,u,v){
+ const o=rpIn(img);if(!o)return[u,v];const M=o.M,W=M.W,H=M.H,iw=img.naturalWidth,ih=img.naturalHeight,cr=crop||[0,0,iw,ih];
+ const x0=Math.max(0,Math.floor(cr[0]*M.sc)),x1=Math.min(W,Math.ceil(cr[2]*M.sc)),y0=Math.max(0,Math.floor(cr[1]*M.sc)),y1=Math.min(H,Math.ceil(cr[3]*M.sc));
+ const key=x0+','+x1+','+y0+','+y1;let N=o.near[key];
+ if(!N){N=new Int32Array(W*H).fill(-1);const q=[];for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){const i=y*W+x;if(o.ok[i]){N[i]=i;q.push(i)}}
+  for(let h=0;h<q.length;h++){const i=q[h],x=i%W,y=(i-x)/W;for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const X=x+dx,Y=y+dy;if(X<x0||Y<y0||X>=x1||Y>=y1)continue;const j=Y*W+X;if(N[j]<0){N[j]=N[i];q.push(j)}}}
+  o.near[key]=N}
+ const X=Math.min(x1-1,Math.max(x0,Math.floor(u*M.sc))),Y=Math.min(y1-1,Math.max(y0,Math.floor(v*M.sc))),i=Y*W+X;
+ const inside=u*M.sc>=x0&&u*M.sc<x1&&v*M.sc>=y0&&v*M.sc<y1&&!M.out[i]&&N[i]>=0&&(o.ok[i]||M.dark[i]);if(inside||N[i]<0)return inside||N[i]>=0?[u,v]:[Math.min(cr[2],Math.max(cr[0],u)),Math.min(cr[3],Math.max(cr[1],v))];
+ const j=N[i],jx=j%W,jy=(j-jx)/W;return[(jx+0.5)/M.sc,(jy+0.5)/M.sc];
 }
 function rpDraw(){
  const v=rpv,cv=document.getElementById('rpcv');if(!v||!cv)return;
@@ -2549,7 +2584,7 @@ async function rpcLoadSample(map){
 }
 // every spot players stood at, from all the sample rounds: [x, y, z, team]
 const rpcPts=c=>{if(c.pts)return c.pts;const out=[];c.Rs.forEach(R=>R.tracks.forEach(t=>t.points.forEach((p,i)=>{if(i%2===0)out.push([p[1],p[2],p[3],t.teamIndex])})));return c.pts=out};
-function rpcBands(c){if(c.bands)return c.bands;const R={tracks:[{points:rpcPts(c).map(p=>[0,p[0],p[1],p[2]])}]};return c.bands=rpAutoFloors(R)}
+function rpcBands(c){if(c.bands)return c.bands;const sv=Object.entries(rpcSaved(c.map)).filter(([k,e])=>/^fd+$/.test(k)&&Number.isFinite(e?.z0)&&Number.isFinite(e?.z1)).map(([,e])=>e).sort((a,b)=>a.z0-b.z0);if(sv.length)return c.bands=sv.map((e,i)=>({z0:i?e.z0:-1e9,z1:i<sv.length-1?e.z1:1e9}));const R={tracks:[{points:rpcPts(c).map(p=>[0,p[0],p[1],p[2]])}]};return c.bands=rpAutoFloors(R)}
 const rpcKey=i=>'f'+(i+1);
 // the saved floors of the map, also ones saved before floors were named by height (keyed by picture)
 const rpcSaved=map=>siteSet?.replay_maps?.[map]?.floors||{};
@@ -2681,7 +2716,7 @@ const rpcName=(i,n)=>n>1&&i===0?'Lowest floor':n>1&&i===n-1?'Top floor':'Floor '
 function rpcPanels(M){
  const col=new Float32Array(M.W),line=new Float32Array(M.W);for(let x=0;x<M.W;x++){let n=0,l=0;for(let y=0;y<M.H;y++){n+=M.dark[y*M.W+x];if(M.lite)l+=M.lite[y*M.W+x]}col[x]=n/M.H;line[x]=l/M.H}
  // the usual layout: 2, 3 or 4 panels of the same width, with a full-height line at each split
- for(const k of [4,3,2]){let okAll=true;for(let i=1;i<k;i++){const x0=Math.round(M.W*i/k),w=Math.max(2,Math.round(M.W*0.02));let bestc=0,lineC=0,gap=1;for(let x=x0-w;x<=x0+w;x++)if(x>=0&&x<M.W){bestc=Math.max(bestc,col[x]);lineC=Math.max(lineC,line[x]);gap=Math.min(gap,col[x])}if(bestc<0.45&&lineC<0.97&&gap>0.003){okAll=false;break}}if(okAll)return Array.from({length:k},(_,i)=>[M.W*i/k,M.W*(i+1)/k])}
+ for(const k of [4,3,2]){let okAll=true;for(let i=1;i<k;i++){const x0=Math.round(M.W*i/k),w=Math.max(2,Math.round(M.W*0.02));let bestc=0,lineC=0;for(let x=x0-w;x<=x0+w;x++)if(x>=0&&x<M.W){bestc=Math.max(bestc,col[x]);lineC=Math.max(lineC,line[x])}if(bestc<0.45&&lineC<0.97){okAll=false;break}}if(okAll)return Array.from({length:k},(_,i)=>[M.W*i/k,M.W*(i+1)/k])}
  const edges=[0];for(let x=0;x<M.W;){if(col[x]>0.6){let e=x;while(e+1<M.W&&col[e+1]>0.6)e++;if(x>M.W*0.05&&e<M.W*0.95)edges.push((x+e)/2);x=e+1}else x++}
  edges.push(M.W);let panels=[];for(let i=0;i+1<edges.length;i++)if(edges[i+1]-edges[i]>M.W*0.1)panels.push([edges[i],edges[i+1]]);
  if(panels.length<2){const l=[...M.comps].sort((a,b)=>a.x0-b.x0);if(l.length>=2)panels=l.map(c=>[c.x0,c.x1+1])}
@@ -2733,7 +2768,8 @@ async function rpcAutoAll(b,only){
   const pt=all[map]?.paint,pimg=pt?.url&&pt.bp===bp.id?await rpcImgReady(pt.url):null;
   let M;try{M=rpcMask(img,pimg)}catch{note.push(map+': its picture could not be read');continue}
   const panels=rpcPanels(M),k=panels.length;if(!k){note.push(map+': no floors found on its picture');continue}
-  const bands=rpcBands(c),pts=rpcPts(c),bp2=bands.map(bd=>pts.filter(p=>p[2]>=bd.z0&&p[2]<bd.z1)).map(l=>l.length>=30?l:null);
+  await rpcSiteData(c);c.bands=rpAutoFloors({tracks:[...c.Rs,...(c.more||[])].flatMap(R=>R.tracks)},k);
+  const bands=c.bands,pts=rpcPts(c),bp2=bands.map(bd=>pts.filter(p=>p[2]>=bd.z0&&p[2]<bd.z1)).map(l=>l.length>=30?l:null);
   // sites coloured one by one: each one's defenders must land in its rooms
   if(pt?.sites?.length&&pimg){const R2=await rpcSpotsFit(c,M,panels,bands,pimg,pt.sites);
    if(R2.f){const f=R2.f,K=1/M.sc,mm={...(all[map]||{}),floors:{}};if(all[map]?.paint)mm.paint=all[map].paint;
@@ -2922,7 +2958,7 @@ function rpcShapeFit(c,M,panels,bands,pairs,pin,f0,stairs,masks){
 }
 async function rpcSpotsFit(c,M,panels,bands,paint,saved){
  const cols={};saved.forEach(s=>cols[norm(s.name)]=s);const same=(a,b)=>norm(siteCanon(c.map,a))===norm(siteCanon(c.map,b));
- const spots=rppSiteSpots(paint,M,panels,cols);await rpcSiteData(c);
+ const spots=rppSiteSpots(paint,M,panels,cols);if(!c.sites)await rpcSiteData(c);
  const bandOf=z=>bands.findIndex(bd=>z>=bd.z0&&z<bd.z1);
  const pin=spots.map(s=>{const w=(c.sites||[]).find(x=>same(x.name,s.name));return w?{x:w.x,y:w.y,z:w.z,bi:bandOf(w.z),u:s.u-panels[s.p][0],v:s.v,p:s.p,name:s.name}:null}).filter(x=>x&&x.bi>=0);
  if(pin.length<2)return{err:'fewer than 2 coloured sites match bomb sites in your replays'};
@@ -3036,9 +3072,9 @@ function rpcDraw(){
  Object.entries(c.lm||{}).forEach(([i,q])=>{const s=c.sites?.[+i];if(!s)return;const x=ox+q.u*k,y=oy+q.v*k;g.fillStyle='#e07cc0';g.strokeStyle='#fff';g.lineWidth=2;g.beginPath();g.arc(x,y,7,0,7);g.fill();g.stroke();g.font='600 12px Inter,system-ui,sans-serif';const w=g.measureText(s.name).width+10;g.fillStyle='rgba(0,0,0,.8)';g.fillRect(x+9,y-9,w,18);g.fillStyle='#fff';g.textBaseline='middle';g.fillText(s.name,x+14,y)});
  // every floor at once, each on its own drawing: the saved ones, and the one being adjusted as it is now
  const fls=Object.entries(rpcSaved(c.map)).map(([key,e])=>({i:+key.slice(1)-1,e})).filter(x=>x.i>=0);
- if(c.s!=null){const cur0=fls.find(x=>x.i===c.band);const live={s:c.s,r:c.r,fx:c.fx,tx:c.tx,ty:c.ty,z0:c.z0,z1:c.z1};if(cur0)cur0.e=live;else fls.push({i:c.band,e:live})}
+ if(c.s!=null){const cur0=fls.find(x=>x.i===c.band);const live={s:c.s,r:c.r,fx:c.fx,tx:c.tx,ty:c.ty,z0:c.z0,z1:c.z1,crop:cur0?.e?.crop};if(cur0)cur0.e=live;else fls.push({i:c.band,e:live})}
  if(!fls.length){g.fillStyle='rgba(0,0,0,.6)';g.fillRect(0,0,W,28);g.fillStyle='#fff';g.font='13px Inter,system-ui,sans-serif';g.textBaseline='alphabetic';g.fillText('Press Line up to place the dots.',10,18);return}
- const ppOf=e=>{const rad=(e.r||0)*Math.PI/180,cs=Math.cos(rad),sn=Math.sin(rad);return(x0,y0)=>{const X=e.fx?-x0:x0;return[ox+(e.tx+e.s*(X*cs-y0*sn))*k,oy+(e.ty-e.s*(X*sn+y0*cs))*k]}};
+ const ppOf=e=>{const rad=(e.r||0)*Math.PI/180,cs=Math.cos(rad),sn=Math.sin(rad);return(x0,y0)=>{const X=e.fx?-x0:x0;const [u,w]=rpSnap(img,e.crop,e.tx+e.s*(X*cs-y0*sn),e.ty-e.s*(X*sn+y0*cs));return[ox+u*k,oy+w*k]}};
  const floorAt=z=>fls.find(x=>z>=x.e.z0&&z<x.e.z1);
  for(const p of rpcPts(c)){const F=floorAt(p[2]);if(!F)continue;const [x,y]=ppOf(F.e)(p[0],p[1]);const on=F.i===c.band;g.fillStyle=p[3]===0?(on?'rgba(61,142,243,.9)':'rgba(61,142,243,.45)'):(on?'rgba(240,145,58,.9)':'rgba(240,145,58,.45)');g.fillRect(x-1.5,y-1.5,3,3)}
  // a landmark the owner knows: the defenders stand at the bomb site when prep starts
