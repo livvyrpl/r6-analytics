@@ -2348,7 +2348,7 @@ async function rpLoad(tid,mid,n){
 // ---- floors: by height. Calibrated floors have their own height range; otherwise floors are found from where players stood.
 function rpAutoFloors(R,want){
  const zs=[];R.tracks.forEach(t=>t.points.forEach(p=>zs.push(p[3])));if(!zs.length)return[{z0:-1e9,z1:1e9}];
- const lo=Math.floor(Math.min(...zs)),hi=Math.ceil(Math.max(...zs)),bins=new Array(Math.max(1,Math.round((hi-lo)/0.5))+1).fill(0);
+ let zmin=Infinity,zmax=-Infinity;for(const z of zs){if(z<zmin)zmin=z;if(z>zmax)zmax=z}const lo=Math.floor(zmin),hi=Math.ceil(zmax),bins=new Array(Math.max(1,Math.round((hi-lo)/0.5))+1).fill(0);
  zs.forEach(z=>bins[Math.round((z-lo)/0.5)]++);
  const find=frac=>{const min=zs.length*frac,pk=[];bins.forEach((c,i)=>{if(c>=min&&c>=(bins[i-1]||0)&&c>=(bins[i+1]||0)){const z=lo+i*0.5;if(!pk.length||z-pk[pk.length-1].z>=2.5)pk.push({z,c});else if(c>pk[pk.length-1].c)pk[pk.length-1]={z,c}}});return pk};
  let peaks=find(0.03);
@@ -2766,10 +2766,12 @@ function rpcSolveJoint(sets,M,refPanel){
 const rpcPanelName=(p,k)=>k<2?'Map':p===0?'Top floor':p===k-1?'Lowest floor':'Floor '+(k-p);
 // choose k of n in order
 const rpcCombos=(n,k)=>{const out=[],a=[];const go=s=>{if(a.length===k){out.push([...a]);return}for(let i=s;i<n;i++){a.push(i);go(i+1);a.pop()}};go(0);return out};
-async function rpcAutoAll(b,only){
+// if lining up fails part way, it says so (instead of spinning for ever) and the button works again
+async function rpcAutoAll(b,only){const box={};try{return await rpcAutoAll0(b,only,box)}catch(e){console.error(e);if(b)b.disabled=false;if(box.job)actEnd(box.job,'warn','Lining up stopped: '+(e?.message||e));toast('Lining up stopped because of an error: '+(e?.message||e))}}
+async function rpcAutoAll0(b,only,box={}){
  if(!cur)return toast('Open Admin from a team dashboard, so its imported replays can be used.');
  const rows=adm.bp?.rows||[],maps=only?[only]:[...new Set(rows.map(x=>mapCanon(x.map)))].sort();if(!maps.length)return;
- if(b)b.disabled=true;let stop=false;const job=actStart('Lining up the replay maps',()=>{stop=true});const all={...(siteSet.replay_maps||{})},note=[];let done=0;
+ if(b)b.disabled=true;let stop=false;const job=box.job=actStart('Lining up the replay maps',()=>{stop=true});const all={...(siteSet.replay_maps||{})},note=[];let done=0;
  for(const [mi,map] of maps.entries()){
   if(stop)break;actSet(job,{detail:map+' ('+(mi+1)+' of '+maps.length+')',pct:Math.round(mi/maps.length*100)});
   const c={map,Rs:await rpcSamples(map)};if(!c.Rs.length){note.push(map+': no 2D replay yet');continue}
@@ -2833,7 +2835,7 @@ async function rpcSiteData(c){
  c.Rs.forEach(add);
  const want=siteDefaults(c.map).map(norm),done=()=>want.length?want.every(k=>by.has(k)):by.size>=6;
  const more=[];for(let j=1;j<40;j++)games.forEach(g=>{if(g.ns[j])more.push([g.mid,g.ns[j]])});
- c.more=[];for(let i=0;i<more.length&&i<96&&(!done()||c.Rs.length+c.more.length<16);i+=8)(await Promise.all(more.slice(i,i+8).map(([mid,n])=>rpLoad(cur.id,mid,n)))).forEach(R=>{add(R);if(R?.tracks?.length)c.more.push(R)});
+ c.more=[];for(let i=0;i<more.length&&i<32&&(!done()||c.Rs.length+c.more.length<16);i+=8)(await Promise.all(more.slice(i,i+8).map(([mid,n])=>rpLoad(cur.id,mid,n)))).forEach(R=>{add(R);if(R?.tracks?.length)c.more.push(R)});
  c.sites=[...by.values()].map(e=>({name:e.name,x:e.x/e.n,y:e.y/e.n,z:e.z/e.n})).sort((a,b)=>b.z-a.z||a.name.localeCompare(b.name));
  if(adm.rpc===c)render();
 }
@@ -2934,7 +2936,7 @@ function rpcShapeFit(c,M,panels,bands,pairs,pin,f0,stairs,masks){
   // where the defenders walk in prep (they are always inside the building)
   const DP=[];[...c.Rs,...(c.more||[])].forEach(R0=>{const di=R0.teams.findIndex(x=>x.role==='Defense'),pe=R0.clock?.prepSeconds||40;R0.tracks.forEach(tr=>{if(tr.teamIndex!==di)return;tr.points.forEach(q=>{if(q[0]>3&&q[0]<pe&&bOf(q[3])===bi)DP.push([q[1],q[2]])})})});
   const dst=Math.max(1,Math.floor(DP.length/300)),dp=DP.filter((_,i)=>i%dst===0);
-  const S=useStairs?ch.filter(q=>q.lo===bi||q.hi===bi):[],pins=pin.filter(q=>q.bi===bi&&q.p===p&&masks[norm(q.name)]);
+  const S0=useStairs?ch.filter(q=>q.lo===bi||q.hi===bi):[],sst0=Math.max(1,Math.ceil(S0.length/400)),S=S0.filter((_,i)=>i%sst0===0),pins=pin.filter(q=>q.bi===bi&&q.p===p&&masks[norm(q.name)]);
   return{bi,p,L,R,S,dp,blue:useStairs?pix(i=>M.blue[i],L,R,1800):[],pins:pins.map(q=>({x:q.x,y:q.y,px:pix(i=>masks[norm(q.name)][i]===0,L,R,1800)}))}}).filter(F=>(F.S.length&&F.blue.length)||F.pins.length);
  if(!floors.length)return{};
  // a site start counts as much as a fifth of the floor changes (and at least 8)
